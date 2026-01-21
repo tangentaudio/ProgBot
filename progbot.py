@@ -1,4 +1,26 @@
-#!/usr/bin/env python3
+#!/bin/bash
+''''
+SCRIPT_DIR="$(dirname "$0")"
+VENV_PYTHON="$SCRIPT_DIR/.venv/bin/python3"
+
+# Check if venv exists, if not create it
+if [ ! -f "$VENV_PYTHON" ]; then
+    echo "Virtual environment not found. Creating it now..."
+    if [ -f "$SCRIPT_DIR/setup_venv.sh" ]; then
+        bash "$SCRIPT_DIR/setup_venv.sh" || exit 1
+    else
+        echo "Creating venv manually..."
+        python3 -m venv "$SCRIPT_DIR/.venv" || exit 1
+        "$VENV_PYTHON" -m pip install --upgrade pip
+        if [ -f "$SCRIPT_DIR/requirements.txt" ]; then
+            "$VENV_PYTHON" -m pip install -r "$SCRIPT_DIR/requirements.txt" || exit 1
+        fi
+    fi
+fi
+
+# Run with venv python
+exec "$VENV_PYTHON" "$0" "$@"
+# '''
 """
 ProgBot - Main entry point for the application.
 
