@@ -1,0 +1,537 @@
+#:kivy 2.0
+
+<PanelFileRow@Button>:
+    filename: ''
+    fullpath: ''
+    selected: False
+    size_hint_y: None
+    height: 60
+    text: self.filename
+    font_size: '18sp'
+    halign: 'left'
+    valign: 'center'
+    text_size: self.size
+    padding: 10, 0
+    on_release: app.on_file_row_pressed(self.fullpath)
+    background_color: (0.3, 0.5, 0.8, 1) if self.selected else (0.2, 0.2, 0.2, 1)
+    background_normal: ''
+
+<GridCell>:
+    orientation: 'vertical'
+    padding: 5
+    spacing: 2
+    size_hint: 1, 1
+    
+    canvas.before:
+        Color:
+            rgba: root.cell_bg_color
+        Rectangle:
+            pos: self.pos
+            size: self.size
+    
+    canvas:
+        Color:
+            rgba: 0, 0, 0, 0.75
+        Rectangle:
+            pos: self.x + 10, self.y + 10
+            size: self.width - 20, self.height - 20
+    
+    canvas.after:
+        Color:
+            rgba: 0, 0, 0, 1
+        Line:
+            rectangle: (self.x, self.y, self.width, self.height)
+            width: 1
+    
+    Label:
+        text: root.status_line1
+        bold: True
+        color: 1, 1, 1, 1
+        size_hint_y: 0.4
+        font_size: '12sp'
+    
+    Label:
+        text: root.status_line2
+        color: 1, 1, 1, 1
+        size_hint_y: 0.3
+        font_size: '10sp'
+    
+    Label:
+        text: root.cell_label
+        color: 1, 1, 1, 1
+        size_hint_y: 0.3
+        font_size: '10sp'
+
+<LogViewer>:
+    effect_cls: 'ScrollEffect'
+    scroll_type: ['bars']
+    bar_width: 15
+    do_scroll: (self.width, True)
+    
+    TextInput:
+        id: log_text
+        readonly: True
+        foreground_color: 1, 1, 1, 1
+        background_color: 0, 0, 0, 1
+        size_hint_y: None
+        cursor_blink: False
+        multiline: True
+        height: self.minimum_height
+        allow_copy: False
+        allow_paste: False
+        selection_color: 0, 0, 0, 0
+
+<LogPopup@Popup>:
+    id: log_popup
+    title: 'Log Viewer'
+    size_hint: 0.8, 0.8
+    
+    BoxLayout:
+        orientation: 'vertical'
+        
+        LogViewer:
+            id: log_viewer_widget
+            size_hint_y: 0.9
+        
+        Button:
+            text: 'Close'
+            size_hint_y: 0.1
+            on_press: root.dismiss()
+
+<ErrorPopup@Popup>:
+    id: error_popup
+    title: 'Error'
+    size_hint: 0.85, 0.85
+    auto_dismiss: False
+
+    BoxLayout:
+        orientation: 'vertical'
+        spacing: 6
+        padding: 8
+
+        Label:
+            id: error_message
+            text: 'An error occurred'
+            size_hint_y: None
+            height: 40
+            halign: 'left'
+            valign: 'middle'
+            text_size: self.size
+
+        ScrollView:
+            size_hint_y: 1
+            do_scroll_x: False
+
+            TextInput:
+                id: error_trace
+                readonly: True
+                foreground_color: 1, 1, 1, 1
+                background_color: 0, 0, 0, 1
+                size_hint_y: None
+                height: max(self.minimum_height, 300)
+                cursor_blink: False
+                multiline: True
+                allow_copy: True
+                allow_paste: False
+                selection_color: 0.2, 0.4, 1, 0.3
+
+        BoxLayout:
+            size_hint_y: None
+            height: 50
+            spacing: 8
+
+            Button:
+                text: 'Abort Cycle'
+                background_color: 0.8, 0.1, 0.1, 1
+                on_press: app.on_error_abort()
+
+            Button:
+                text: 'Retry This Board'
+                background_color: 0.1, 0.6, 0.8, 1
+                on_press: app.on_error_retry()
+
+            Button:
+                text: 'Skip This Board'
+                background_color: 0.6, 0.6, 0.1, 1
+                on_press: app.on_error_skip()
+
+<PanelFileChooser@Popup>:
+    id: panel_chooser
+    title: 'Select Panel Settings File'
+    size_hint: 0.95, 0.9
+    
+    BoxLayout:
+        orientation: 'vertical'
+        spacing: 12
+        padding: 15
+
+        Label:
+            text: 'Choose a .panel file:'
+            size_hint_y: None
+            height: 50
+            font_size: '16sp'
+            halign: 'left'
+            valign: 'center'
+            text_size: self.size
+
+        RecycleView:
+            id: file_list
+            size_hint_y: 1
+            viewclass: 'PanelFileRow'
+            do_scroll_x: False
+            scroll_type: ['bars', 'content']
+            bar_width: 10
+            RecycleBoxLayout:
+                id: file_layout
+                default_size: None, 60
+                default_size_hint: 1, None
+                size_hint_y: None
+                height: self.minimum_height
+                orientation: 'vertical'
+                spacing: 4
+                key_selection: 'selectable'
+
+        BoxLayout:
+            size_hint_y: None
+            height: 70
+            spacing: 12
+            padding: 8
+
+            Button:
+                text: 'Load'
+                font_size: '16sp'
+                on_press: app.on_custom_panel_file_selected()
+                on_press: root.dismiss()
+
+            Button:
+                text: 'Cancel'
+                font_size: '16sp'
+                on_press: root.dismiss()
+
+<SavePanelDialog@Popup>:
+    id: save_panel_dialog
+    title: 'Save Panel As'
+    size_hint: 0.85, 0.5
+    
+    BoxLayout:
+        orientation: 'vertical'
+        spacing: 15
+        padding: 15
+
+        Label:
+            text: 'Panel file name (.panel will be added):'
+            size_hint_y: None
+            height: 50
+            halign: 'left'
+            valign: 'center'
+            text_size: self.size
+            font_size: '14sp'
+
+        TextInput:
+            id: panel_name_input
+            multiline: False
+            size_hint_y: None
+            height: 80
+            font_size: '16sp'
+            write_tab: False
+
+        BoxLayout:
+            size_hint_y: None
+            height: 60
+            spacing: 12
+
+            Button:
+                text: 'Save'
+                font_size: '14sp'
+                on_press: app.on_save_panel_confirmed(panel_name_input.text)
+                on_press: root.dismiss()
+
+            Button:
+                text: 'Cancel'
+                font_size: '14sp'
+                on_press: root.dismiss()
+
+<AppRoot@BoxLayout>:
+    orientation: 'vertical'
+
+    BoxLayout:
+        orientation: 'horizontal'
+
+        BoxLayout:
+            orientation: 'vertical'
+
+            GridLayout:
+                canvas.before:
+                    Color:
+                        rgba: 0.1, 0.1, 0.2, 1
+                    Rectangle:
+                        pos: self.pos
+                        size: self.size
+                
+                canvas.after:
+                    Color:
+                        rgba: 0, 0, 0, 1
+                    # Border around entire grid
+                    Line:
+                        rectangle: (self.x, self.y, self.width, self.height)
+                        width: 2
+                
+                id: panel_grid
+                size_hint_y: 0.9
+                multitouch_sim_timeout: 0
+
+        BoxLayout:
+            id: info_panel
+            orientation: 'vertical'
+            size_hint_x: 0.5
+            spacing: 4
+            padding: 4, 4, 4, 4
+
+            canvas.before:
+                Color:
+                    rgba: 0.2, 0.2, 0.2, 1
+                Rectangle:
+                    pos: self.pos
+                    size: self.size
+
+            BoxLayout:
+                orientation: 'horizontal'
+                size_hint_y: None
+                height: 40
+                spacing: 4
+
+                Button:
+                    id: stop_btn
+                    text: 'Stop'
+                    disabled: True
+                    background_color: 0.9, 0.8, 0, 1
+                    size_hint_y: None
+                    height: 40
+                    on_press: app.stop(self)
+
+                Button:
+                    id: start_btn
+                    text: 'Start'
+                    background_color: 0, 0.5, 1, 1
+                    size_hint_y: None
+                    height: 40
+                    on_press: app.start(self)
+
+            Widget:
+                size_hint_y: None
+                height: 10
+                canvas:
+                    Color:
+                        rgba: 0.5, 0.5, 0.5, 1
+                    Line:
+                        points: [self.x, self.center_y, self.right, self.center_y]
+                        width: 1
+
+            ScrollView:
+                size_hint_y: 1
+                do_scroll_x: False
+                
+                GridLayout:
+                    cols: 2
+                    size_hint_y: None
+                    height: self.minimum_height
+                    spacing: 4
+                    padding: 4
+
+                    Button:
+                        text: 'Save Panel'
+                        size_hint_y: None
+                        height: 40
+                        background_color: 0.6, 0.2, 0.6, 1
+                        on_press: app.open_save_panel_dialog()
+
+                    Button:
+                        text: 'Load Panel'
+                        size_hint_y: None
+                        height: 40
+                        background_color: 0.2, 0.6, 0.2, 1
+                        on_press: app.open_panel_file_chooser()
+
+                    Label:
+                        text: "Board Columns:"
+                        size_hint_y: None
+                        height: 30
+                        halign: 'right'
+                        valign: 'center'
+                        text_size: self.size
+
+                    Spinner:
+                        id: board_cols_spinner
+                        text: "2"
+                        values: ["1", "2", "3", "4", "5", "6"]
+                        size_hint_y: None
+                        height: 30
+                        on_text: app.on_board_cols_change(self.text)
+
+                    Label:
+                        text: "Board Rows:"
+                        size_hint_y: None
+                        height: 30
+                        halign: 'right'
+                        valign: 'center'
+                        text_size: self.size
+
+                    Spinner:
+                        id: board_rows_spinner
+                        text: "5"
+                        values: ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]
+                        size_hint_y: None
+                        height: 30
+                        on_text: app.on_board_rows_change(self.text)
+
+                    Label:
+                        text: "Column Width:"
+                        size_hint_y: None
+                        height: 30
+                        halign: 'right'
+                        valign: 'center'
+                        text_size: self.size
+
+                    TextInput:
+                        id: col_width_input
+                        text: "48.0"
+                        size_hint_y: None
+                        height: 30
+                        multiline: False
+                        input_filter: 'float'
+                        on_focus: app.set_keyboard_layout('numpad') if self.focus else None
+                        on_text_validate: app.on_col_width_change(self.text)
+
+                    Label:
+                        text: "Row Height:"
+                        size_hint_y: None
+                        height: 30
+                        halign: 'right'
+                        valign: 'center'
+                        text_size: self.size
+
+                    TextInput:
+                        id: row_height_input
+                        text: "29.0"
+                        size_hint_y: None
+                        height: 30
+                        multiline: False
+                        input_filter: 'float'
+                        on_focus: app.set_keyboard_layout('numpad') if self.focus else None
+                        on_text_validate: app.on_row_height_change(self.text)
+
+                    Label:
+                        text: "Board X:"
+                        size_hint_y: None
+                        height: 30
+                        halign: 'right'
+                        valign: 'center'
+                        text_size: self.size
+
+                    TextInput:
+                        id: board_x_input
+                        text: "110.2"
+                        size_hint_y: None
+                        height: 30
+                        multiline: False
+                        input_filter: 'float'
+                        on_focus: app.set_keyboard_layout('numpad') if self.focus else None
+                        on_text_validate: app.on_board_x_change(self.text)
+
+                    Label:
+                        text: "Board Y:"
+                        size_hint_y: None
+                        height: 30
+                        halign: 'right'
+                        valign: 'center'
+                        text_size: self.size
+
+                    TextInput:
+                        id: board_y_input
+                        text: "121.0"
+                        size_hint_y: None
+                        height: 30
+                        multiline: False
+                        input_filter: 'float'
+                        on_focus: app.set_keyboard_layout('numpad') if self.focus else None
+                        on_text_validate: app.on_board_y_change(self.text)
+
+                    Label:
+                        text: "Probe to Board:"
+                        size_hint_y: None
+                        height: 30
+                        halign: 'right'
+                        valign: 'center'
+                        text_size: self.size
+
+                    TextInput:
+                        id: probe_plane_input
+                        text: "4.0"
+                        size_hint_y: None
+                        height: 30
+                        multiline: False
+                        input_filter: 'float'
+                        on_focus: app.set_keyboard_layout('numpad') if self.focus else None
+                        on_text_validate: app.on_probe_plane_change(self.text)
+
+                    Label:
+                        text: "Operation:"
+                        size_hint_y: None
+                        height: 30
+                        halign: 'right'
+                        valign: 'center'
+                        text_size: self.size
+
+                    Spinner:
+                        id: operation_spinner
+                        text: "Program"
+                        values: ["Identify Only", "Program", "Program & Test", "Test Only"]
+                        size_hint_y: None
+                        height: 30
+                        on_text: app.on_operation_change(self.text)
+
+            Button:
+                id: log_btn
+                text: 'View Log'
+                size_hint_y: None
+                height: 40
+                on_press: app.toggle_log_popup()
+
+    BoxLayout:
+        orientation: 'horizontal'
+        size_hint_y: None
+        height: 40
+        padding: 4
+        spacing: 4
+
+        canvas.before:
+            Color:
+                rgba: 0, 0.2, .8, 1
+            Rectangle:
+                pos: self.pos
+                size: self.size
+
+        Label:
+            id: phase_label
+            text: "Idle"
+            size_hint_x: 0.85
+            size_hint_y: None
+            height: 40
+            font_size: '30sp'
+            bold: True
+            halign: 'left'
+            valign: 'center'
+            text_size: self.size
+            color: 1, 1, 1, 1
+
+        Label:
+            id: panel_file_label
+            text: "default.panel"
+            size_hint_x: 0.15
+            size_hint_y: None
+            height: 40
+            font_size: '12sp'
+            halign: 'right'
+            valign: 'center'
+            text_size: self.size
+            color: 1, 1, 1, 1
