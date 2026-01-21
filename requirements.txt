@@ -9,3 +9,6 @@ pynnex
 
 # Async serial communication
 pyserial-asyncio
+
+# Serial port enumeration (included with pyserial)
+pyserial

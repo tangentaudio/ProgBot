@@ -573,7 +573,12 @@ class AsyncApp(App):
 
     def _config_from_settings(self):
         """Build a ProgBot config from the loaded settings."""
+        # Load panel-specific settings
         settings_data = getattr(self, 'settings_data', None) or (self.panel_settings.get_all() if self.panel_settings else {})
+        
+        # Load hardware settings (port IDs) from main settings file
+        hardware_settings = get_settings().get_all()
+        
         defaults = sequence.Config()
 
         def _get(key, cast, fallback):
@@ -602,11 +607,11 @@ class AsyncApp(App):
             probe_plane_to_board=_get('probe_plane', float, defaults.probe_plane_to_board),
             operation_mode=mode_mapping.get(mode_text, defaults.operation_mode),
             skip_board_pos=skip_positions,
-            motion_port=defaults.motion_port,
+            motion_port_id=hardware_settings.get('motion_port_id', ''),
             motion_baud=defaults.motion_baud,
-            head_port=defaults.head_port,
+            head_port_id=hardware_settings.get('head_port_id', ''),
             head_baud=defaults.head_baud,
-            target_port=defaults.target_port,
+            target_port_id=hardware_settings.get('target_port_id', ''),
             target_baud=defaults.target_baud,
         )
     
@@ -1055,12 +1060,14 @@ class AsyncApp(App):
     def app_func(self):
         async def run_wrapper():
             config = self._config_from_settings()
-            self.bot = sequence.ProgBot(config=config)
+            self.bot = sequence.ProgBot(config=config, panel_settings=self.panel_settings)
+            
             self.bot.phase_changed.connect(self.on_phase_change)
             self.bot.panel_changed.connect(self.on_panel_change)
             self.bot.cell_color_changed.connect(self.on_cell_color_change)
             self.bot.board_status_changed.connect(self.on_board_status_change)
             self.bot.error_occurred.connect(self.on_error_occurred)
+            
             # Now emit panel dimensions after listeners are connected
             self.bot.init_panel()
             await self.async_run(async_lib='asyncio')

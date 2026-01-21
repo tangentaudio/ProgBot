@@ -56,6 +56,7 @@ class PanelSettings:
     
     def set(self, key, value):
         """Set a setting value and save to file."""
+        print(f"[PanelSettings.set] Setting {key} = {value}")
         self.data[key] = value
         self._save_settings()
     
@@ -67,6 +68,8 @@ class PanelSettings:
     def _save_settings(self):
         """Save settings to file."""
         try:
+            print(f"[PanelSettings] Saving to {self.panel_file}")
+            print(f"[PanelSettings] Data: {self.data}")
             with open(self.panel_file, 'w') as f:
                 json.dump(self.data, f, indent=2)
             print(f"[PanelSettings] Saved panel to {self.panel_file}")

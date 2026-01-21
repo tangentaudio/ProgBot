@@ -39,7 +39,10 @@ class Settings:
             'board_y': '121.0',
             'probe_plane': '4.0',
             'operation_mode': 'Program',
-            'skip_board_pos': []
+            'skip_board_pos': [],
+            'motion_port_id': '',
+            'head_port_id': '',
+            'target_port_id': ''
         }
     
     def get(self, key, default=None):

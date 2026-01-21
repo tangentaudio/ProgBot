@@ -85,10 +85,24 @@ pip install -r requirements.txt
 - **Kivy** - Cross-platform GUI framework
 - **pynnex** - Event emitter/listener system
 - **pyserial-asyncio** - Async serial port communication
+- **pyserial** - Serial port enumeration and management
 
 ### External Tools
 
 - **nrfutil** - Nordic Semiconductor's command-line tool for programming nRF devices (must be installed separately)
+
+### Serial Port Configuration
+
+ProgBot uses unique identifiers (USB VID:PID:Location or serial numbers) to identify hardware devices, not device names like `/dev/ttyACM0`. This ensures correct device mapping even when ports enumerate in different orders.
+
+**First Run:** When no port configuration exists, ProgBot will:
+1. List all available serial ports with their details
+2. Prompt you to select the correct port for each device (Motion Controller, Head Controller, Target Device)
+3. Save the unique identifier for each selected port
+
+**Subsequent Runs:** ProgBot will automatically find the correct devices by their saved unique identifiers, even if the `/dev/ttyXXX` names change.
+
+**Manual Port Selection:** If a configured device isn't found (e.g., unplugged), you'll be prompted to select it again from the available ports.
 
 ## Usage
 

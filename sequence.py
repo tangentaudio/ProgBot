@@ -11,6 +11,7 @@ from programmer_controller import ProgrammerController
 from head_controller import HeadController
 from target_controller import TargetController
 from motion_controller import MotionController
+from device_discovery import DevicePortManager
 
 BOARD_X=110.2
 BOARD_Y=121.0
@@ -60,11 +61,11 @@ class Config:
     probe_plane_to_board: float = PROBE_PLANE_TO_BOARD
     operation_mode: OperationMode = OperationMode.PROGRAM
     skip_board_pos: List[List[int]] = field(default_factory=list)
-    motion_port: str = '/dev/ttyACM0'
+    motion_port_id: str = ''  # Unique ID for motion controller port
     motion_baud: int = 115200
-    head_port: str = '/dev/ttyUSB0'
+    head_port_id: str = ''  # Unique ID for head controller port
     head_baud: int = 9600
-    target_port: str = '/dev/ttyACM1'
+    target_port_id: str = ''  # Unique ID for target controller port
     target_baud: int = 115200
 
 
@@ -126,15 +127,26 @@ class ProgBot:
         pass
        
 
-    def __init__(self, config: Optional[Config] = None, programmer=None, head=None, target=None, motion=None):
+    def __init__(self, config: Optional[Config] = None, programmer=None, head=None, target=None, motion=None, panel_settings=None):
         print("new progbot")
         self.config = config or Config()
         self.board_statuses = {}
+        self.panel_settings = panel_settings  # Store reference for later use
         self.programmer = programmer or ProgrammerController(self.update_phase)
-        self.head = head or HeadController(self.update_phase, self.config.head_port, self.config.head_baud)
-        self.target = target or TargetController(self.update_phase, self.config.target_port, self.config.target_baud)
-        self.motion = motion or MotionController(self.update_phase, self.config.motion_port, self.config.motion_baud)
+        
+        # Resolve port IDs to actual device paths
+        motion_port = self._resolve_port(self.config.motion_port_id, 'Motion Controller', '/dev/ttyACM0')
+        head_port = self._resolve_port(self.config.head_port_id, 'Head Controller', '/dev/ttyUSB0')
+        target_port = self._resolve_port(self.config.target_port_id, 'Target Device', '/dev/ttyACM1')
+        
+        self.head = head or HeadController(self.update_phase, head_port, self.config.head_baud)
+        self.target = target or TargetController(self.update_phase, target_port, self.config.target_baud)
+        self.motion = motion or MotionController(self.update_phase, motion_port, self.config.motion_baud)
         self.current_board: Optional[Tuple[int, int]] = None
+    
+    async def discover_devices(self):
+        """Stub for device discovery - ports are already configured."""
+        pass
     
     def get_board_status(self, col, row):
         """Get or create board status for a position.
@@ -163,6 +175,77 @@ class ProgBot:
     def init_panel(self):
         """Call this after listeners are connected to emit panel dimensions."""
         self.panel_changed.emit(self.config.board_num_cols, self.config.board_num_rows)
+    
+    def _resolve_port(self, port_id, device_type, default_device):
+        """Resolve a port unique ID to an actual device path.
+        
+        Args:
+            port_id: Unique port identifier (or empty string)
+            device_type: Human-readable device type for prompts
+            default_device: Default device path (unused, kept for compatibility)
+            
+        Returns:
+            Device path string (e.g. /dev/ttyACM0)
+        """
+        # If no port ID configured, prompt user to select
+        if not port_id:
+            print(f"[ProgBot] No port ID configured for {device_type}")
+            return self._prompt_for_port(device_type, None)
+        
+        # Try to find the port by its unique ID
+        device_path = DevicePortManager.find_port_by_unique_id(port_id)
+        if device_path:
+            print(f"[ProgBot] Found {device_type} at {device_path} (ID: {port_id})")
+            return device_path
+        else:
+            print(f"[ProgBot] Configured port ID '{port_id}' not found for {device_type}")
+            return self._prompt_for_port(device_type, None)
+    
+    def _prompt_for_port(self, device_type, default_device):
+        """Prompt user to select a port.
+        
+        Args:
+            device_type: Human-readable device type
+            default_device: Unused (no longer using defaults)
+            
+        Returns:
+            Device path string
+        """
+        print(f"\n{'='*60}")
+        print(f"Port selection required for: {device_type}")
+        print(f"{'='*60}")
+        
+        DevicePortManager.print_available_ports()
+        selected_port = DevicePortManager.prompt_user_for_port(device_type)
+        
+        if selected_port:
+            # Save the unique ID for future use
+            self._save_port_id(device_type, selected_port.unique_id)
+            return selected_port.device
+        else:
+            raise RuntimeError(f"No port selected for {device_type}. Cannot continue.")
+    
+    def _save_port_id(self, device_type, unique_id):
+        """Save a port unique ID to the settings file.
+        
+        Args:
+            device_type: Device type string
+            unique_id: Unique port identifier
+        """
+        from settings import get_settings
+        settings = get_settings()
+        
+        if device_type == 'Motion Controller':
+            self.config.motion_port_id = unique_id
+            settings.set('motion_port_id', unique_id)
+        elif device_type == 'Head Controller':
+            self.config.head_port_id = unique_id
+            settings.set('head_port_id', unique_id)
+        elif device_type == 'Target Device':
+            self.config.target_port_id = unique_id
+            settings.set('target_port_id', unique_id)
+        
+        print(f"[ProgBot] Saved port ID for {device_type}: {unique_id}")
 
     def _emit_status(self, cell_id, board_status):
         self.board_status_changed.emit(cell_id, board_status)
@@ -296,6 +379,9 @@ class ProgBot:
                 await self._run_board(col, row)
 
     async def full_cycle(self):
+        # Discover devices first if enabled
+        await self.discover_devices()
+        
         self.update_phase("Opening Devices")
         await self.motion.connect()
         await self.head.connect()
