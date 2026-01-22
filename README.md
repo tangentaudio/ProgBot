@@ -1,0 +1,3 @@
+# ProgBot
+
+ProgBot is a very rough attempt at a DIY ATE (Automated Test Equipment) system built out of items commonly available to engineers and hackers, such as discarded 3D printer mechanicals, Raspberry Pi, and Arduino.  The goal was to build a device capable of performing ISP (In-System Programming), commissioning, and testing of a number of individual circuit boards in a printed circuit panel.  These operations are performed via a set of "pogo" or spring-loaded contacts that are driven into place by the motion system.  The contacts mate with a pad pattern on the PCBs under test to establish power and communications.
