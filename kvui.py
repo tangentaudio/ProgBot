@@ -1093,6 +1093,8 @@ class AsyncApp(App):
                 self.panel_file_label.text = panel_name
             # Re-apply settings to widgets
             Clock.schedule_once(lambda dt: self._apply_settings_to_widgets_now())
+            # Rebuild bot config with new settings
+            Clock.schedule_once(lambda dt: self._reload_bot_config())
             print(f"[PanelChooser] Loaded panel: {path}")
         except Exception as e:
             print(f"[PanelChooser] Error loading panel: {e}")
@@ -1125,10 +1127,33 @@ class AsyncApp(App):
 
     def _apply_settings_to_widgets_now(self):
         """Re-apply current settings to all widgets."""
-        if not hasattr(self, 'phase_label'):
+        if not hasattr(self, 'root') or not self.root:
             return
-        root = self.phase_label.parent.parent.parent
-        self._apply_settings_to_widgets(root, self.settings_data)
+        self._apply_settings_to_widgets(self.root, self.settings_data)
+
+    def _reload_bot_config(self):
+        """Rebuild bot configuration and grid after loading a new panel."""
+        if not self.bot:
+            return
+        
+        try:
+            # Rebuild config from settings
+            new_config = self._config_from_settings()
+            
+            # Update bot config
+            self.bot.config = new_config
+            
+            # Rebuild the grid with new dimensions
+            rows = new_config.board_num_rows
+            cols = new_config.board_num_cols
+            self.populate_grid(rows, cols)
+            
+            # Reinitialize panel in bot
+            self.bot.init_panel()
+            
+            print(f"[AsyncApp] Reloaded bot config: {rows}x{cols} grid")
+        except Exception as e:
+            print(f"[AsyncApp] Error reloading bot config: {e}")
 
     def open_save_panel_dialog(self):
         """Open dialog to save current panel with a new name."""
