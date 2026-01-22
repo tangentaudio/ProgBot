@@ -31,6 +31,7 @@ from kivy.logger import Logger
 from kivy.effects.scroll import ScrollEffect
 from kivy.clock import Clock
 from kivy.properties import StringProperty, BooleanProperty, ListProperty
+from serial_port_selector import SerialPortSelector
 import os
 
 import sequence
@@ -222,6 +223,12 @@ class AsyncApp(App):
     config_widgets = []  # List of config widgets for enable/disable
     bot = None  # Bot instance
     panel_settings = None
+    
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        # Load KV file early so Factory classes are available
+        kv_file = os.path.join(os.path.dirname(__file__), 'progbot.kv')
+        Builder.load_file(kv_file)
     
     def toggle_log_popup(self):
         """Toggle the log viewer popup."""
@@ -501,6 +508,102 @@ class AsyncApp(App):
         if hasattr(self, 'settings_data'):
             self.settings_data['operation_mode'] = value
         print(f"Updated operation_mode: {selected}")
+
+    def on_network_firmware_change(self, value):
+        """Handle network core firmware path change."""
+        if self.bot:
+            self.bot.config.network_core_firmware = value
+            # Update the programmer controller with new path
+            if self.bot.programmer:
+                self.bot.programmer.network_core_firmware = value
+        if self.panel_settings:
+            self.panel_settings.set('network_core_firmware', value)
+        print(f"Updated network_core_firmware: {value}")
+
+    def on_main_firmware_change(self, value):
+        """Handle main core firmware path change."""
+        if self.bot:
+            self.bot.config.main_core_firmware = value
+            # Update the programmer controller with new path
+            if self.bot.programmer:
+                self.bot.programmer.main_core_firmware = value
+        if self.panel_settings:
+            self.panel_settings.set('main_core_firmware', value)
+        print(f"Updated main_core_firmware: {value}")
+
+    def open_network_firmware_chooser(self):
+        """Open file chooser to select network core firmware."""
+        from kivy.uix.filechooser import FileChooserListView
+        from kivy.uix.popup import Popup
+        from kivy.uix.boxlayout import BoxLayout
+        from kivy.uix.button import Button
+        
+        layout = BoxLayout(orientation='vertical')
+        chooser = FileChooserListView(
+            path=os.path.expanduser('~'),
+            filters=['*.hex']
+        )
+        layout.add_widget(chooser)
+        
+        button_layout = BoxLayout(size_hint_y=0.1, spacing=5)
+        select_btn = Button(text='Select')
+        cancel_btn = Button(text='Cancel')
+        button_layout.add_widget(select_btn)
+        button_layout.add_widget(cancel_btn)
+        layout.add_widget(button_layout)
+        
+        popup = Popup(title='Select Network Core Firmware', content=layout, size_hint=(0.8, 0.8))
+        
+        def on_select(instance):
+            if chooser.selection:
+                path = chooser.selection[0]
+                self.root.ids.network_firmware_input.text = path
+                self.on_network_firmware_change(path)
+                popup.dismiss()
+        
+        def on_cancel(instance):
+            popup.dismiss()
+        
+        select_btn.bind(on_press=on_select)
+        cancel_btn.bind(on_press=on_cancel)
+        popup.open()
+
+    def open_main_firmware_chooser(self):
+        """Open file chooser to select main core firmware."""
+        from kivy.uix.filechooser import FileChooserListView
+        from kivy.uix.popup import Popup
+        from kivy.uix.boxlayout import BoxLayout
+        from kivy.uix.button import Button
+        
+        layout = BoxLayout(orientation='vertical')
+        chooser = FileChooserListView(
+            path=os.path.expanduser('~'),
+            filters=['*.hex']
+        )
+        layout.add_widget(chooser)
+        
+        button_layout = BoxLayout(size_hint_y=0.1, spacing=5)
+        select_btn = Button(text='Select')
+        cancel_btn = Button(text='Cancel')
+        button_layout.add_widget(select_btn)
+        button_layout.add_widget(cancel_btn)
+        layout.add_widget(button_layout)
+        
+        popup = Popup(title='Select Main Core Firmware', content=layout, size_hint=(0.8, 0.8))
+        
+        def on_select(instance):
+            if chooser.selection:
+                path = chooser.selection[0]
+                self.root.ids.main_firmware_input.text = path
+                self.on_main_firmware_change(path)
+                popup.dismiss()
+        
+        def on_cancel(instance):
+            popup.dismiss()
+        
+        select_btn.bind(on_press=on_select)
+        cancel_btn.bind(on_press=on_cancel)
+        popup.open()
     
     def build(self):
         # Load panel settings first
@@ -521,10 +624,6 @@ class AsyncApp(App):
             print(f"[AsyncApp.build] Loaded settings from file")
         except Exception as e:
             print(f"[AsyncApp.build] Error loading settings: {e}")
-        
-        # Load the KV file which defines the AppRoot template
-        kv_file = os.path.join(os.path.dirname(__file__), 'progbot.kv')
-        Builder.load_file(kv_file)
         
         # Create file chooser popup for panel files
         self.file_chooser_popup = Factory.PanelFileChooser()
@@ -556,12 +655,21 @@ class AsyncApp(App):
             root.ids.get('board_x_input'),
             root.ids.get('board_y_input'),
             root.ids.get('probe_plane_input'),
-            root.ids.get('operation_spinner')
+            root.ids.get('operation_spinner'),
+            root.ids.get('network_firmware_input'),
+            root.ids.get('main_firmware_input'),
+            root.ids.get('config_tab_content')  # Add Config tab to disabled widgets
         ]
+        
+        # Disable all controls initially until ports are configured
+        self._set_controls_enabled(False)
         
         # Create and store the log popup
         self.log_popup = Factory.LogPopup()
         self.error_popup = Factory.ErrorPopup()
+        
+        # Create serial port chooser
+        self.serial_port_selector = SerialPortSelector()
         
         # Redirect stdout/stderr to the popup's LogViewer so all messages are captured
         Clock.schedule_once(lambda dt: self._setup_initial_redirection(), 0.2)
@@ -613,6 +721,8 @@ class AsyncApp(App):
             head_baud=defaults.head_baud,
             target_port_id=hardware_settings.get('target_port_id', ''),
             target_baud=defaults.target_baud,
+            network_core_firmware=settings_data.get('network_core_firmware', defaults.network_core_firmware),
+            main_core_firmware=settings_data.get('main_core_firmware', defaults.main_core_firmware),
         )
     
     def _apply_settings_to_widgets(self, root, settings_data):
@@ -652,6 +762,14 @@ class AsyncApp(App):
             if operation_spinner:
                 operation_spinner.text = settings_data.get('operation_mode', 'Program')
             
+            network_firmware_input = root.ids.get('network_firmware_input')
+            if network_firmware_input:
+                network_firmware_input.text = settings_data.get('network_core_firmware', '/home/steve/fw/merged_CPUNET.hex')
+            
+            main_firmware_input = root.ids.get('main_firmware_input')
+            if main_firmware_input:
+                main_firmware_input.text = settings_data.get('main_core_firmware', '/home/steve/fw/merged.hex')
+            
             print(f"[AsyncApp] Applied settings to widgets")
         except Exception as e:
             print(f"[AsyncApp] Error applying settings to widgets: {e}")
@@ -680,6 +798,23 @@ class AsyncApp(App):
                     widget.disabled = not enabled
                 except Exception as e:
                     print(f"[Config] Error setting widget disabled state: {e}")
+    
+    def _set_controls_enabled(self, enabled):
+        """Enable or disable all controls (config widgets, grid cells, and buttons).
+        
+        Args:
+            enabled: True to enable, False to disable
+        """
+        self._set_config_widgets_enabled(enabled)
+        self._set_grid_cells_enabled(enabled)
+        
+        # Also disable start/stop buttons if disabling
+        if not enabled:
+            self._set_widget('start_button', disabled=True)
+            self._set_widget('stop_button', disabled=True)
+        else:
+            self._set_widget('start_button', disabled=False)
+            self._set_widget('stop_button', disabled=True)
 
     def _set_grid_cells_enabled(self, enabled: bool):
         """Enable or disable all grid cells."""
@@ -962,6 +1097,32 @@ class AsyncApp(App):
         except Exception as e:
             print(f"[PanelChooser] Error loading panel: {e}")
 
+    def show_serial_port_chooser(self, device_type, available_ports, callback):
+        """Show the serial port chooser dialog.
+        
+        Delegates to SerialPortSelector for GUI implementation.
+        
+        Args:
+            device_type: Human-readable device type string
+            available_ports: List of SerialPortInfo objects
+            callback: Function to call with selected port (SerialPortInfo or None)
+        """
+        self.serial_port_selector.show_dialog(device_type, available_ports, callback)
+    
+    def on_serial_port_row_pressed(self, port_index):
+        """Called when a serial port row is pressed.
+        
+        Delegates to SerialPortSelector.
+        """
+        self.serial_port_selector.on_row_pressed(port_index)
+    
+    def on_serial_port_selected(self):
+        """Called when Select button is pressed in serial port chooser.
+        
+        Delegates to SerialPortSelector.
+        """
+        self.serial_port_selector.on_select_pressed()
+
     def _apply_settings_to_widgets_now(self):
         """Re-apply current settings to all widgets."""
         if not hasattr(self, 'phase_label'):
@@ -1056,11 +1217,97 @@ class AsyncApp(App):
         except Exception as e:
             print(f"[SavePanel] Error saving panel: {e}")
 
+    def update_port_labels(self):
+        """Update the Config tab port labels with current device information."""
+        try:
+            root = self.root
+            if not root:
+                return
+            
+            motion_label = root.ids.get('motion_port_label')
+            head_label = root.ids.get('head_port_label')
+            target_label = root.ids.get('target_port_label')
+            
+            if self.bot:
+                if hasattr(self.bot, 'motion') and self.bot.motion and hasattr(self.bot.motion, 'port'):
+                    if motion_label:
+                        motion_label.text = self.bot.motion.port or "Not configured"
+                if hasattr(self.bot, 'head') and self.bot.head and hasattr(self.bot.head, 'port'):
+                    if head_label:
+                        head_label.text = self.bot.head.port or "Not configured"
+                if hasattr(self.bot, 'target') and self.bot.target and hasattr(self.bot.target, 'port'):
+                    if target_label:
+                        target_label.text = self.bot.target.port or "Not configured"
+        except Exception as e:
+            print(f"[Config] Error updating port labels: {e}")
+
+    async def _reconfigure_port_async(self, device_type):
+        """Async helper to reconfigure a specific port."""
+        try:
+            if not self.bot:
+                print(f"[Config] Cannot reconfigure {device_type}: bot not initialized")
+                return
+            
+            # Clear the selected port ID so it will prompt for selection
+            from settings import get_settings
+            settings = get_settings()
+            
+            port = None
+            if device_type == "Motion Controller":
+                settings.set('motion_port_id', '')
+                port = await self.bot._resolve_port_async('', "Motion Controller", None, is_reconfigure=True)
+                # Reinitialize motion controller with new port
+                from motion_controller import MotionController
+                self.bot.motion = MotionController(self.bot.update_phase, port, self.bot.config.motion_baud)
+                # Connect and initialize the new controller
+                await self.bot.motion.connect()
+                await self.bot.motion.init()
+            elif device_type == "Head Controller":
+                settings.set('head_port_id', '')
+                port = await self.bot._resolve_port_async('', "Head Controller", None, is_reconfigure=True)
+                # Reinitialize head controller with new port
+                from head_controller import HeadController
+                self.bot.head = HeadController(self.bot.update_phase, port, self.bot.config.head_baud)
+                # Connect the new controller
+                await self.bot.head.connect()
+            elif device_type == "Target Device":
+                settings.set('target_port_id', '')
+                port = await self.bot._resolve_port_async('', "Target Device", None, is_reconfigure=True)
+                # Reinitialize target controller with new port
+                from target_controller import TargetController
+                self.bot.target = TargetController(self.bot.update_phase, port, self.bot.config.target_baud)
+                # Connect and initialize the new controller
+                await self.bot.target.connect()
+            
+            # Update the labels after reconfiguration
+            self.update_port_labels()
+            print(f"[Config] Successfully reconfigured {device_type} to {port}")
+        except Exception as e:
+            print(f"[Config] Error reconfiguring {device_type}: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def reconfigure_motion_port(self):
+        """Reconfigure the Motion Controller port."""
+        asyncio.create_task(self._reconfigure_port_async("Motion Controller"))
+
+    def reconfigure_head_port(self):
+        """Reconfigure the Head Controller port."""
+        asyncio.create_task(self._reconfigure_port_async("Head Controller"))
+
+    def reconfigure_target_port(self):
+        """Reconfigure the Target Device port."""
+        asyncio.create_task(self._reconfigure_port_async("Target Device"))
+
 
     def app_func(self):
         async def run_wrapper():
             config = self._config_from_settings()
-            self.bot = sequence.ProgBot(config=config, panel_settings=self.panel_settings)
+            self.bot = sequence.ProgBot(
+                config=config, 
+                panel_settings=self.panel_settings,
+                gui_port_picker=self.show_serial_port_chooser
+            )
             
             self.bot.phase_changed.connect(self.on_phase_change)
             self.bot.panel_changed.connect(self.on_panel_change)
@@ -1070,6 +1317,20 @@ class AsyncApp(App):
             
             # Now emit panel dimensions after listeners are connected
             self.bot.init_panel()
+            
+            # Schedule port configuration after window is visible
+            async def configure_ports_delayed():
+                await asyncio.sleep(1.0)  # Wait for window to fully render
+                print("[AsyncApp] Starting port configuration...")
+                await self.bot.configure_ports()
+                print("[AsyncApp] Port configuration complete")
+                # Update port labels in Config tab
+                self.update_port_labels()
+                # Enable controls now that ports are configured
+                self._set_controls_enabled(True)
+            
+            asyncio.create_task(configure_ports_delayed())
+            
             await self.async_run(async_lib='asyncio')
             print('App done')
             if self.bot_task:

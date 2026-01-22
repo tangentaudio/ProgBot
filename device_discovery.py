@@ -123,14 +123,18 @@ class DevicePortManager:
             print(f"     Unique ID: {port.unique_id}")
     
     @staticmethod
-    def prompt_user_for_port(device_type):
+    def prompt_user_for_port(device_type, gui_callback=None):
         """Prompt user to select a port from available ports.
         
         Args:
             device_type: String description (e.g. "Motion Controller")
+            gui_callback: Optional function to show GUI picker. If provided, should be
+                         called as gui_callback(device_type, ports, result_callback)
+                         where result_callback will be called with the selected port.
             
         Returns:
             Selected SerialPortInfo object, or None if cancelled
+            Note: When using GUI mode, returns immediately and selection happens via callback
         """
         ports = DevicePortManager.list_ports()
         
@@ -138,6 +142,12 @@ class DevicePortManager:
             print(f"[DevicePortManager] No serial ports available for {device_type}")
             return None
         
+        # If GUI callback provided, use GUI mode
+        if gui_callback:
+            print(f"[DevicePortManager] Opening GUI port selector for {device_type}")
+            return gui_callback(device_type, ports)
+        
+        # Otherwise use console mode
         print(f"\n=== Select Serial Port for {device_type} ===")
         for i, port in enumerate(ports, 1):
             print(f"  {i}. {port.display_name}")

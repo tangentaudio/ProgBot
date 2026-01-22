@@ -5,13 +5,17 @@ import asyncio
 class ProgrammerController:
     """Handles device programming and identification via nrfutil."""
     
-    def __init__(self, update_phase_callback):
+    def __init__(self, update_phase_callback, network_core_firmware='/home/steve/fw/merged_CPUNET.hex', main_core_firmware='/home/steve/fw/merged.hex'):
         """Initialize programmer controller.
         
         Args:
             update_phase_callback: Function to call to update phase display
+            network_core_firmware: Path to network core firmware hex file
+            main_core_firmware: Path to main core firmware hex file
         """
         self.update_phase = update_phase_callback
+        self.network_core_firmware = network_core_firmware
+        self.main_core_firmware = main_core_firmware
 
     async def run_cmd_async(self, *args):
         """Run subprocess asynchronously and return returncode."""
@@ -69,12 +73,12 @@ class ProgrammerController:
             return False
         
         self.update_phase("Flash network core image")
-        res = await self.run_cmd_async("nrfutil", "device", "program", "--firmware", "/home/steve/fw/merged_CPUNET.hex", "--core", "Network")
+        res = await self.run_cmd_async("nrfutil", "device", "program", "--firmware", self.network_core_firmware, "--core", "Network")
         if res != 0:
             return False
         
         self.update_phase("Flash main image")
-        res = await self.run_cmd_async("nrfutil", "device", "program", "--firmware", "/home/steve/fw/merged.hex")
+        res = await self.run_cmd_async("nrfutil", "device", "program", "--firmware", self.main_core_firmware)
         if res != 0:
             return False
         

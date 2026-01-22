@@ -80,6 +80,8 @@
         allow_copy: False
         allow_paste: False
         selection_color: 0, 0, 0, 0
+        disabled_foreground_color: 1, 1, 1, 1
+        disabled: True
 
 <LogPopup@Popup>:
     id: log_popup
@@ -134,6 +136,8 @@
                 allow_copy: True
                 allow_paste: False
                 selection_color: 0.2, 0.4, 1, 0.3
+                disabled_foreground_color: 1, 1, 1, 1
+                disabled: True
 
         BoxLayout:
             size_hint_y: None
@@ -294,208 +298,435 @@
                     pos: self.pos
                     size: self.size
 
-            BoxLayout:
-                orientation: 'horizontal'
-                size_hint_y: None
-                height: 40
-                spacing: 4
-
-                Button:
-                    id: stop_btn
-                    text: 'Stop'
-                    disabled: True
-                    background_color: 0.9, 0.8, 0, 1
-                    size_hint_y: None
-                    height: 40
-                    on_press: app.stop(self)
-
-                Button:
-                    id: start_btn
-                    text: 'Start'
-                    background_color: 0, 0.5, 1, 1
-                    size_hint_y: None
-                    height: 40
-                    on_press: app.start(self)
-
-            Widget:
-                size_hint_y: None
-                height: 10
-                canvas:
-                    Color:
-                        rgba: 0.5, 0.5, 0.5, 1
-                    Line:
-                        points: [self.x, self.center_y, self.right, self.center_y]
-                        width: 1
-
-            ScrollView:
+            TabbedPanel:
+                id: right_tabs
                 size_hint_y: 1
-                do_scroll_x: False
+                do_default_tab: False
+                tab_pos: 'top_left'
+                tab_height: 50
+                tab_width: 80
+                background_color: 0, 0, 0, 0
                 
-                GridLayout:
-                    cols: 2
-                    size_hint_y: None
-                    height: self.minimum_height
-                    spacing: 4
-                    padding: 4
+                canvas.before:
+                    Color:
+                        rgba: 0.2, 0.2, 0.2, 1
+                    Rectangle:
+                        pos: self.x, self.y
+                        size: self.width, self.height
+                
+                TabbedPanelItem:
+                    text: 'Run'
+                    background_normal: ''
+                    background_down: ''
+                    background_color: (0.15, 0.15, 0.25, 1) if self.state == 'down' else (0, 0, 0, 0)
+                    color: (1, 1, 1, 1) if self.state == 'down' else (0.7, 0.7, 0.7, 1)
+                    
+                    BoxLayout:
+                        orientation: 'vertical'
+                        spacing: 4
+                        padding: 4
+                        
+                        BoxLayout:
+                            orientation: 'horizontal'
+                            size_hint_y: None
+                            height: 80
+                            spacing: 4
 
-                    Button:
-                        text: 'Save Panel'
-                        size_hint_y: None
-                        height: 40
-                        background_color: 0.6, 0.2, 0.6, 1
-                        on_press: app.open_save_panel_dialog()
+                            Button:
+                                id: stop_btn
+                                text: 'STOP'
+                                disabled: True
+                                background_color: 1, 0.4, 0, 1
+                                size_hint_y: None
+                                height: 80
+                                font_size: '24sp'
+                                on_press: app.stop(self)
 
-                    Button:
-                        text: 'Load Panel'
-                        size_hint_y: None
-                        height: 40
-                        background_color: 0.2, 0.6, 0.2, 1
-                        on_press: app.open_panel_file_chooser()
+                            Button:
+                                id: start_btn
+                                text: 'START'
+                                background_color: 0, 0.8, 0.2, 1
+                                size_hint_y: None
+                                height: 80
+                                font_size: '24sp'
+                                on_press: app.start(self)
+                        
+                        Widget:
+                            size_hint_y: 1
 
-                    Label:
-                        text: "Board Columns:"
-                        size_hint_y: None
-                        height: 30
-                        halign: 'right'
-                        valign: 'center'
-                        text_size: self.size
+                        Button:
+                            id: log_btn
+                            text: 'View Log'
+                            size_hint_y: None
+                            height: 40
+                            on_press: app.toggle_log_popup()
+                
+                TabbedPanelItem:
+                    text: 'Panel'
+                    background_normal: ''
+                    background_down: ''
+                    background_color: (0.15, 0.15, 0.25, 1) if self.state == 'down' else (0, 0, 0, 0)
+                    color: (1, 1, 1, 1) if self.state == 'down' else (0.7, 0.7, 0.7, 1)
+                    
+                    ScrollView:
+                        size_hint_y: 1
+                        do_scroll_x: False
+                        
+                        GridLayout:
+                            cols: 2
+                            size_hint_y: None
+                            height: self.minimum_height
+                            spacing: 4
+                            padding: 4
 
-                    Spinner:
-                        id: board_cols_spinner
-                        text: "2"
-                        values: ["1", "2", "3", "4", "5", "6"]
-                        size_hint_y: None
-                        height: 30
-                        on_text: app.on_board_cols_change(self.text)
+                            Label:
+                                text: "Board Columns:"
+                                size_hint_y: None
+                                height: 30
+                                halign: 'right'
+                                valign: 'center'
+                                text_size: self.size
 
-                    Label:
-                        text: "Board Rows:"
-                        size_hint_y: None
-                        height: 30
-                        halign: 'right'
-                        valign: 'center'
-                        text_size: self.size
+                            Spinner:
+                                id: board_cols_spinner
+                                text: "2"
+                                values: ["1", "2", "3", "4", "5", "6"]
+                                size_hint_y: None
+                                height: 30
+                                on_text: app.on_board_cols_change(self.text)
 
-                    Spinner:
-                        id: board_rows_spinner
-                        text: "5"
-                        values: ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]
-                        size_hint_y: None
-                        height: 30
-                        on_text: app.on_board_rows_change(self.text)
+                            Label:
+                                text: "Board Rows:"
+                                size_hint_y: None
+                                height: 30
+                                halign: 'right'
+                                valign: 'center'
+                                text_size: self.size
 
-                    Label:
-                        text: "Column Width:"
-                        size_hint_y: None
-                        height: 30
-                        halign: 'right'
-                        valign: 'center'
-                        text_size: self.size
+                            Spinner:
+                                id: board_rows_spinner
+                                text: "5"
+                                values: ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]
+                                size_hint_y: None
+                                height: 30
+                                on_text: app.on_board_rows_change(self.text)
 
-                    TextInput:
-                        id: col_width_input
-                        text: "48.0"
-                        size_hint_y: None
-                        height: 30
-                        multiline: False
-                        input_filter: 'float'
-                        on_focus: app.set_keyboard_layout('numpad') if self.focus else None
-                        on_text_validate: app.on_col_width_change(self.text)
+                            Label:
+                                text: "Column Width (mm):"
+                                size_hint_y: None
+                                height: 30
+                                halign: 'right'
+                                valign: 'center'
+                                text_size: self.size
 
-                    Label:
-                        text: "Row Height:"
-                        size_hint_y: None
-                        height: 30
-                        halign: 'right'
-                        valign: 'center'
-                        text_size: self.size
+                            TextInput:
+                                id: col_width_input
+                                text: "48.0"
+                                size_hint_y: None
+                                height: 30
+                                multiline: False
+                                input_filter: 'float'
+                                on_focus: app.set_keyboard_layout('numpad') if self.focus else None
+                                on_text_validate: app.on_col_width_change(self.text)
 
-                    TextInput:
-                        id: row_height_input
-                        text: "29.0"
-                        size_hint_y: None
-                        height: 30
-                        multiline: False
-                        input_filter: 'float'
-                        on_focus: app.set_keyboard_layout('numpad') if self.focus else None
-                        on_text_validate: app.on_row_height_change(self.text)
+                            Label:
+                                text: "Row Height (mm):"
+                                size_hint_y: None
+                                height: 30
+                                halign: 'right'
+                                valign: 'center'
+                                text_size: self.size
 
-                    Label:
-                        text: "Board X:"
-                        size_hint_y: None
-                        height: 30
-                        halign: 'right'
-                        valign: 'center'
-                        text_size: self.size
+                            TextInput:
+                                id: row_height_input
+                                text: "29.0"
+                                size_hint_y: None
+                                height: 30
+                                multiline: False
+                                input_filter: 'float'
+                                on_focus: app.set_keyboard_layout('numpad') if self.focus else None
+                                on_text_validate: app.on_row_height_change(self.text)
 
-                    TextInput:
-                        id: board_x_input
-                        text: "110.2"
-                        size_hint_y: None
-                        height: 30
-                        multiline: False
-                        input_filter: 'float'
-                        on_focus: app.set_keyboard_layout('numpad') if self.focus else None
-                        on_text_validate: app.on_board_x_change(self.text)
+                            Label:
+                                text: "Board X (mm):"
+                                size_hint_y: None
+                                height: 30
+                                halign: 'right'
+                                valign: 'center'
+                                text_size: self.size
 
-                    Label:
-                        text: "Board Y:"
-                        size_hint_y: None
-                        height: 30
-                        halign: 'right'
-                        valign: 'center'
-                        text_size: self.size
+                            TextInput:
+                                id: board_x_input
+                                text: "110.2"
+                                size_hint_y: None
+                                height: 30
+                                multiline: False
+                                input_filter: 'float'
+                                on_focus: app.set_keyboard_layout('numpad') if self.focus else None
+                                on_text_validate: app.on_board_x_change(self.text)
 
-                    TextInput:
-                        id: board_y_input
-                        text: "121.0"
-                        size_hint_y: None
-                        height: 30
-                        multiline: False
-                        input_filter: 'float'
-                        on_focus: app.set_keyboard_layout('numpad') if self.focus else None
-                        on_text_validate: app.on_board_y_change(self.text)
+                            Label:
+                                text: "Board Y (mm):"
+                                size_hint_y: None
+                                height: 30
+                                halign: 'right'
+                                valign: 'center'
+                                text_size: self.size
 
-                    Label:
-                        text: "Probe to Board:"
-                        size_hint_y: None
-                        height: 30
-                        halign: 'right'
-                        valign: 'center'
-                        text_size: self.size
+                            TextInput:
+                                id: board_y_input
+                                text: "121.0"
+                                size_hint_y: None
+                                height: 30
+                                multiline: False
+                                input_filter: 'float'
+                                on_focus: app.set_keyboard_layout('numpad') if self.focus else None
+                                on_text_validate: app.on_board_y_change(self.text)
 
-                    TextInput:
-                        id: probe_plane_input
-                        text: "4.0"
-                        size_hint_y: None
-                        height: 30
-                        multiline: False
-                        input_filter: 'float'
-                        on_focus: app.set_keyboard_layout('numpad') if self.focus else None
-                        on_text_validate: app.on_probe_plane_change(self.text)
+                            Label:
+                                text: "Probe to Board (mm):"
+                                size_hint_y: None
+                                height: 30
+                                halign: 'right'
+                                valign: 'center'
+                                text_size: self.size
 
-                    Label:
-                        text: "Operation:"
-                        size_hint_y: None
-                        height: 30
-                        halign: 'right'
-                        valign: 'center'
-                        text_size: self.size
+                            TextInput:
+                                id: probe_plane_input
+                                text: "4.0"
+                                size_hint_y: None
+                                height: 30
+                                multiline: False
+                                input_filter: 'float'
+                                on_focus: app.set_keyboard_layout('numpad') if self.focus else None
+                                on_text_validate: app.on_probe_plane_change(self.text)
 
-                    Spinner:
-                        id: operation_spinner
-                        text: "Program"
-                        values: ["Identify Only", "Program", "Program & Test", "Test Only"]
-                        size_hint_y: None
-                        height: 30
-                        on_text: app.on_operation_change(self.text)
+                            Label:
+                                text: "Operation:"
+                                size_hint_y: None
+                                height: 30
+                                halign: 'right'
+                                valign: 'center'
+                                text_size: self.size
 
-            Button:
-                id: log_btn
-                text: 'View Log'
-                size_hint_y: None
-                height: 40
-                on_press: app.toggle_log_popup()
+                            Spinner:
+                                id: operation_spinner
+                                text: "Program"
+                                values: ["Identify Only", "Program", "Program & Test", "Test Only"]
+                                size_hint_y: None
+                                height: 30
+                                on_text: app.on_operation_change(self.text)
+
+                            Label:
+                                text: "Network Core FW:"
+                                size_hint_y: None
+                                height: 30
+                                halign: 'right'
+                                valign: 'center'
+                                text_size: self.size
+
+                            BoxLayout:
+                                orientation: 'horizontal'
+                                size_hint_y: None
+                                height: 30
+                                spacing: 4
+
+                                TextInput:
+                                    id: network_firmware_input
+                                    text: "/home/steve/fw/merged_CPUNET.hex"
+                                    size_hint_x: 0.75
+                                    multiline: False
+                                    on_text_validate: app.on_network_firmware_change(self.text)
+
+                                Button:
+                                    text: "..."
+                                    size_hint_x: 0.25
+                                    on_press: app.open_network_firmware_chooser()
+
+                            Label:
+                                text: "Main Core FW:"
+                                size_hint_y: None
+                                height: 30
+                                halign: 'right'
+                                valign: 'center'
+                                text_size: self.size
+
+                            BoxLayout:
+                                orientation: 'horizontal'
+                                size_hint_y: None
+                                height: 30
+                                spacing: 4
+
+                                TextInput:
+                                    id: main_firmware_input
+                                    text: "/home/steve/fw/merged.hex"
+                                    size_hint_x: 0.75
+                                    multiline: False
+                                    on_text_validate: app.on_main_firmware_change(self.text)
+
+                                Button:
+                                    text: "..."
+                                    size_hint_x: 0.25
+                                    on_press: app.open_main_firmware_chooser()
+
+                            Widget:
+                                size_hint_y: None
+                                height: 20
+
+                            Widget:
+                                size_hint_y: None
+                                height: 20
+
+                            Button:
+                                text: 'Save Panel'
+                                size_hint_y: None
+                                height: 40
+                                background_color: 0.5, 0.55, 0.6, 1
+                                on_press: app.open_save_panel_dialog()
+
+                            Button:
+                                text: 'Load Panel'
+                                size_hint_y: None
+                                height: 40
+                                background_color: 0.5, 0.55, 0.6, 1
+                                on_press: app.open_panel_file_chooser()
+                
+                TabbedPanelItem:
+                    text: 'Config'
+                    background_normal: ''
+                    background_down: ''
+                    background_color: (0.15, 0.15, 0.25, 1) if self.state == 'down' else (0, 0, 0, 0)
+                    color: (1, 1, 1, 1) if self.state == 'down' else (0.7, 0.7, 0.7, 1)
+                    
+                    ScrollView:
+                        id: config_tab_content
+                        size_hint_y: 1
+                        do_scroll_x: False
+                        
+                        GridLayout:
+                            cols: 1
+                            size_hint_y: None
+                            height: self.minimum_height
+                            spacing: 8
+                            padding: 8
+
+                            Label:
+                                text: "Serial Port Configuration"
+                                size_hint_y: None
+                                height: 40
+                                font_size: '16sp'
+                                bold: True
+                                halign: 'center'
+                                valign: 'center'
+                                text_size: self.size
+                            
+                            Widget:
+                                size_hint_y: None
+                                height: 10
+                            
+                            BoxLayout:
+                                orientation: 'vertical'
+                                size_hint_y: None
+                                height: 100
+                                spacing: 4
+                                
+                                Label:
+                                    text: "Motion Controller:"
+                                    size_hint_y: None
+                                    height: 30
+                                    halign: 'left'
+                                    valign: 'center'
+                                    text_size: self.size
+                                    bold: True
+                                
+                                Label:
+                                    id: motion_port_label
+                                    text: "Not configured"
+                                    size_hint_y: None
+                                    height: 25
+                                    halign: 'left'
+                                    valign: 'center'
+                                    text_size: self.size
+                                    color: 0.7, 0.7, 0.7, 1
+                                
+                                Button:
+                                    text: 'Change Motion Controller Port'
+                                    size_hint_y: None
+                                    height: 40
+                                    background_color: 0.3, 0.4, 0.6, 1
+                                    on_press: app.reconfigure_motion_port()
+                            
+                            Widget:
+                                size_hint_y: None
+                                height: 10
+                            
+                            BoxLayout:
+                                orientation: 'vertical'
+                                size_hint_y: None
+                                height: 100
+                                spacing: 4
+                                
+                                Label:
+                                    text: "Head Controller:"
+                                    size_hint_y: None
+                                    height: 30
+                                    halign: 'left'
+                                    valign: 'center'
+                                    text_size: self.size
+                                    bold: True
+                                
+                                Label:
+                                    id: head_port_label
+                                    text: "Not configured"
+                                    size_hint_y: None
+                                    height: 25
+                                    halign: 'left'
+                                    valign: 'center'
+                                    text_size: self.size
+                                    color: 0.7, 0.7, 0.7, 1
+                                
+                                Button:
+                                    text: 'Change Head Controller Port'
+                                    size_hint_y: None
+                                    height: 40
+                                    background_color: 0.3, 0.4, 0.6, 1
+                                    on_press: app.reconfigure_head_port()
+                            
+                            Widget:
+                                size_hint_y: None
+                                height: 10
+                            
+                            BoxLayout:
+                                orientation: 'vertical'
+                                size_hint_y: None
+                                height: 100
+                                spacing: 4
+                                
+                                Label:
+                                    text: "Target Device:"
+                                    size_hint_y: None
+                                    height: 30
+                                    halign: 'left'
+                                    valign: 'center'
+                                    text_size: self.size
+                                    bold: True
+                                
+                                Label:
+                                    id: target_port_label
+                                    text: "Not configured"
+                                    size_hint_y: None
+                                    height: 25
+                                    halign: 'left'
+                                    valign: 'center'
+                                    text_size: self.size
+                                    color: 0.7, 0.7, 0.7, 1
+                                
+                                Button:
+                                    text: 'Change Target Device Port'
+                                    size_hint_y: None
+                                    height: 40
+                                    background_color: 0.3, 0.4, 0.6, 1
+                                    on_press: app.reconfigure_target_port()
 
     BoxLayout:
         orientation: 'horizontal'
@@ -530,8 +761,109 @@
             size_hint_x: 0.15
             size_hint_y: None
             height: 40
-            font_size: '12sp'
+            font_size: '16sp'
             halign: 'right'
             valign: 'center'
             text_size: self.size
             color: 1, 1, 1, 1
+
+<SerialPortRow@Button>:
+    port_device: ''
+    port_description: ''
+    port_unique_id: ''
+    port_index: 0
+    selected: False
+    size_hint_y: None
+    height: 80
+    halign: 'left'
+    valign: 'center'
+    padding: 15, 5
+    on_release: app.on_serial_port_row_pressed(self.port_index)
+    background_color: (0.3, 0.5, 0.8, 1) if self.selected else (0.2, 0.2, 0.2, 1)
+    background_normal: ''
+    
+    BoxLayout:
+        orientation: 'vertical'
+        spacing: 2
+        pos: root.pos
+        size: root.size
+        padding: 15, 10
+        
+        Label:
+            text: root.port_device
+            font_size: '18sp'
+            bold: True
+            size_hint_y: 0.4
+            halign: 'left'
+            valign: 'center'
+            text_size: self.size
+            color: 1, 1, 1, 1
+        
+        Label:
+            text: root.port_description
+            font_size: '14sp'
+            size_hint_y: 0.3
+            halign: 'left'
+            valign: 'center'
+            text_size: self.size
+            color: 0.8, 0.8, 0.8, 1
+        
+        Label:
+            text: root.port_unique_id
+            font_size: '12sp'
+            size_hint_y: 0.3
+            halign: 'left'
+            valign: 'center'
+            text_size: self.size
+            color: 0.6, 0.6, 0.6, 1
+
+<SerialPortChooser@Popup>:
+    id: serial_port_chooser
+    title: 'Select Serial Port'
+    size_hint: 0.95, 0.9
+    
+    BoxLayout:
+        orientation: 'vertical'
+        spacing: 12
+        padding: 15
+
+        Label:
+            id: device_type_label
+            text: 'Select port for device:'
+            size_hint_y: None
+            height: 50
+            font_size: '18sp'
+            bold: True
+            halign: 'left'
+            valign: 'center'
+            text_size: self.size
+
+        RecycleView:
+            id: port_list
+            size_hint_y: 1
+            viewclass: 'SerialPortRow'
+            do_scroll_x: False
+            scroll_type: ['bars', 'content']
+            bar_width: 15
+            RecycleBoxLayout:
+                id: port_layout
+                default_size: None, 80
+                default_size_hint: 1, None
+                size_hint_y: None
+                height: self.minimum_height
+                orientation: 'vertical'
+                spacing: 8
+                key_selection: 'selectable'
+
+        BoxLayout:
+            size_hint_y: None
+            height: 70
+            spacing: 12
+            padding: 8
+
+            Button:
+                text: 'Select'
+                font_size: '18sp'
+                on_press: app.on_serial_port_selected()
+                on_press: root.dismiss()
+

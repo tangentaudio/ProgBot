@@ -29,7 +29,7 @@ class ProgramStatus(Enum):
     IDENTIFIED = "Identified"
     PROGRAMMING = "Programming"
     COMPLETED = "Programmed"
-    FAILED = "Program Failed"
+    FAILED = "Failed"
     SKIPPED = "Skipped"
 
 
@@ -67,6 +67,8 @@ class Config:
     head_baud: int = 9600
     target_port_id: str = ''  # Unique ID for target controller port
     target_baud: int = 115200
+    network_core_firmware: str = '/home/steve/fw/merged_CPUNET.hex'
+    main_core_firmware: str = '/home/steve/fw/merged.hex'
 
 
 class BoardStatus:
@@ -127,26 +129,62 @@ class ProgBot:
         pass
        
 
-    def __init__(self, config: Optional[Config] = None, programmer=None, head=None, target=None, motion=None, panel_settings=None):
+    def __init__(self, config: Optional[Config] = None, programmer=None, head=None, target=None, motion=None, panel_settings=None, gui_port_picker=None):
         print("new progbot")
         self.config = config or Config()
         self.board_statuses = {}
         self.panel_settings = panel_settings  # Store reference for later use
-        self.programmer = programmer or ProgrammerController(self.update_phase)
+        self.gui_port_picker = gui_port_picker  # Function to show GUI port picker
+        self.programmer = programmer or ProgrammerController(
+            self.update_phase, 
+            network_core_firmware=self.config.network_core_firmware,
+            main_core_firmware=self.config.main_core_firmware
+        )
         
-        # Resolve port IDs to actual device paths
-        motion_port = self._resolve_port(self.config.motion_port_id, 'Motion Controller', '/dev/ttyACM0')
-        head_port = self._resolve_port(self.config.head_port_id, 'Head Controller', '/dev/ttyUSB0')
-        target_port = self._resolve_port(self.config.target_port_id, 'Target Device', '/dev/ttyACM1')
-        
-        self.head = head or HeadController(self.update_phase, head_port, self.config.head_baud)
-        self.target = target or TargetController(self.update_phase, target_port, self.config.target_baud)
-        self.motion = motion or MotionController(self.update_phase, motion_port, self.config.motion_baud)
+        # Controllers will be initialized after port resolution
+        self.head = head
+        self.target = target
+        self.motion = motion
         self.current_board: Optional[Tuple[int, int]] = None
+        self._ports_configured = False
+        self._selected_port_devices = []  # Track already-selected port device paths
     
     async def discover_devices(self):
         """Stub for device discovery - ports are already configured."""
         pass
+    
+    async def configure_ports(self):
+        """Resolve port IDs and initialize controllers.
+        
+        This must be called after the Kivy window is visible so dialogs can be shown.
+        """
+        if self._ports_configured:
+            return
+        
+        try:
+            print("[ProgBot] Configuring serial ports...")
+            
+            # Resolve port IDs to actual device paths (async friendly)
+            motion_port = await self._resolve_port_async(self.config.motion_port_id, 'Motion Controller', '/dev/ttyACM0')
+            head_port = await self._resolve_port_async(self.config.head_port_id, 'Head Controller', '/dev/ttyUSB0')
+            target_port = await self._resolve_port_async(self.config.target_port_id, 'Target Device', '/dev/ttyACM1')
+            
+            # Initialize controllers with resolved ports
+            if not self.head:
+                self.head = HeadController(self.update_phase, head_port, self.config.head_baud)
+            if not self.target:
+                self.target = TargetController(self.update_phase, target_port, self.config.target_baud)
+            if not self.motion:
+                self.motion = MotionController(self.update_phase, motion_port, self.config.motion_baud)
+            
+            self._ports_configured = True
+            print("[ProgBot] Serial ports configured successfully")
+        except Exception as e:
+            print(f"[ProgBot] ERROR during port configuration: {e}")
+            import traceback
+            traceback.print_exc()
+            raise
+
     
     def get_board_status(self, col, row):
         """Get or create board status for a position.
@@ -175,6 +213,115 @@ class ProgBot:
     def init_panel(self):
         """Call this after listeners are connected to emit panel dimensions."""
         self.panel_changed.emit(self.config.board_num_cols, self.config.board_num_rows)
+    
+    async def _resolve_port_async(self, port_id, device_type, default_device, is_reconfigure=False):
+        """Async version of port resolution for use after window is visible.
+        
+        Args:
+            port_id: Unique port ID string
+            device_type: Human-readable device type
+            default_device: Default device path (unused)
+            is_reconfigure: If True, always prompt for port selection (don't try to find by ID)
+            
+        Returns:
+            Device path string (e.g. /dev/ttyACM0)
+        """
+        import asyncio
+        
+        # If reconfiguring, skip the ID lookup and go straight to prompt
+        if is_reconfigure:
+            print(f"[ProgBot] Reconfiguring {device_type}")
+            return await self._prompt_for_port_async(device_type, None, is_reconfigure=True)
+        
+        # If no port ID configured, prompt user to select
+        if not port_id:
+            print(f"[ProgBot] No port ID configured for {device_type}")
+            return await self._prompt_for_port_async(device_type, None)
+        
+        # Try to find the port by its unique ID
+        device_path = DevicePortManager.find_port_by_unique_id(port_id)
+        if device_path:
+            print(f"[ProgBot] Found {device_type} at {device_path} (ID: {port_id})")
+            return device_path
+        else:
+            print(f"[ProgBot] Configured port ID '{port_id}' not found for {device_type}")
+            return await self._prompt_for_port_async(device_type, None)
+    
+    async def _prompt_for_port_async(self, device_type, default_device, is_reconfigure=False):
+        """Async prompt user to select a port.
+        
+        Args:
+            device_type: Human-readable device type
+            default_device: Unused (no longer using defaults)
+            is_reconfigure: If True, don't filter out already-selected ports (allow re-selection)
+            
+        Returns:
+            Device path string
+        """
+        import asyncio
+        from concurrent.futures import Future
+        
+        print(f"\n{'='*60}")
+        print(f"Port selection required for: {device_type}")
+        print(f"{'='*60}")
+        
+        try:
+            # If GUI picker is available, use it
+            if self.gui_port_picker:
+                result_future = Future()
+                
+                def handle_selection(selected_port):
+                    """Callback from GUI - stores result in future."""
+                    if not result_future.done():
+                        result_future.set_result(selected_port)
+                
+                # Get available ports and filter out already-selected ones (unless reconfiguring)
+                all_ports = DevicePortManager.list_ports()
+                if is_reconfigure:
+                    # When reconfiguring, show all ports
+                    ports = all_ports
+                else:
+                    # During initial config, filter out already-selected ports
+                    ports = [p for p in all_ports if p.device not in self._selected_port_devices]
+                
+                if not ports:
+                    print(f"[ProgBot] No available ports remaining for {device_type}")
+                    raise RuntimeError(f"No available ports for {device_type}")
+                
+                # Show GUI picker (this returns immediately)
+                self.gui_port_picker(device_type, ports, handle_selection)
+                
+                # Wait for user selection asynchronously
+                timeout = 300  # 5 minutes
+                elapsed = 0
+                while not result_future.done():
+                    await asyncio.sleep(0.05)  # Yield to event loop
+                    elapsed += 0.05
+                    if elapsed > timeout:
+                        raise TimeoutError(f"Port selection timed out for {device_type}")
+                
+                selected_port = result_future.result()
+            else:
+                # Console mode (not async)
+                DevicePortManager.print_available_ports()
+                selected_port = DevicePortManager.prompt_user_for_port(device_type)
+            
+            if selected_port:
+                # Save the unique ID for future use
+                self._save_port_id(device_type, selected_port.unique_id)
+                # Track this device as selected (unless reconfiguring - no need to track again)
+                if not is_reconfigure and selected_port.device not in self._selected_port_devices:
+                    self._selected_port_devices.append(selected_port.device)
+                print(f"[ProgBot] Selected {selected_port.device} for {device_type}")
+                return selected_port.device
+            else:
+                raise RuntimeError(f"No port selected for {device_type}. Cannot continue.")
+        except Exception as e:
+            print(f"[ProgBot] ERROR in port selection for {device_type}: {e}")
+            import traceback
+            traceback.print_exc()
+            raise
+
     
     def _resolve_port(self, port_id, device_type, default_device):
         """Resolve a port unique ID to an actual device path.
@@ -215,8 +362,44 @@ class ProgBot:
         print(f"Port selection required for: {device_type}")
         print(f"{'='*60}")
         
-        DevicePortManager.print_available_ports()
-        selected_port = DevicePortManager.prompt_user_for_port(device_type)
+        # If GUI picker is available, use it synchronously
+        if self.gui_port_picker:
+            import time
+            from concurrent.futures import Future
+            
+            result_future = Future()
+            
+            def handle_selection(selected_port):
+                """Callback from GUI - stores result in future."""
+                result_future.set_result(selected_port)
+            
+            # Get available ports
+            ports = DevicePortManager.list_ports()
+            
+            # Show GUI picker (this returns immediately)
+            self.gui_port_picker(device_type, ports, handle_selection)
+            
+            # Wait for user selection while processing Kivy events
+            try:
+                from kivy.clock import Clock
+                timeout = 300  # 5 minutes
+                start_time = time.time()
+                
+                while not result_future.done():
+                    if time.time() - start_time > timeout:
+                        raise TimeoutError("Port selection timed out")
+                    # Process Kivy events to keep UI responsive
+                    Clock.tick()
+                    time.sleep(0.01)  # Small delay to prevent CPU spinning
+                
+                selected_port = result_future.result()
+            except Exception as e:
+                print(f"[ProgBot] Port selection timeout or error: {e}")
+                raise RuntimeError(f"Port selection failed for {device_type}")
+        else:
+            # Console mode
+            DevicePortManager.print_available_ports()
+            selected_port = DevicePortManager.prompt_user_for_port(device_type)
         
         if selected_port:
             # Save the unique ID for future use
@@ -282,13 +465,13 @@ class ProgBot:
 
         self._mark_probe(cell_id, board_status, ProbeStatus.PROBING)
 
-        self.update_phase(f"Move to Board [{col}, {row}]")
+        self.update_phase(f"Move to Board at [{col}, {row}]...")
         await self.motion.rapid_xy_abs(
             self.config.board_x + (col * self.config.board_col_width),
             self.config.board_y + (row * self.config.board_row_height),
         )
 
-        self.update_phase("Probe Height")
+        self.update_phase("Probing for board height...")
         try:
             dist_to_probe = await self.motion.do_probe()
             dist_to_board = dist_to_probe + self.config.probe_plane_to_board
@@ -298,32 +481,32 @@ class ProgBot:
             self._mark_probe(cell_id, board_status, ProbeStatus.FAILED)
             raise
 
-        self.update_phase("Move to safe height")
+        self.update_phase("Move to safe height above board...")
         await self.motion.rapid_z_abs((-1.0 * dist_to_probe))
 
-        self.update_phase("Check NO contact")
+        self.update_phase("Check board is not contacted...")
         contact = await self.head.check_contact()
         if contact:
             raise RuntimeError("should not have contact now")
 
-        self.update_phase("Move to board height")
+        self.update_phase("Move to board...")
         await self.motion.move_z_abs((-1.0 * dist_to_board), 200)
 
-        self.update_phase("Check for contact")
+        self.update_phase("Check for contact with board header...")
         contact = await self.head.check_contact()
         if not contact:
             raise RuntimeError("should have contact now")
 
-        self.update_phase("Enabling proghead power")
+        self.update_phase("Enabling programmer head power...")
         await self.head.set_power(True)
         await asyncio.sleep(1)
-        self.update_phase("Enabling proghead logic")
+        self.update_phase("Enabling programmer head logic...")
         await self.head.set_logic(True)
         await asyncio.sleep(1)
 
         if self.config.operation_mode == OperationMode.IDENTIFY_ONLY:
             self._mark_program(cell_id, board_status, ProgramStatus.IDENTIFYING)
-            self.update_phase("Identifying device")
+            self.update_phase("Identifying device...")
             try:
                 success = await self.programmer.identify()
                 print(f"success={success}")
@@ -339,7 +522,7 @@ class ProgBot:
 
         elif self.config.operation_mode in (OperationMode.PROGRAM, OperationMode.PROGRAM_AND_TEST):
             self._mark_program(cell_id, board_status, ProgramStatus.PROGRAMMING)
-            self.update_phase("Programming device")
+            self.update_phase("Programming device...")
             try:
                 success = await self.programmer.program()
                 print(f"success={success}")
@@ -359,14 +542,13 @@ class ProgBot:
                 monitor_task.cancel()
 
             await self.head.set_all(False)
-
             await asyncio.sleep(1)
-            self.update_phase("Move to safe height")
+            self.update_phase("Move to safe height...")
             await self.motion.rapid_z_abs(0.0)
 
         await self.head.set_all(False)
         await asyncio.sleep(1)
-        self.update_phase("Move to safe height")
+        self.update_phase("Move to safe height...")
         await self.motion.rapid_z_abs(0.0)
 
         self._emit_status(cell_id, board_status)
@@ -379,22 +561,24 @@ class ProgBot:
                 await self._run_board(col, row)
 
     async def full_cycle(self):
+        # Configure ports first (in case not done yet)
+        await self.configure_ports()
+        
         # Discover devices first if enabled
         await self.discover_devices()
         
-        self.update_phase("Opening Devices")
+        self.update_phase("Opening devices...")
         await self.motion.connect()
         await self.head.connect()
         await self.target.connect()
 
         try:
-            self.update_phase("Initializing Devices")
-            await self.head.init()
+            self.update_phase("Initializing devices...")
             await self.motion.init()
 
             await self._run_from(0, 0)
 
-            self.update_phase(f"Done Cycle")
+            self.update_phase(f"Done with full cycle.")
             await self.motion.rapid_xy_abs(0, 300)
             await self.motion.motors_off()
 
@@ -405,7 +589,7 @@ class ProgBot:
             except Exception:
                 pass
             await self.motion.motors_off()
-            print(f"Canceled")
+            print(f"Canceled.")
             raise
         except Exception as e:
             tb = traceback.format_exc()
@@ -428,7 +612,6 @@ class ProgBot:
         await self.motion.connect()
         await self.head.connect()
         await self.target.connect()
-        await self.head.init()
         await self.motion.init()
 
         try:
@@ -443,7 +626,7 @@ class ProgBot:
             if next_col < self.config.board_num_cols:
                 await self._run_from(next_col, next_row)
 
-            self.update_phase(f"Done Cycle")
+            self.update_phase(f"Done with full cycle.")
             await self.motion.rapid_xy_abs(0, 300)
             await self.motion.motors_off()
         except asyncio.CancelledError:
@@ -453,7 +636,7 @@ class ProgBot:
             except Exception:
                 pass
             await self.motion.motors_off()
-            print(f"Canceled during retry")
+            print(f"Canceled during retry.")
             raise
         except Exception as e:
             tb = traceback.format_exc()

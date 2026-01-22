@@ -30,7 +30,7 @@ class HeadController:
     async def check_contact(self):
         """Check if probe is in contact with device."""
         await self.connect()
-        response = await self.device.send_command("Stat")
+        response = await self.device.send_command("Stat", retries=3)
         if 'ERROR' in response:
             raise RuntimeError("proghead error")
         contacted = 'PRESENT' in response
@@ -40,31 +40,20 @@ class HeadController:
     async def set_power(self, enable):
         """Enable or disable programmer power."""
         await self.connect()
-        response = await self.device.send_command("PowerOn" if enable else "PowerOff")
+        response = await self.device.send_command("PowerOn" if enable else "PowerOff", retries=3)
         if not 'OK' in response:
             raise RuntimeError("proghead error powering on/off")
  
     async def set_logic(self, enable):
         """Enable or disable programmer logic."""
         await self.connect()
-        response = await self.device.send_command("LogicOn" if enable else "LogicOff")
+        response = await self.device.send_command("LogicOn" if enable else "LogicOff", retries=3)
         if not 'OK' in response:
             raise RuntimeError("proghead error logic on/off")
 
     async def set_all(self, enable):
         """Enable or disable all programmer outputs."""
         await self.connect()
-        response = await self.device.send_command("AllOn" if enable else "AllOff")
+        response = await self.device.send_command("AllOn" if enable else "AllOff", retries=3)
         if not 'OK' in response:
             raise RuntimeError("proghead error all on/off")
-
-    # Head initialization
-    
-    async def init(self):
-        """Initialize programmer head device."""
-        await self.connect()
-        try:
-            await self.device.send_command("Stat", timeout=2)
-            await self.device.send_command("Stat", timeout=2)
-        except:
-            pass

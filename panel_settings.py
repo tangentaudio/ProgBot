@@ -47,7 +47,9 @@ class PanelSettings:
             'board_y': '121.0',
             'probe_plane': '4.0',
             'operation_mode': 'Program',
-            'skip_board_pos': []
+            'skip_board_pos': [],
+            'network_core_firmware': '/home/steve/fw/merged_CPUNET.hex',
+            'main_core_firmware': '/home/steve/fw/merged.hex'
         }
     
     def get(self, key, default=None):
