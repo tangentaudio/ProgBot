@@ -892,6 +892,7 @@ class AsyncApp(App):
         self.reset_grid_btn = root.ids.get('reset_grid_btn')
         self.skip_all_btn = root.ids.get('skip_all_btn')
         self.enable_all_btn = root.ids.get('enable_all_btn')
+        self.calibrate_btn = root.ids.get('calibrate_btn')
         
         # Set panel file label to current file
         if self.panel_file_label and self.panel_settings:
@@ -1185,6 +1186,472 @@ class AsyncApp(App):
         import asyncio
         asyncio.ensure_future(do_homing())
     
+    # ==================== Calibration Dialog ====================
+    
+    def open_calibration_dialog(self):
+        """Open the calibration dialog for setting board origin and probe offset."""
+        debug_log("[Calibration] Opening dialog")
+        
+        if not self.bot or not self.bot.motion:
+            debug_log("[Calibration] Bot or motion controller not initialized")
+            return
+        
+        # Create popup if needed
+        if not hasattr(self, 'calibration_popup') or not self.calibration_popup:
+            self.calibration_popup = Factory.CalibrationPopup()
+        
+        # Initialize calibration state
+        self.cal_xy_step = 5.0  # Default XY step
+        self.cal_z_step = 1.0   # Default Z step
+        self.cal_probe_z = None  # Z position after probe (None = not probed yet)
+        self.cal_position_task = None
+        
+        # Update current values display
+        self._cal_update_origin_label()
+        self._cal_update_probe_offset_label()
+        
+        # Query initial position
+        self._cal_refresh_position()
+        
+        # Open popup
+        self.calibration_popup.open()
+    
+    def _cal_update_origin_label(self):
+        """Update the origin label with current panel settings."""
+        if not self.calibration_popup:
+            return
+        origin_label = self.calibration_popup.ids.get('cal_origin_label')
+        if origin_label:
+            settings = get_settings()
+            x = settings.get('board_first_x', 0)
+            y = settings.get('board_first_y', 0)
+            origin_label.text = f'Origin: X={x:.2f}, Y={y:.2f}'
+    
+    def _cal_update_probe_offset_label(self):
+        """Update the probe offset label with current panel settings."""
+        if not self.calibration_popup:
+            return
+        offset_label = self.calibration_popup.ids.get('cal_probe_offset_label')
+        if offset_label:
+            settings = get_settings()
+            offset = settings.get('probe_plane_to_board', 0)
+            offset_label.text = f'Z Offset: {offset:.2f} mm'
+    
+    def _cal_refresh_position(self):
+        """Query current position and update display."""
+        import asyncio
+        
+        async def do_refresh():
+            try:
+                pos = await self.bot.motion.get_position()
+                # Check if at safe Z (within 0.5mm of Z=0)
+                at_safe_z = pos['z'] >= -0.5
+                # Update labels on main thread
+                def update_labels(dt, pos=pos, at_safe_z=at_safe_z):
+                    if not self.calibration_popup:
+                        return
+                    popup = self.calibration_popup
+                    if x_label := popup.ids.get('cal_pos_x'):
+                        x_label.text = f"X: {pos['x']:.3f}"
+                    if y_label := popup.ids.get('cal_pos_y'):
+                        y_label.text = f"Y: {pos['y']:.3f}"
+                    if z_label := popup.ids.get('cal_pos_z'):
+                        z_label.text = f"Z: {pos['z']:.3f}"
+                    # Enable/disable probe button based on Z position
+                    if probe_btn := popup.ids.get('cal_probe_btn'):
+                        probe_btn.disabled = not at_safe_z
+                Clock.schedule_once(update_labels, 0)
+            except Exception as e:
+                debug_log(f"[Calibration] Position refresh error: {e}")
+                def show_error(dt):
+                    if not self.calibration_popup:
+                        return
+                    popup = self.calibration_popup
+                    if x_label := popup.ids.get('cal_pos_x'):
+                        x_label.text = "X: err"
+                    if y_label := popup.ids.get('cal_pos_y'):
+                        y_label.text = "Y: err"
+                    if z_label := popup.ids.get('cal_pos_z'):
+                        z_label.text = "Z: err"
+                Clock.schedule_once(show_error, 0)
+        
+        asyncio.ensure_future(do_refresh())
+
+    def cal_set_xy_step(self, step):
+        """Set XY jog step size."""
+        self.cal_xy_step = step
+        debug_log(f"[Calibration] XY step set to {step} mm")
+    
+    def cal_set_z_step(self, step):
+        """Set Z jog step size."""
+        self.cal_z_step = step
+        debug_log(f"[Calibration] Z step set to {step} mm")
+    
+    def cal_home(self):
+        """Home the machine from calibration dialog."""
+        import asyncio
+        
+        async def do_home():
+            try:
+                debug_log("[Calibration] Starting homing...")
+                # Disable home button during homing
+                def disable_btn(dt):
+                    if self.calibration_popup:
+                        btn = self.calibration_popup.ids.get('cal_home_btn')
+                        if btn:
+                            btn.disabled = True
+                            btn.text = 'Homing...'
+                Clock.schedule_once(disable_btn, 0)
+                
+                await self.bot.motion.connect()
+                
+                # Clear alarm
+                await self.bot.motion.device.send_command("M999")
+                
+                # Force homing
+                await self.bot.motion.send_gcode_wait_ok("$H", timeout=20)
+                
+                # Set work coordinates
+                await self.bot.motion.send_gcode_wait_ok("G92 X0 Y0 Z0")
+                
+                debug_log("[Calibration] Homing complete")
+                
+                # Reset probe state since we're now at origin
+                self.cal_probe_z = None
+            except Exception as e:
+                debug_log(f"[Calibration] Homing error: {e}")
+            finally:
+                # Re-enable home button and refresh position
+                def enable_btn(dt):
+                    if self.calibration_popup:
+                        btn = self.calibration_popup.ids.get('cal_home_btn')
+                        if btn:
+                            btn.disabled = False
+                            btn.text = 'Go Home'
+                        # Disable Go Ofs button since probe state is reset
+                        goto_ofs_btn = self.calibration_popup.ids.get('cal_goto_offset_btn')
+                        if goto_ofs_btn:
+                            goto_ofs_btn.disabled = True
+                        # Disable capture button since probe state is reset
+                        capture_btn = self.calibration_popup.ids.get('cal_set_probe_offset_btn')
+                        if capture_btn:
+                            capture_btn.disabled = True
+                Clock.schedule_once(enable_btn, 0)
+                # Refresh position display
+                self._cal_refresh_position()
+        
+        asyncio.ensure_future(do_home())
+    
+    def cal_jog(self, axis, direction):
+        """Jog the machine in the specified axis and direction."""
+        import asyncio
+        
+        async def do_jog():
+            try:
+                if axis == 'x':
+                    dist = self.cal_xy_step * direction
+                    await self.bot.motion.rapid_xy_rel(dist, 0)
+                elif axis == 'y':
+                    dist = self.cal_xy_step * direction
+                    await self.bot.motion.rapid_xy_rel(0, dist)
+                elif axis == 'z':
+                    dist = self.cal_z_step * direction
+                    # Use slower controlled movement for Z
+                    await self.bot.motion.move_z_rel(dist, 500)
+                # Wait for motion complete and refresh position
+                await self.bot.motion.send_gcode_wait_ok("M400")
+                self._cal_refresh_position()
+            except Exception as e:
+                debug_log(f"[Calibration] Jog error: {e}")
+        
+        asyncio.ensure_future(do_jog())
+    
+    def cal_safe_z(self):
+        """Move to safe Z height (Z=0)."""
+        import asyncio
+        
+        async def do_safe_z():
+            try:
+                debug_log("[Calibration] Moving to safe Z...")
+                await self.bot.motion.rapid_z_abs(0.0)
+                await self.bot.motion.send_gcode_wait_ok("M400")
+                debug_log("[Calibration] At safe Z")
+                # Reset probe state since we're no longer at probe height
+                self.cal_probe_z = None
+                # Disable Go Ofs and capture buttons, refresh position
+                def update_ui(dt):
+                    if self.calibration_popup:
+                        goto_ofs_btn = self.calibration_popup.ids.get('cal_goto_offset_btn')
+                        if goto_ofs_btn:
+                            goto_ofs_btn.disabled = True
+                        btn = self.calibration_popup.ids.get('cal_set_probe_offset_btn')
+                        if btn:
+                            btn.disabled = True
+                Clock.schedule_once(update_ui, 0)
+                self._cal_refresh_position()
+            except Exception as e:
+                debug_log(f"[Calibration] Safe Z error: {e}")
+        
+        asyncio.ensure_future(do_safe_z())
+    
+    def cal_do_probe(self):
+        """Execute probe operation."""
+        import asyncio
+        
+        async def do_probe():
+            try:
+                debug_log("[Calibration] Starting probe...")
+                
+                # Disable probe button during probe
+                def disable_probe_btn(dt):
+                    if self.calibration_popup:
+                        if btn := self.calibration_popup.ids.get('cal_probe_btn'):
+                            btn.disabled = True
+                        result_label = self.calibration_popup.ids.get('cal_probe_result')
+                        if result_label:
+                            result_label.text = 'Probing...'
+                Clock.schedule_once(disable_probe_btn, 0)
+                
+                # Execute probe
+                dist = await self.bot.motion.do_probe()
+                self.cal_probe_z = -dist  # Store the Z position after probe (negative)
+                
+                debug_log(f"[Calibration] Probe result: {dist} mm, Z position: {self.cal_probe_z}")
+                
+                # Move to probe height and wait
+                await self.bot.motion.rapid_z_abs(self.cal_probe_z)
+                await self.bot.motion.send_gcode_wait_ok("M400")
+                
+                # Refresh position display (probe button will stay disabled since not at safe Z)
+                self._cal_refresh_position()
+                
+                # Update UI
+                def update_ui(dt):
+                    if self.calibration_popup:
+                        result_label = self.calibration_popup.ids.get('cal_probe_result')
+                        if result_label:
+                            result_label.text = f'Probe: {dist:.3f} mm'
+                        # Enable Go Ofs button now that we've probed and are at probe height
+                        goto_ofs_btn = self.calibration_popup.ids.get('cal_goto_offset_btn')
+                        if goto_ofs_btn:
+                            goto_ofs_btn.disabled = False
+                        # Enable capture button now that we've probed
+                        btn = self.calibration_popup.ids.get('cal_set_probe_offset_btn')
+                        if btn:
+                            btn.disabled = False
+                Clock.schedule_once(update_ui, 0)
+                
+            except Exception as e:
+                import traceback
+                debug_log(f"[Calibration] Probe error: {e}")
+                debug_log(traceback.format_exc())
+                # Refresh position on error too
+                self._cal_refresh_position()
+                def show_error(dt, err=str(e)):
+                    if self.calibration_popup:
+                        result_label = self.calibration_popup.ids.get('cal_probe_result')
+                        if result_label:
+                            result_label.text = f'FAILED: {err[:20]}'
+                Clock.schedule_once(show_error, 0)
+        
+        asyncio.ensure_future(do_probe())
+    
+    def cal_goto_origin(self):
+        """Move to the currently configured board origin."""
+        import asyncio
+        
+        async def do_goto():
+            try:
+                settings = get_settings()
+                x = settings.get('board_first_x', 0)
+                y = settings.get('board_first_y', 0)
+                
+                debug_log(f"[Calibration] Moving to origin X={x:.2f}, Y={y:.2f}")
+                
+                # Move to origin position
+                await self.bot.motion.rapid_xy_abs(x, y)
+                await self.bot.motion.send_gcode_wait_ok("M400")
+                
+                debug_log("[Calibration] Arrived at origin")
+                self._cal_refresh_position()
+                
+            except Exception as e:
+                debug_log(f"[Calibration] Go to origin error: {e}")
+        
+        asyncio.ensure_future(do_goto())
+    
+    def cal_goto_offset(self):
+        """Move Z down by the configured offset from probe position to board surface."""
+        import asyncio
+        
+        async def do_goto_offset():
+            try:
+                if self.cal_probe_z is None:
+                    debug_log("[Calibration] Must probe first!")
+                    return
+                
+                settings = get_settings()
+                offset = settings.get('probe_plane_to_board', 0)
+                
+                # Target Z is probe_z minus the offset (going further down)
+                target_z = self.cal_probe_z - offset
+                
+                debug_log(f"[Calibration] Moving to offset: probe_z={self.cal_probe_z:.3f}, offset={offset:.3f}, target_z={target_z:.3f}")
+                
+                # Move Z to target position slowly (same speed as full_cycle)
+                await self.bot.motion.move_z_abs(target_z, 200)
+                
+                debug_log("[Calibration] Arrived at offset position")
+                self._cal_refresh_position()
+                
+                # Disable Go Ofs button since we're no longer at probe height
+                def update_ui(dt):
+                    if self.calibration_popup:
+                        btn = self.calibration_popup.ids.get('cal_goto_offset_btn')
+                        if btn:
+                            btn.disabled = True
+                Clock.schedule_once(update_ui, 0)
+                
+            except Exception as e:
+                debug_log(f"[Calibration] Go to offset error: {e}")
+        
+        asyncio.ensure_future(do_goto_offset())
+    
+    def cal_set_board_origin(self):
+        """Set board origin from current XY position."""
+        import asyncio
+        
+        async def do_set_origin():
+            try:
+                pos = await self.bot.motion.get_position()
+                x, y = pos['x'], pos['y']
+                
+                # Update settings
+                settings = get_settings()
+                settings.set('board_first_x', x)
+                settings.set('board_first_y', y)
+                
+                # Update panel settings object
+                if self.panel_settings:
+                    self.panel_settings.board_first_x = x
+                    self.panel_settings.board_first_y = y
+                
+                # Update bot config
+                if self.bot and self.bot.config:
+                    self.bot.config.board_first_x = x
+                    self.bot.config.board_first_y = y
+                
+                # Save to panel file
+                if self.panel_settings:
+                    try:
+                        self.panel_settings._save_settings()
+                        debug_log(f"[Calibration] Saved origin to panel file")
+                    except Exception as e:
+                        debug_log(f"[Calibration] Error saving panel file: {e}")
+                
+                # Update UI widgets
+                def update_ui(dt):
+                    # Update Panel tab inputs
+                    if x_input := self.root.ids.get('board_x_input'):
+                        x_input.text = f"{x:.2f}"
+                    if y_input := self.root.ids.get('board_y_input'):
+                        y_input.text = f"{y:.2f}"
+                    # Update calibration dialog label
+                    self._cal_update_origin_label()
+                Clock.schedule_once(update_ui, 0)
+                
+                debug_log(f"[Calibration] Board origin set to X={x:.2f}, Y={y:.2f}")
+                
+            except Exception as e:
+                debug_log(f"[Calibration] Set origin error: {e}")
+        
+        asyncio.ensure_future(do_set_origin())
+    
+    def cal_capture_probe_offset(self):
+        """Capture probe-to-board offset from current Z position vs probe position."""
+        import asyncio
+        
+        async def do_capture():
+            try:
+                if self.cal_probe_z is None:
+                    debug_log("[Calibration] Must probe first!")
+                    return
+                
+                # Get current Z position
+                pos = await self.bot.motion.get_position()
+                current_z = pos['z']
+                
+                # Offset = distance traveled from probe height to board surface
+                # probe_z is negative (below zero), current_z is also negative (further down)
+                # offset = probe_z - current_z (should be positive)
+                offset = self.cal_probe_z - current_z
+                
+                debug_log(f"[Calibration] Probe Z: {self.cal_probe_z:.3f}, Current Z: {current_z:.3f}, Offset: {offset:.3f}")
+                
+                # Update settings
+                settings = get_settings()
+                settings.set('probe_plane_to_board', offset)
+                
+                # Update panel settings object
+                if self.panel_settings:
+                    self.panel_settings.probe_plane_to_board = offset
+                
+                # Update bot config
+                if self.bot and self.bot.config:
+                    self.bot.config.probe_plane_to_board = offset
+                
+                # Save to panel file
+                if self.panel_settings:
+                    try:
+                        self.panel_settings._save_settings()
+                        debug_log(f"[Calibration] Saved probe offset to panel file")
+                    except Exception as e:
+                        debug_log(f"[Calibration] Error saving panel file: {e}")
+                
+                # Update UI widgets
+                def update_ui(dt):
+                    # Update Panel tab input
+                    if probe_input := self.root.ids.get('probe_plane_input'):
+                        probe_input.text = f"{offset:.2f}"
+                    # Update calibration dialog label
+                    self._cal_update_probe_offset_label()
+                Clock.schedule_once(update_ui, 0)
+                
+                debug_log(f"[Calibration] Probe-to-board offset set to {offset:.2f} mm")
+                
+            except Exception as e:
+                debug_log(f"[Calibration] Capture offset error: {e}")
+        
+        asyncio.ensure_future(do_capture())
+    
+    def cal_close(self):
+        """Close calibration dialog, moving to safe Z first if needed."""
+        import asyncio
+        
+        async def do_close():
+            debug_log("[Calibration] Closing dialog...")
+            try:
+                # Check current Z position and move to safe height if needed
+                pos = await self.bot.motion.get_position()
+                if pos['z'] < -0.5:  # If Z is more than 0.5mm below safe height
+                    debug_log(f"[Calibration] Z at {pos['z']:.2f}, moving to safe Z before closing...")
+                    await self.bot.motion.rapid_z_abs(0.0)
+                    await self.bot.motion.send_gcode_wait_ok("M400")
+                    debug_log("[Calibration] Safe Z reached")
+            except Exception as e:
+                debug_log(f"[Calibration] Error checking/moving Z: {e}")
+            
+            # Dismiss dialog
+            def dismiss(dt):
+                if self.calibration_popup:
+                    self.calibration_popup.dismiss()
+            Clock.schedule_once(dismiss, 0)
+            debug_log("[Calibration] Dialog closed")
+        
+        asyncio.ensure_future(do_close())
+    
+    # ==================== End Calibration Dialog ====================
+
     def reset_grid(self, instance):
         """Reset all grid cells to their default state as if panel was just loaded."""
         print(f"[ResetGrid] Button pressed")
@@ -1364,6 +1831,7 @@ class AsyncApp(App):
         self._set_widget('reset_grid_btn', disabled=True)
         self._set_widget('skip_all_btn', disabled=True)
         self._set_widget('enable_all_btn', disabled=True)
+        self._set_widget('calibrate_btn', disabled=True)
         # Disable config widgets during operation
         self._set_config_widgets_enabled(False)
         self._set_grid_cells_enabled(False)
@@ -1419,6 +1887,7 @@ class AsyncApp(App):
         Clock.schedule_once(lambda dt: self._set_widget('reset_grid_btn', disabled=False))
         Clock.schedule_once(lambda dt: self._set_widget('skip_all_btn', disabled=False))
         Clock.schedule_once(lambda dt: self._set_widget('enable_all_btn', disabled=False))
+        Clock.schedule_once(lambda dt: self._set_widget('calibrate_btn', disabled=False))
         Clock.schedule_once(lambda dt: self._set_config_widgets_enabled(True))
         Clock.schedule_once(lambda dt: self._set_grid_cells_enabled(True))
         self.bot_task = None

@@ -155,6 +155,63 @@ class MotionController:
         await self.connect()
         await self.send_gcode_wait_ok(f"G90 G1 Z{z} f{rate}", timeout=10)
         await self.send_gcode_wait_ok("M400", timeout=5)
+
+    async def move_z_rel(self, dist, rate=500):
+        """Controlled relative Z movement at specified rate."""
+        await self.connect()
+        await self.send_gcode_wait_ok(f"G91 G1 Z{dist} F{rate}", timeout=10)
+        await self.send_gcode_wait_ok("M400", timeout=5)
+        await self.send_gcode_wait_ok("G90", timeout=2)  # Back to absolute mode
+
+    async def get_position(self):
+        """Query current machine position. Returns dict with 'x', 'y', 'z' keys."""
+        await self.connect()
+        
+        # Send status query
+        self.device.writer.write("?\n".encode())
+        await self.device.writer.drain()
+        
+        # Read responses until we get status or timeout
+        start_time = time.time()
+        while time.time() - start_time < 2.0:
+            try:
+                response = await asyncio.wait_for(self.device.line_queue.get(), timeout=0.5)
+                debug_log(f"[MOTION] Position query response: {response}")
+                if '<' in response and '>' in response:
+                    # Parse status: <Idle|MPos:0.000,0.000,0.000|WPos:0.000,0.000,0.000>
+                    # We want WPos (work position)
+                    if 'WPos:' in response:
+                        wpos_start = response.find('WPos:') + 5
+                        wpos_end = response.find('|', wpos_start) if '|' in response[wpos_start:] else response.find('>', wpos_start)
+                        if wpos_end == -1:
+                            wpos_end = response.find('>')
+                        wpos_str = response[wpos_start:wpos_end]
+                        parts = wpos_str.split(',')
+                        if len(parts) >= 3:
+                            return {
+                                'x': float(parts[0]),
+                                'y': float(parts[1]),
+                                'z': float(parts[2])
+                            }
+                    elif 'MPos:' in response:
+                        # Fallback to machine position if no work position
+                        mpos_start = response.find('MPos:') + 5
+                        mpos_end = response.find('|', mpos_start)
+                        if mpos_end == -1:
+                            mpos_end = response.find('>')
+                        mpos_str = response[mpos_start:mpos_end]
+                        parts = mpos_str.split(',')
+                        if len(parts) >= 3:
+                            return {
+                                'x': float(parts[0]),
+                                'y': float(parts[1]),
+                                'z': float(parts[2])
+                            }
+            except asyncio.TimeoutError:
+                continue
+        
+        raise RuntimeError("Position query timeout")
+
     async def do_probe(self):
         """Execute probe operation and return measured distance."""
         await self.connect()
