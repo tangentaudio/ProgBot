@@ -111,6 +111,57 @@
             size_hint_y: 0.1
             on_press: root.dismiss()
 
+<StatsScreen@Screen>:
+    name: 'stats'
+    
+    BoxLayout:
+        orientation: 'vertical'
+        
+        Label:
+            text: 'Cycle Statistics'
+            size_hint_y: None
+            height: 20
+            font_size: '12sp'
+            bold: True
+            color: 0.7, 0.7, 0.7, 1
+            halign: 'center'
+            valign: 'center'
+            text_size: self.size
+        
+        Label:
+            id: cycle_stats_label
+            text: 'Ready'
+            size_hint_y: 1
+            font_size: '11sp'
+            halign: 'left'
+            valign: 'top'
+            text_size: self.size
+            padding: 4, 4
+
+<CameraScreen@Screen>:
+    name: 'camera'
+    
+    BoxLayout:
+        orientation: 'vertical'
+        
+        Label:
+            id: camera_status_label
+            text: 'QR Scanning...'
+            size_hint_y: None
+            height: 20
+            font_size: '12sp'
+            bold: True
+            color: 0.9, 0.9, 0.5, 1
+            halign: 'center'
+            valign: 'center'
+            text_size: self.size
+        
+        Image:
+            id: camera_preview_image
+            size_hint_y: 1
+            allow_stretch: True
+            keep_ratio: True
+
 <ErrorPopup@Popup>:
     id: error_popup
     title: 'Error'
@@ -344,10 +395,20 @@
                             spacing: 4
 
                             Button:
+                                id: home_btn
+                                text: 'HOME'
+                                size_hint_x: 0.25
+                                size_hint_y: None
+                                height: 80
+                                font_size: '18sp'
+                                on_press: app.home_machine(self)
+
+                            Button:
                                 id: stop_btn
                                 text: 'STOP'
                                 disabled: True
                                 background_color: 1, 0.4, 0, 1
+                                size_hint_x: 0.375
                                 size_hint_y: None
                                 height: 80
                                 font_size: '24sp'
@@ -357,6 +418,7 @@
                                 id: start_btn
                                 text: 'START'
                                 background_color: 0, 0.8, 0.2, 1
+                                size_hint_x: 0.375
                                 size_hint_y: None
                                 height: 80
                                 font_size: '24sp'
@@ -376,44 +438,37 @@
                                 on_press: app.reset_grid(self)
                             
                             Button:
-                                id: home_btn
-                                text: 'Home'
-                                background_color: 0.6, 0.4, 0.4, 1
+                                id: skip_all_btn
+                                text: 'Skip All'
+                                background_color: 0.4, 0.4, 0.6, 1
                                 font_size: '16sp'
-                                on_press: app.home_machine(self)
+                                on_press: app.skip_all_boards(self)
+                            
+                            Button:
+                                id: enable_all_btn
+                                text: 'Enable All'
+                                background_color: 0.4, 0.4, 0.6, 1
+                                font_size: '16sp'
+                                on_press: app.enable_all_boards(self)
                         
-                        # Camera preview section
-                        BoxLayout:
-                            orientation: 'vertical'
-                            size_hint: None, None
-                            width: 165
+                        # Cycle statistics / Camera preview swappable pane
+                        ScreenManager:
+                            id: stats_camera_manager
+                            size_hint_y: None
                             height: 165
-                            padding: 4
-                            spacing: 2
-                            pos_hint: {'center_x': 0.5}
                             
-                            Label:
-                                id: camera_status_label
-                                text: ''
-                                size_hint_y: None
-                                height: 25
-                                font_size: '14sp'
-                                halign: 'center'
-                                valign: 'center'
-                                text_size: self.size
+                            canvas.before:
+                                Color:
+                                    rgba: 0.1, 0.1, 0.15, 1
+                                Rectangle:
+                                    pos: self.pos
+                                    size: self.size
                             
-                            Image:
-                                id: camera_preview_image
-                                size_hint_y: 1
-                                allow_stretch: True
-                                keep_ratio: True
-                                color: 0, 0, 0, 1
-                                canvas.before:
-                                    Color:
-                                        rgba: 0, 0, 0, 1
-                                    Rectangle:
-                                        pos: self.pos
-                                        size: self.size
+                            StatsScreen:
+                                id: stats_screen
+                            
+                            CameraScreen:
+                                id: camera_screen
                         
                         Widget:
                             size_hint_y: 1

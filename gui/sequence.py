@@ -5,9 +5,10 @@ import asyncio
 import traceback
 import os
 import cv2
+import gc
 from enum import Enum
 from dataclasses import dataclass, field
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Dict
 from pynnex import with_emitters, emitter, listener
 from programmer_controller import ProgrammerController
 from head_controller import HeadController
@@ -26,6 +27,139 @@ def debug_log(msg):
             f.flush()
     except Exception:
         pass  # Silently fail if logging doesn't work
+
+
+class CycleStats:
+    """Track timing statistics for programming cycles."""
+    
+    def __init__(self):
+        self.reset()
+    
+    def reset(self):
+        """Clear all statistics for a new cycle."""
+        # Per-board timing data: {(col, row): {'qr_scan': time, 'probe': time, 'program': time}}
+        self.board_times: Dict[Tuple[int, int], Dict[str, float]] = {}
+        
+        # Aggregate statistics
+        self.cycle_start_time: Optional[float] = None
+        self.cycle_end_time: Optional[float] = None
+        
+        # Running totals for quick aggregate calculation
+        self._qr_times: List[float] = []
+        self._probe_times: List[float] = []
+        self._program_times: List[float] = []
+        
+        # Board counts
+        self.boards_scanned = 0
+        self.boards_probed = 0
+        self.boards_programmed = 0
+        self.boards_skipped = 0
+        self.boards_failed = 0
+    
+    def start_cycle(self):
+        """Mark the start of a new cycle."""
+        self.reset()
+        self.cycle_start_time = time.time()
+    
+    def end_cycle(self):
+        """Mark the end of the cycle."""
+        self.cycle_end_time = time.time()
+    
+    def record_board_time(self, col: int, row: int, phase: str, duration: float):
+        """Record timing for a specific board and phase.
+        
+        Args:
+            col: Board column
+            row: Board row
+            phase: One of 'qr_scan', 'probe', 'program'
+            duration: Time in seconds
+        """
+        key = (col, row)
+        if key not in self.board_times:
+            self.board_times[key] = {}
+        self.board_times[key][phase] = duration
+        
+        # Update running totals
+        if phase == 'qr_scan':
+            self._qr_times.append(duration)
+            self.boards_scanned += 1
+        elif phase == 'probe':
+            self._probe_times.append(duration)
+            self.boards_probed += 1
+        elif phase == 'program':
+            self._program_times.append(duration)
+            self.boards_programmed += 1
+    
+    def record_skip(self):
+        """Record a skipped board."""
+        self.boards_skipped += 1
+    
+    def record_failure(self):
+        """Record a failed board."""
+        self.boards_failed += 1
+    
+    def _calc_stats(self, times: List[float]) -> Tuple[float, float, float]:
+        """Calculate min, avg, max for a list of times."""
+        if not times:
+            return (0.0, 0.0, 0.0)
+        return (min(times), sum(times) / len(times), max(times))
+    
+    @property
+    def qr_scan_stats(self) -> Tuple[float, float, float]:
+        """Return (min, avg, max) for QR scan times."""
+        return self._calc_stats(self._qr_times)
+    
+    @property
+    def probe_stats(self) -> Tuple[float, float, float]:
+        """Return (min, avg, max) for probe times."""
+        return self._calc_stats(self._probe_times)
+    
+    @property
+    def program_stats(self) -> Tuple[float, float, float]:
+        """Return (min, avg, max) for program times."""
+        return self._calc_stats(self._program_times)
+    
+    @property
+    def cycle_duration(self) -> float:
+        """Return total cycle duration in seconds."""
+        if self.cycle_start_time is None:
+            return 0.0
+        end = self.cycle_end_time or time.time()
+        return end - self.cycle_start_time
+    
+    def get_summary_text(self) -> str:
+        """Return formatted summary text for display."""
+        lines = []
+        
+        # Cycle time
+        duration = self.cycle_duration
+        if duration > 0:
+            lines.append(f"Cycle: {duration:.1f}s")
+        
+        # Board counts
+        total = self.boards_scanned + self.boards_skipped
+        if total > 0:
+            lines.append(f"Boards: {self.boards_programmed}/{total}")
+            if self.boards_failed > 0:
+                lines.append(f"Failed: {self.boards_failed}")
+        
+        # QR scan stats
+        if self._qr_times:
+            mn, avg, mx = self.qr_scan_stats
+            lines.append(f"QR: {avg:.1f}s ({mn:.1f}-{mx:.1f})")
+        
+        # Probe stats  
+        if self._probe_times:
+            mn, avg, mx = self.probe_stats
+            lines.append(f"Probe: {avg:.1f}s ({mn:.1f}-{mx:.1f})")
+        
+        # Program stats
+        if self._program_times:
+            mn, avg, mx = self.program_stats
+            lines.append(f"Prog: {avg:.1f}s ({mn:.1f}-{mx:.1f})")
+        
+        return '\n'.join(lines) if lines else 'Ready'
+
 
 BOARD_X=110.2
 BOARD_Y=121.0
@@ -209,12 +343,28 @@ class ProgBot:
     @emitter
     def error_occurred(self):
         pass
+    
+    @emitter
+    def stats_updated(self):
+        """Emitted when cycle statistics are updated."""
+        pass
+    
+    @emitter
+    def qr_scan_started(self):
+        """Emitted when QR scanning phase begins."""
+        pass
+    
+    @emitter
+    def qr_scan_ended(self):
+        """Emitted when QR scanning phase ends."""
+        pass
        
 
     def __init__(self, config: Optional[Config] = None, programmer=None, head=None, target=None, motion=None, vision=None, panel_settings=None, gui_port_picker=None):
         print("new progbot")
         self.config = config or Config()
         self.board_statuses = {}
+        self.stats = CycleStats()  # Timing statistics
         self.panel_settings = panel_settings  # Store reference for later use
         self.gui_port_picker = gui_port_picker  # Function to show GUI port picker
         self.programmer = programmer or ProgrammerController(
@@ -622,7 +772,8 @@ class ProgBot:
         # Camera scanning is now done in _scan_all_boards_for_qr() before this method
         # Skip the camera code here - just proceed with probing
         
-        # Now proceed with normal probing sequence
+        # Now proceed with normal probing sequence - track timing
+        probe_start = time.time()
         debug_log(f"[_run_board] Starting probe sequence for board [{col},{row}]")
         self._mark_probe(cell_id, board_status, ProbeStatus.PROBING)
 
@@ -638,10 +789,18 @@ class ProgBot:
             debug_log(f"[_run_board] Probe complete: dist_to_probe={dist_to_probe}")
             dist_to_board = dist_to_probe + self.config.probe_plane_to_board
             self._mark_probe(cell_id, board_status, ProbeStatus.COMPLETED)
+            
+            # Record probe time (movement + probe operation)
+            probe_time = time.time() - probe_start
+            self.stats.record_board_time(col, row, 'probe', probe_time)
+            self.stats_updated.emit(self.stats.get_summary_text())
+            debug_log(f"[_run_board] Board [{col},{row}] probe time: {probe_time:.2f}s")
         except Exception as e:
             print(f"Probe failed: {e}")
             debug_log(f"[_run_board] Probe failed: {e}")
             self._mark_probe(cell_id, board_status, ProbeStatus.FAILED)
+            self.stats.record_failure()
+            self.stats_updated.emit(self.stats.get_summary_text())
             # SAFETY: Return to safe Z height before exiting
             try:
                 await self.motion.rapid_z_abs(0.0)
@@ -715,10 +874,15 @@ class ProgBot:
             board_status.failure_reason = error_msg
             self._mark_probe(cell_id, board_status, ProbeStatus.FAILED)
             self._mark_program(cell_id, board_status, ProgramStatus.SKIPPED)
+            self.stats.record_failure()
+            self.stats_updated.emit(self.stats.get_summary_text())
             # SAFETY: Return to safe Z height before moving to next board
             await self.motion.rapid_z_abs(0.0)
             return
 
+        # Start programming timing
+        program_start = time.time()
+        
         self.update_phase("Enabling programmer head power...")
         await self.head.set_power(True)
         await asyncio.sleep(1)
@@ -740,6 +904,8 @@ class ProgBot:
             except Exception as e:
                 print(f"Identification failed: {e}")
                 self._mark_program(cell_id, board_status, ProgramStatus.FAILED)
+                self.stats.record_failure()
+                self.stats_updated.emit(self.stats.get_summary_text())
                 # SAFETY: Return to safe Z height before re-raising
                 await self.head.set_all(False)
                 await self.motion.rapid_z_abs(0.0)
@@ -759,6 +925,8 @@ class ProgBot:
             except Exception as e:
                 print(f"Programming failed: {e}")
                 self._mark_program(cell_id, board_status, ProgramStatus.FAILED)
+                self.stats.record_failure()
+                self.stats_updated.emit(self.stats.get_summary_text())
                 # SAFETY: Return to safe Z height before re-raising
                 await self.head.set_all(False)
                 await self.motion.rapid_z_abs(0.0)
@@ -778,6 +946,12 @@ class ProgBot:
         await asyncio.sleep(1)
         self.update_phase("Move to safe height...")
         await self.motion.rapid_z_abs(0.0)
+        
+        # Record programming time
+        program_time = time.time() - program_start
+        self.stats.record_board_time(col, row, 'program', program_time)
+        self.stats_updated.emit(self.stats.get_summary_text())
+        debug_log(f"[_run_board] Board [{col},{row}] program time: {program_time:.2f}s")
 
         self._emit_status(cell_id, board_status)
         self.current_board = None
@@ -792,6 +966,9 @@ class ProgBot:
         """Scan all boards with camera and mark those without QR codes as skipped."""
         debug_log("[_scan_all_boards_for_qr] Starting QR scan phase for all boards")
         print("[ProgBot] Starting QR scanning for all boards...")
+        
+        # Emit signal that QR scanning is starting
+        self.qr_scan_started.emit()
         
         # Start preview once at the beginning (camera running at 4 FPS to reduce GIL contention)
         if hasattr(self, 'camera_preview') and self.camera_preview:
@@ -810,6 +987,7 @@ class ProgBot:
                     # Skip if already marked to skip
                     if [col, row] in self.config.skip_board_pos:
                         debug_log(f"[_scan_all_boards_for_qr] Board [{col},{row}] is in skip list, skipping")
+                        self.stats.record_skip()
                         continue
                     
                     board_status = self.get_board_status(col, row)
@@ -834,31 +1012,22 @@ class ProgBot:
                     debug_log(f"[_scan_all_boards_for_qr] Board [{col},{row}]: board=({board_x},{board_y}), qr_offset=({self.config.qr_offset_x},{self.config.qr_offset_y}), camera_offset=({self.config.camera_offset_x},{self.config.camera_offset_y}), final_camera=({camera_x},{camera_y})")
                     
                     try:
-                        import time
-                        scan_start = time.time()
+                        board_scan_start = time.time()
                         self.update_phase(f"Scanning QR for Board [{col}, {row}]...")
                         
                         # Move to camera position
-                        move_start = time.time()
                         await self.motion.rapid_xy_abs(camera_x, camera_y)
                         await self.motion.rapid_z_abs(self.config.camera_z_height)
-                        move_time = time.time() - move_start
-                        debug_log(f"[_scan_all_boards_for_qr] Move to camera position took {move_time:.2f}s")
                         
                         # Camera buffer drain - use async version
                         if self.vision:
-                            drain_start = time.time()
                             await self.vision.drain_camera_buffer_async(max_frames=5)
-                            debug_log(f"[_scan_all_boards_for_qr] Camera buffer drain took {time.time() - drain_start:.3f}s")
-                            
                             # Give camera time to adjust exposure/focus after position change
                             await asyncio.sleep(0.3)
-                            debug_log(f"[_scan_all_boards_for_qr] Camera stabilization delay: 0.3s")
                         
                         # QR scanning
                         qr_data = None
                         if self.vision:
-                            scan_qr_start = time.time()
                             preview = self.camera_preview if hasattr(self, 'camera_preview') else None
                             
                             qr_data = await self.vision.scan_qr_code(
@@ -870,10 +1039,12 @@ class ProgBot:
                                 base_x=camera_x,
                                 base_y=camera_y
                             )
-                            debug_log(f"[_scan_all_boards_for_qr] QR scan took {time.time() - scan_qr_start:.3f}s")
                         
-                        total_time = time.time() - scan_start
-                        debug_log(f"[_scan_all_boards_for_qr] Board [{col},{row}] total scan time: {total_time:.2f}s")
+                        # Record QR scan time
+                        qr_scan_time = time.time() - board_scan_start
+                        self.stats.record_board_time(col, row, 'qr_scan', qr_scan_time)
+                        self.stats_updated.emit(self.stats.get_summary_text())
+                        debug_log(f"[_scan_all_boards_for_qr] Board [{col},{row}] QR scan time: {qr_scan_time:.2f}s")
                         
                         if qr_data:
                             board_status.qr_code = qr_data
@@ -897,6 +1068,7 @@ class ProgBot:
                             board_status.vision_status = VisionStatus.FAILED
                             board_status.probe_status = ProbeStatus.SKIPPED
                             board_status.program_status = ProgramStatus.SKIPPED
+                            self.stats.record_skip()
                             self._emit_status(cell_id, board_status)
                     
                     except Exception as e:
@@ -908,6 +1080,7 @@ class ProgBot:
                         board_status.vision_status = VisionStatus.FAILED
                         board_status.probe_status = ProbeStatus.SKIPPED
                         board_status.program_status = ProgramStatus.SKIPPED
+                        self.stats.record_failure()
                         self._emit_status(cell_id, board_status)
         
         except asyncio.CancelledError:
@@ -916,6 +1089,7 @@ class ProgBot:
                 self.camera_preview.stop_preview()
             debug_log("[_scan_all_boards_for_qr] Cancelled during QR scan")
             print("[ProgBot] QR scan cancelled")
+            self.qr_scan_ended.emit()
             raise
         finally:
             # Ensure preview is stopped even on normal completion
@@ -931,6 +1105,9 @@ class ProgBot:
             Clock.schedule_once(lambda dt: self.camera_preview.stop_preview(), 0)
             await asyncio.sleep(0.1)
         
+        # Emit signal that QR scanning has ended
+        self.qr_scan_ended.emit()
+        
         debug_log("[_scan_all_boards_for_qr] QR scan phase complete")
         print("[ProgBot] QR scanning complete. Starting probe/program cycle...")
 
@@ -938,6 +1115,10 @@ class ProgBot:
         """Execute the complete programming cycle."""
         debug_log("[full_cycle] Starting full cycle")
         print("[ProgBot] Starting full cycle...")
+        
+        # Start cycle statistics
+        self.stats.start_cycle()
+        self.stats_updated.emit(self.stats.get_summary_text())
         
         # Configure ports first (in case not done yet)
         await self.configure_ports()
@@ -979,20 +1160,18 @@ class ProgBot:
             debug_log("[full_cycle] Cycle completed successfully")
             print("[ProgBot] Cycle complete")
             
-            # Log CPU usage
-            try:
-                with open(f'/proc/{os.getpid()}/stat') as f:
-                    stats = f.read().split()
-                    utime = int(stats[13])  # user time in clock ticks
-                    stime = int(stats[14])  # system time in clock ticks
-                    debug_log(f"[full_cycle] Process CPU: utime={utime}, stime={stime}")
-            except:
-                pass
+            # End cycle statistics
+            self.stats.end_cycle()
+            self.stats_updated.emit(self.stats.get_summary_text())
             
             debug_log("[full_cycle] Cycle complete - cleanup done")
 
         except asyncio.CancelledError:
             debug_log("[full_cycle] Cycle cancelled")
+            
+            # End cycle statistics even when cancelled
+            self.stats.end_cycle()
+            self.stats_updated.emit(self.stats.get_summary_text())
             
             try:
                 debug_log("[full_cycle] Moving Z to safe height...")
@@ -1029,6 +1208,10 @@ class ProgBot:
             debug_log(f"[full_cycle] Exception: {e}")
             debug_log(f"[full_cycle] Traceback:\n{tb}")
             col, row = self.current_board if self.current_board else (None, None)
+            
+            # End cycle statistics even when exception occurs
+            self.stats.end_cycle()
+            self.stats_updated.emit(self.stats.get_summary_text())
             
             # Disconnect camera to release resources FIRST
             if hasattr(self, 'vision') and self.vision:

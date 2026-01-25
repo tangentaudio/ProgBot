@@ -125,6 +125,9 @@ class GridCell(ButtonBehavior, BoxLayout):
     
     def _on_cell_checked_changed(self, instance, value):
         """Update background color and label when cell_checked changes."""
+        # Skip if in batch update mode
+        if getattr(self, '_batch_update', False):
+            return
         self._update_bg_color()
         # Update label to show/hide SKIPPED
         if self.cell_checked:
@@ -134,6 +137,19 @@ class GridCell(ButtonBehavior, BoxLayout):
         # Call the callback if provided
         if self.on_toggle_callback:
             self.on_toggle_callback()
+    
+    def set_state_batch(self, checked, bg_color=None, label=None):
+        """Set cell state without triggering callbacks or redundant updates.
+        
+        Use this for bulk operations to avoid per-cell redraws and settings saves.
+        """
+        self._batch_update = True
+        self.cell_checked = checked
+        if bg_color is not None:
+            self.cell_bg_color = bg_color
+        if label is not None:
+            self.cell_label = label
+        self._batch_update = False
     
     def _update_bg_color(self):
         """Set background color based on cell_checked state."""
@@ -1168,43 +1184,79 @@ class AsyncApp(App):
         """Reset all grid cells to their default state as if panel was just loaded."""
         print(f"[ResetGrid] Button pressed")
         
-        # Get skip positions from current panel settings
-        skip_pos = get_settings().get('skip_board_pos', [])
-        
-        # Reset all cells to default state
-        for cell_id, cell in self.grid_cells.items():
-            # Convert cell_id to [col, row]
-            col = cell_id // self.grid_rows
-            row_from_bottom = cell_id % self.grid_rows
+        def do_reset(dt):
+            # Get skip positions from current panel settings
+            skip_pos = get_settings().get('skip_board_pos', [])
             
-            # Check if this cell is in skip list
-            is_skipped = [col, row_from_bottom] in skip_pos
+            # Reset all cells using batch update to avoid per-cell redraws
+            for cell_id, cell in self.grid_cells.items():
+                # Convert cell_id to [col, row]
+                col = cell_id // self.grid_rows
+                row_from_bottom = cell_id % self.grid_rows
+                
+                # Check if this cell is in skip list
+                is_skipped = [col, row_from_bottom] in skip_pos
+                
+                # Reset cell properties (status fields don't trigger redraws)
+                cell.status_line1 = ""
+                cell.status_line2 = ""
+                cell.serial_number = ""
+                
+                # Reset checked state and appearance in one batch
+                if is_skipped:
+                    cell.set_state_batch(False, [0, 0, 0, 1], "SKIPPED")
+                else:
+                    cell.set_state_batch(True, [0, 0.5, 0.5, 1], cell.base_cell_label)
             
-            # Reset cell properties
-            cell.status_line1 = ""
-            cell.status_line2 = ""
-            cell.serial_number = ""
+            # Reset phase label and stats display
+            self._set_widget('phase_label', text="Ready")
+            stats_label = self.root.ids.get('cycle_stats_label')
+            if stats_label:
+                stats_label.text = 'Ready'
             
-            # Reset checked state
-            cell.cell_checked = not is_skipped
+            # Clear board statuses and stats in bot
+            if self.bot:
+                self.bot.board_statuses = {}
+                self.bot.stats.reset()
             
-            # Reset background color based on checked state
-            if is_skipped:
-                cell.cell_bg_color = [0, 0, 0, 1]  # Black (SKIPPED)
-                cell.cell_label = "SKIPPED"
-            else:
-                cell.cell_bg_color = [0, 0.5, 0.5, 1]  # Dark cyan (default)
-                cell.cell_label = cell.base_cell_label
+            print(f"[ResetGrid] Grid reset complete")
         
-        # Reset phase label
-        self._set_widget('phase_label', text="Ready")
+        # Schedule to run after button release completes
+        Clock.schedule_once(do_reset, 0)
+    
+    def skip_all_boards(self, instance):
+        """Set all grid cells to skipped state."""
+        print(f"[SkipAll] Button pressed")
         
-        # Clear board statuses in bot
-        if self.bot:
-            self.bot.board_statuses = {}
-            print(f"[ResetGrid] Cleared board statuses")
+        def do_skip(dt):
+            for cell_id, cell in self.grid_cells.items():
+                cell.set_state_batch(False, [0, 0, 0, 1], "SKIPPED")
+            
+            # Save skip positions to settings and update bot
+            skip_pos = self.get_skip_board_pos()
+            get_settings().set('skip_board_pos', skip_pos)
+            if self.bot:
+                self.bot.set_skip_board_pos(skip_pos)
+            print(f"[SkipAll] All boards skipped")
         
-        print(f"[ResetGrid] Grid reset complete")
+        Clock.schedule_once(do_skip, 0)
+    
+    def enable_all_boards(self, instance):
+        """Set all grid cells to enabled state."""
+        print(f"[EnableAll] Button pressed")
+        
+        def do_enable(dt):
+            for cell_id, cell in self.grid_cells.items():
+                cell.set_state_batch(True, [0, 0.5, 0.5, 1], cell.base_cell_label)
+            
+            # Save skip positions to settings and update bot (empty list = all enabled)
+            skip_pos = self.get_skip_board_pos()
+            get_settings().set('skip_board_pos', skip_pos)
+            if self.bot:
+                self.bot.set_skip_board_pos(skip_pos)
+            print(f"[EnableAll] All boards enabled")
+        
+        Clock.schedule_once(do_enable, 0)
     
     def stop(self, instance):
         # concise stops using helper
@@ -1233,7 +1285,7 @@ class AsyncApp(App):
         except Exception as e:
             print(f"[Stop] Error in widget updates: {e}")
         
-        # Ensure camera preview is stopped
+        # Ensure camera preview is stopped and popup closed
         if hasattr(self, 'bot') and self.bot and hasattr(self.bot, 'camera_preview'):
             if self.bot.camera_preview:
                 try:
@@ -1241,6 +1293,11 @@ class AsyncApp(App):
                     debug_log("[Stop] Camera preview stopped")
                 except Exception as e:
                     debug_log(f"[Stop] Error stopping camera preview: {e}")
+        
+        # Switch back to stats view if camera was showing
+        manager = self.root.ids.get('stats_camera_manager')
+        if manager and manager.current == 'camera':
+            manager.current = 'stats'
         
         # Cancel the running task
         if (bot := getattr(self, 'bot_task', None)):
@@ -1395,6 +1452,37 @@ class AsyncApp(App):
         self.last_error_info = error_info
         Clock.schedule_once(lambda dt: self._open_error_popup(error_info))
 
+    @listener
+    async def on_stats_updated(self, stats_text):
+        """Update the cycle statistics display."""
+        def do_update(dt):
+            # Stats label is now inside the StatsScreen
+            stats_screen = self.root.ids.get('stats_screen')
+            if stats_screen:
+                stats_label = stats_screen.ids.get('cycle_stats_label')
+                if stats_label:
+                    stats_label.text = stats_text
+        Clock.schedule_once(do_update)
+    
+    @listener
+    async def on_qr_scan_started(self):
+        """Switch to camera preview when QR scanning begins."""
+        def do_show(dt):
+            manager = self.root.ids.get('stats_camera_manager')
+            if manager:
+                manager.current = 'camera'
+                print("[QRScan] Switched to camera preview")
+        Clock.schedule_once(do_show)
+    
+    @listener
+    async def on_qr_scan_ended(self):
+        """Switch back to stats display when QR scanning ends."""
+        def do_hide(dt):
+            manager = self.root.ids.get('stats_camera_manager')
+            if manager:
+                manager.current = 'stats'
+                print("[QRScan] Switched back to stats display")
+        Clock.schedule_once(do_hide)
     def on_error_abort(self):
         if self.error_popup:
             self.error_popup.dismiss()
@@ -1774,6 +1862,9 @@ class AsyncApp(App):
             self.bot.cell_color_changed.connect(self.on_cell_color_change)
             self.bot.board_status_changed.connect(self.on_board_status_change)
             self.bot.error_occurred.connect(self.on_error_occurred)
+            self.bot.stats_updated.connect(self.on_stats_updated)
+            self.bot.qr_scan_started.connect(self.on_qr_scan_started)
+            self.bot.qr_scan_ended.connect(self.on_qr_scan_ended)
             
             # Now emit panel dimensions after listeners are connected
             self.bot.init_panel()
@@ -1785,17 +1876,22 @@ class AsyncApp(App):
                 # Set up camera preview if camera is enabled
                 if self.bot.vision:
                     from camera_preview import CameraPreview
-                    camera_image = self.root.ids.get('camera_preview_image')
-                    camera_status = self.root.ids.get('camera_status_label')
-                    if camera_image and camera_status:
-                        self.bot.camera_preview = CameraPreview(
-                            self.bot.vision,
-                            camera_image,
-                            camera_status
-                        )
-                        print("[AsyncApp] Camera preview initialized")
+                    # Get camera preview widgets from the CameraScreen
+                    camera_screen = self.root.ids.get('camera_screen')
+                    if camera_screen:
+                        camera_image = camera_screen.ids.get('camera_preview_image')
+                        camera_status = camera_screen.ids.get('camera_status_label')
+                        if camera_image and camera_status:
+                            self.bot.camera_preview = CameraPreview(
+                                self.bot.vision,
+                                camera_image,
+                                camera_status
+                            )
+                            print("[AsyncApp] Camera preview initialized in stats pane")
+                        else:
+                            print("[AsyncApp] Warning: Camera screen widgets not found")
                     else:
-                        print("[AsyncApp] Warning: Camera preview widgets not found")
+                        print("[AsyncApp] Warning: Camera screen not found")
                 
                 print("[AsyncApp] Starting port configuration...")
                 await self.bot.configure_ports()
