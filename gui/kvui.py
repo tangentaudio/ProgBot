@@ -887,6 +887,11 @@ class AsyncApp(App):
         self.start_button = root.ids.get('start_btn')
         self.stop_button = root.ids.get('stop_btn')
         self.panel_grid = root.ids.get('panel_grid')
+        # Store references to HOME and grid manipulation buttons
+        self.home_btn = root.ids.get('home_btn')
+        self.reset_grid_btn = root.ids.get('reset_grid_btn')
+        self.skip_all_btn = root.ids.get('skip_all_btn')
+        self.enable_all_btn = root.ids.get('enable_all_btn')
         
         # Set panel file label to current file
         if self.panel_file_label and self.panel_settings:
@@ -1354,6 +1359,11 @@ class AsyncApp(App):
         print(f"[Start] Starting bot cycle")
         self._set_widget('start_button', disabled=True)
         self._set_widget('stop_button', disabled=False)
+        # Disable HOME and grid manipulation buttons during cycle
+        self._set_widget('home_btn', disabled=True)
+        self._set_widget('reset_grid_btn', disabled=True)
+        self._set_widget('skip_all_btn', disabled=True)
+        self._set_widget('enable_all_btn', disabled=True)
         # Disable config widgets during operation
         self._set_config_widgets_enabled(False)
         self._set_grid_cells_enabled(False)
@@ -1404,6 +1414,11 @@ class AsyncApp(App):
         # Re-enable start button and config widgets
         Clock.schedule_once(lambda dt: self._set_widget('start_button', disabled=False))
         Clock.schedule_once(lambda dt: self._set_widget('stop_button', disabled=True))
+        # Re-enable HOME and grid manipulation buttons
+        Clock.schedule_once(lambda dt: self._set_widget('home_btn', disabled=False))
+        Clock.schedule_once(lambda dt: self._set_widget('reset_grid_btn', disabled=False))
+        Clock.schedule_once(lambda dt: self._set_widget('skip_all_btn', disabled=False))
+        Clock.schedule_once(lambda dt: self._set_widget('enable_all_btn', disabled=False))
         Clock.schedule_once(lambda dt: self._set_config_widgets_enabled(True))
         Clock.schedule_once(lambda dt: self._set_grid_cells_enabled(True))
         self.bot_task = None
