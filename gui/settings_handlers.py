@@ -273,6 +273,19 @@ class SettingsHandlersMixin:
         except ValueError:
             pass
 
+    def on_camera_rotation_change(self, value):
+        """Handle camera preview rotation spinner change."""
+        try:
+            # Parse the rotation value (e.g., "90°" -> 90)
+            rotation = int(value.replace('°', ''))
+            # Save to main settings (machine config, not panel)
+            settings = get_settings()
+            settings.set('camera_preview_rotation', rotation)
+            debug_log(f"[on_camera_rotation_change] Saved rotation={rotation} to settings")
+            print(f"Updated camera_preview_rotation: {rotation}°")
+        except ValueError:
+            pass
+
     def on_use_camera_change(self, active):
         """Handle QR code scan checkbox change."""
         if self.bot:

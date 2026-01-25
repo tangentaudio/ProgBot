@@ -75,6 +75,17 @@ class CameraPreview:
             return
             
         try:
+            # Apply user-configured rotation for display
+            from settings import get_settings
+            settings = get_settings()
+            rotation = settings.get('camera_preview_rotation', 0)
+            if rotation == 90:
+                frame = cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
+            elif rotation == 180:
+                frame = cv2.rotate(frame, cv2.ROTATE_180)
+            elif rotation == 270:
+                frame = cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
+            
             # Flip frame for Kivy display
             frame_flipped = cv2.flip(frame, 0)
             

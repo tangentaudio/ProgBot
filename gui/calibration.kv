@@ -1,5 +1,5 @@
 # Calibration Dialog Layout
-# This file defines the CalibrationPopup widget for calibrating board origin and probe offset.
+# This file defines the CalibrationPopup widget for calibrating board origin, probe offset, and QR offset.
 
 <CalibrationPopup@Popup>:
     id: calibration_popup
@@ -11,318 +11,666 @@
     
     BoxLayout:
         orientation: 'vertical'
-        spacing: 4
-        padding: 4
+        spacing: 2
+        padding: 2
         
-        # Row 1: Main controls - XY pad, XY steps, Z steps, Z buttons
-        BoxLayout:
-            orientation: 'horizontal'
-            size_hint_y: 0.55
-            spacing: 4
+        TabbedPanel:
+            id: cal_tabs
+            do_default_tab: False
+            tab_width: 150
+            tab_height: 40
             
-            # XY Arrow Pad (3x3 grid)
-            GridLayout:
-                cols: 3
-                rows: 3
-                size_hint_x: 0.35
-                spacing: 3
+            TabbedPanelItem:
+                id: origins_tab
+                text: 'Origins'
                 
-                Widget:
-                Button:
-                    id: cal_y_plus
-                    text: 'Y+'
-                    font_size: '18sp'
-                    on_press: app.cal_jog('y', 1)
-                Widget:
-                
-                Button:
-                    id: cal_x_minus
-                    text: 'X-'
-                    font_size: '18sp'
-                    on_press: app.cal_jog('x', -1)
-                Widget:
-                Button:
-                    id: cal_x_plus
-                    text: 'X+'
-                    font_size: '18sp'
-                    on_press: app.cal_jog('x', 1)
-                
-                Widget:
-                Button:
-                    id: cal_y_minus
-                    text: 'Y-'
-                    font_size: '18sp'
-                    on_press: app.cal_jog('y', -1)
-                Widget:
+                BoxLayout:
+                    orientation: 'vertical'
+                    spacing: 4
+                    padding: 4
+                    
+                    # Row 1: Main controls - Z buttons, Z steps, XY steps, XY pad
+                    BoxLayout:
+                        orientation: 'horizontal'
+                        size_hint_y: None
+                        height: 200
+                        spacing: 4
+                        
+                        # Z Buttons (vertical)
+                        BoxLayout:
+                            orientation: 'vertical'
+                            size_hint_x: 0.25
+                            spacing: 4
+                            
+                            Button:
+                                id: cal_z_up
+                                text: 'Z+'
+                                font_size: '20sp'
+                                on_press: app.cal_jog('z', 1)
+                            
+                            Button:
+                                id: cal_z_down
+                                text: 'Z-'
+                                font_size: '20sp'
+                                on_press: app.cal_jog('z', -1)
+                        
+                        # Z Step selector
+                        BoxLayout:
+                            orientation: 'vertical'
+                            size_hint_x: 0.17
+                            spacing: 2
+                            
+                            ToggleButton:
+                                id: cal_z_step_1
+                                text: '1'
+                                group: 'z_step'
+                                font_size: '13sp'
+                                state: 'down'
+                                on_state: app.cal_set_z_step(1) if self.state == 'down' else None
+                            
+                            ToggleButton:
+                                id: cal_z_step_05
+                                text: '.5'
+                                group: 'z_step'
+                                font_size: '13sp'
+                                on_state: app.cal_set_z_step(0.5) if self.state == 'down' else None
+                            
+                            ToggleButton:
+                                id: cal_z_step_02
+                                text: '.2'
+                                group: 'z_step'
+                                font_size: '13sp'
+                                on_state: app.cal_set_z_step(0.2) if self.state == 'down' else None
+                            
+                            ToggleButton:
+                                id: cal_z_step_01
+                                text: '.1'
+                                group: 'z_step'
+                                font_size: '13sp'
+                                on_state: app.cal_set_z_step(0.1) if self.state == 'down' else None
+                            
+                            Widget:
+                        
+                        # Vertical separator
+                        Widget:
+                            size_hint_x: 0.03
+                            canvas:
+                                Color:
+                                    rgba: 0.4, 0.4, 0.4, 1
+                                Rectangle:
+                                    pos: self.center_x - 1, self.y + 10
+                                    size: 2, self.height - 20
+                        
+                        # XY Step selector
+                        BoxLayout:
+                            orientation: 'vertical'
+                            size_hint_x: None
+                            width: 50
+                            spacing: 2
+                            
+                            ToggleButton:
+                                id: cal_xy_step_20
+                                text: '20'
+                                group: 'xy_step'
+                                font_size: '13sp'
+                                on_state: app.cal_set_xy_step(20) if self.state == 'down' else None
+                            
+                            ToggleButton:
+                                id: cal_xy_step_10
+                                text: '10'
+                                group: 'xy_step'
+                                font_size: '13sp'
+                                on_state: app.cal_set_xy_step(10) if self.state == 'down' else None
+                            
+                            ToggleButton:
+                                id: cal_xy_step_5
+                                text: '5'
+                                group: 'xy_step'
+                                font_size: '13sp'
+                                state: 'down'
+                                on_state: app.cal_set_xy_step(5) if self.state == 'down' else None
+                            
+                            ToggleButton:
+                                id: cal_xy_step_1
+                                text: '1'
+                                group: 'xy_step'
+                                font_size: '13sp'
+                                on_state: app.cal_set_xy_step(1) if self.state == 'down' else None
+                            
+                            ToggleButton:
+                                id: cal_xy_step_05
+                                text: '.5'
+                                group: 'xy_step'
+                                font_size: '13sp'
+                                on_state: app.cal_set_xy_step(0.5) if self.state == 'down' else None
+                            
+                            ToggleButton:
+                                id: cal_xy_step_02
+                                text: '.2'
+                                group: 'xy_step'
+                                font_size: '13sp'
+                                on_state: app.cal_set_xy_step(0.2) if self.state == 'down' else None
+                            
+                            ToggleButton:
+                                id: cal_xy_step_01
+                                text: '.1'
+                                group: 'xy_step'
+                                font_size: '13sp'
+                                on_state: app.cal_set_xy_step(0.1) if self.state == 'down' else None
+                        
+                        # XY Arrow Pad (3x3 grid)
+                        GridLayout:
+                            cols: 3
+                            rows: 3
+                            size_hint_x: None
+                            width: 180
+                            spacing: 3
+                            
+                            Widget:
+                            Button:
+                                id: cal_y_plus
+                                text: 'Y+'
+                                font_size: '18sp'
+                                on_press: app.cal_jog('y', 1)
+                            Widget:
+                            
+                            Button:
+                                id: cal_x_minus
+                                text: 'X-'
+                                font_size: '18sp'
+                                on_press: app.cal_jog('x', -1)
+                            Widget:
+                            Button:
+                                id: cal_x_plus
+                                text: 'X+'
+                                font_size: '18sp'
+                                on_press: app.cal_jog('x', 1)
+                            
+                            Widget:
+                            Button:
+                                id: cal_y_minus
+                                text: 'Y-'
+                                font_size: '18sp'
+                                on_press: app.cal_jog('y', -1)
+                            Widget:
+                    
+                    # Spacer between jog controls and button rows
+                    Widget:
+                        size_hint_y: 0.03
+                    
+                    # Row 2: XY controls - Home, Go Origin, Set Origin
+                    BoxLayout:
+                        orientation: 'horizontal'
+                        size_hint_y: 0.12
+                        spacing: 6
+                        
+                        Button:
+                            id: cal_home_btn
+                            text: 'Go Home'
+                            size_hint_x: 0.1125
+                            font_size: '13sp'
+                            background_color: 0.5, 0.5, 0.3, 1
+                            on_press: app.cal_home()
+                        
+                        Button:
+                            id: cal_goto_origin_btn
+                            text: 'Go Origin'
+                            size_hint_x: 0.1125
+                            font_size: '13sp'
+                            background_color: 0.3, 0.5, 0.6, 1
+                            on_press: app.cal_goto_origin()
+                        
+                        Widget:
+                            size_hint_x: 0.1125
+                        
+                        Button:
+                            id: cal_set_origin_btn
+                            text: 'Set Origin'
+                            size_hint_x: 0.1125
+                            font_size: '13sp'
+                            background_color: 0.2, 0.6, 0.3, 1
+                            on_press: app.cal_set_board_origin()
+                        
+                        Label:
+                            id: cal_origin_label
+                            text: 'Origin: X=---, Y=---'
+                            size_hint_x: 0.55
+                            font_size: '16sp'
+                            halign: 'left'
+                            valign: 'center'
+                            text_size: self.size
+                            padding: [10, 0]
+                    
+                    # Row 3: Z controls - Go Safe Z, Probe, Go Ofs, Set Z Offset
+                    BoxLayout:
+                        orientation: 'horizontal'
+                        size_hint_y: 0.12
+                        spacing: 6
+                        
+                        Button:
+                            id: cal_safe_z_btn
+                            text: 'Go Safe Z'
+                            size_hint_x: 0.1125
+                            font_size: '13sp'
+                            background_color: 0.3, 0.5, 0.7, 1
+                            on_press: app.cal_safe_z()
+                        
+                        Button:
+                            id: cal_probe_btn
+                            text: 'Probe'
+                            size_hint_x: 0.1125
+                            font_size: '13sp'
+                            background_color: 0.5, 0.3, 0.7, 1
+                            on_press: app.cal_do_probe()
+                        
+                        Button:
+                            id: cal_goto_offset_btn
+                            text: 'Go Ofs'
+                            size_hint_x: 0.1125
+                            font_size: '13sp'
+                            background_color: 0.4, 0.5, 0.5, 1
+                            disabled: True
+                            on_press: app.cal_goto_offset()
+                        
+                        Button:
+                            id: cal_set_probe_offset_btn
+                            text: 'Set Z Ofs'
+                            size_hint_x: 0.1125
+                            font_size: '13sp'
+                            background_color: 0.6, 0.4, 0.2, 1
+                            disabled: True
+                            on_press: app.cal_capture_probe_offset()
+                        
+                        BoxLayout:
+                            orientation: 'vertical'
+                            size_hint_x: 0.55
+                            
+                            Label:
+                                id: cal_probe_result
+                                text: 'Probe: ---'
+                                font_size: '16sp'
+                                halign: 'left'
+                                valign: 'center'
+                                text_size: self.size
+                                padding: [10, 0]
+                            
+                            Label:
+                                id: cal_probe_offset_label
+                                text: 'Z Offset: --- mm'
+                                font_size: '16sp'
+                                halign: 'left'
+                                valign: 'center'
+                                text_size: self.size
+                                padding: [10, 0]
+                    
+                    # Row 4: Position display and Close
+                    BoxLayout:
+                        orientation: 'horizontal'
+                        size_hint_y: 0.09
+                        spacing: 6
+                        
+                        Label:
+                            id: cal_pos_x
+                            text: 'X: ---'
+                            size_hint_x: 0.25
+                            font_size: '15sp'
+                            halign: 'center'
+                            valign: 'center'
+                            text_size: self.size
+                            bold: True
+                        
+                        Label:
+                            id: cal_pos_y
+                            text: 'Y: ---'
+                            size_hint_x: 0.25
+                            font_size: '15sp'
+                            halign: 'center'
+                            valign: 'center'
+                            text_size: self.size
+                            bold: True
+                        
+                        Label:
+                            id: cal_pos_z
+                            text: 'Z: ---'
+                            size_hint_x: 0.25
+                            font_size: '15sp'
+                            halign: 'center'
+                            valign: 'center'
+                            text_size: self.size
+                            bold: True
+                        
+                        Button:
+                            text: 'Close'
+                            size_hint_x: 0.25
+                            font_size: '14sp'
+                            on_press: app.cal_close()
             
-            # XY Step selector
-            BoxLayout:
-                orientation: 'vertical'
-                size_hint_x: 0.2
-                spacing: 2
+            TabbedPanelItem:
+                id: vision_tab
+                text: 'Vision'
+                on_state: app.cal_vision_tab_changed(self.state)
                 
-                ToggleButton:
-                    id: cal_xy_step_20
-                    text: '20'
-                    group: 'xy_step'
-                    font_size: '13sp'
-                    on_state: app.cal_set_xy_step(20) if self.state == 'down' else None
-                
-                ToggleButton:
-                    id: cal_xy_step_10
-                    text: '10'
-                    group: 'xy_step'
-                    font_size: '13sp'
-                    on_state: app.cal_set_xy_step(10) if self.state == 'down' else None
-                
-                ToggleButton:
-                    id: cal_xy_step_5
-                    text: '5'
-                    group: 'xy_step'
-                    font_size: '13sp'
-                    state: 'down'
-                    on_state: app.cal_set_xy_step(5) if self.state == 'down' else None
-                
-                ToggleButton:
-                    id: cal_xy_step_1
-                    text: '1'
-                    group: 'xy_step'
-                    font_size: '13sp'
-                    on_state: app.cal_set_xy_step(1) if self.state == 'down' else None
-                
-                ToggleButton:
-                    id: cal_xy_step_05
-                    text: '.5'
-                    group: 'xy_step'
-                    font_size: '13sp'
-                    on_state: app.cal_set_xy_step(0.5) if self.state == 'down' else None
-                
-                ToggleButton:
-                    id: cal_xy_step_02
-                    text: '.2'
-                    group: 'xy_step'
-                    font_size: '13sp'
-                    on_state: app.cal_set_xy_step(0.2) if self.state == 'down' else None
-                
-                ToggleButton:
-                    id: cal_xy_step_01
-                    text: '.1'
-                    group: 'xy_step'
-                    font_size: '13sp'
-                    on_state: app.cal_set_xy_step(0.1) if self.state == 'down' else None
-            
-            # Vertical separator
-            Widget:
-                size_hint_x: 0.03
-                canvas:
-                    Color:
-                        rgba: 0.4, 0.4, 0.4, 1
-                    Rectangle:
-                        pos: self.center_x - 1, self.y + 10
-                        size: 2, self.height - 20
-            
-            # Z Step selector
-            BoxLayout:
-                orientation: 'vertical'
-                size_hint_x: 0.17
-                spacing: 2
-                
-                ToggleButton:
-                    id: cal_z_step_1
-                    text: '1'
-                    group: 'z_step'
-                    font_size: '13sp'
-                    state: 'down'
-                    on_state: app.cal_set_z_step(1) if self.state == 'down' else None
-                
-                ToggleButton:
-                    id: cal_z_step_05
-                    text: '.5'
-                    group: 'z_step'
-                    font_size: '13sp'
-                    on_state: app.cal_set_z_step(0.5) if self.state == 'down' else None
-                
-                ToggleButton:
-                    id: cal_z_step_02
-                    text: '.2'
-                    group: 'z_step'
-                    font_size: '13sp'
-                    on_state: app.cal_set_z_step(0.2) if self.state == 'down' else None
-                
-                ToggleButton:
-                    id: cal_z_step_01
-                    text: '.1'
-                    group: 'z_step'
-                    font_size: '13sp'
-                    on_state: app.cal_set_z_step(0.1) if self.state == 'down' else None
-                
-                Widget:
-            
-            # Z Buttons (vertical)
-            BoxLayout:
-                orientation: 'vertical'
-                size_hint_x: 0.25
-                spacing: 4
-                
-                Button:
-                    id: cal_z_up
-                    text: 'Z+'
-                    font_size: '20sp'
-                    on_press: app.cal_jog('z', 1)
-                
-                Button:
-                    id: cal_z_down
-                    text: 'Z-'
-                    font_size: '20sp'
-                    on_press: app.cal_jog('z', -1)
-        
-        # Spacer between jog controls and button rows
-        Widget:
-            size_hint_y: 0.03
-        
-        # Row 2: XY controls - Home, Go Origin, Set Origin
-        BoxLayout:
-            orientation: 'horizontal'
-            size_hint_y: 0.12
-            spacing: 6
-            
-            Button:
-                id: cal_home_btn
-                text: 'Go Home'
-                size_hint_x: 0.1125
-                font_size: '13sp'
-                background_color: 0.5, 0.5, 0.3, 1
-                on_press: app.cal_home()
-            
-            Button:
-                id: cal_goto_origin_btn
-                text: 'Go Origin'
-                size_hint_x: 0.1125
-                font_size: '13sp'
-                background_color: 0.3, 0.5, 0.6, 1
-                on_press: app.cal_goto_origin()
-            
-            Widget:
-                size_hint_x: 0.1125
-            
-            Button:
-                id: cal_set_origin_btn
-                text: 'Set Origin'
-                size_hint_x: 0.1125
-                font_size: '13sp'
-                background_color: 0.2, 0.6, 0.3, 1
-                on_press: app.cal_set_board_origin()
-            
-            Label:
-                id: cal_origin_label
-                text: 'Origin: X=---, Y=---'
-                size_hint_x: 0.55
-                font_size: '16sp'
-                halign: 'left'
-                valign: 'center'
-                text_size: self.size
-                padding: [10, 0]
-        
-        # Row 3: Z controls - Go Safe Z, Probe, Go Ofs, Set Z Offset
-        BoxLayout:
-            orientation: 'horizontal'
-            size_hint_y: 0.12
-            spacing: 6
-            
-            Button:
-                id: cal_safe_z_btn
-                text: 'Go Safe Z'
-                size_hint_x: 0.1125
-                font_size: '13sp'
-                background_color: 0.3, 0.5, 0.7, 1
-                on_press: app.cal_safe_z()
-            
-            Button:
-                id: cal_probe_btn
-                text: 'Probe'
-                size_hint_x: 0.1125
-                font_size: '13sp'
-                background_color: 0.5, 0.3, 0.7, 1
-                on_press: app.cal_do_probe()
-            
-            Button:
-                id: cal_goto_offset_btn
-                text: 'Go Ofs'
-                size_hint_x: 0.1125
-                font_size: '13sp'
-                background_color: 0.4, 0.5, 0.5, 1
-                disabled: True
-                on_press: app.cal_goto_offset()
-            
-            Button:
-                id: cal_set_probe_offset_btn
-                text: 'Set Z Ofs'
-                size_hint_x: 0.1125
-                font_size: '13sp'
-                background_color: 0.6, 0.4, 0.2, 1
-                disabled: True
-                on_press: app.cal_capture_probe_offset()
-            
-            BoxLayout:
-                orientation: 'vertical'
-                size_hint_x: 0.55
-                
-                Label:
-                    id: cal_probe_result
-                    text: 'Probe: ---'
-                    font_size: '16sp'
-                    halign: 'left'
-                    valign: 'center'
-                    text_size: self.size
-                    padding: [10, 0]
-                
-                Label:
-                    id: cal_probe_offset_label
-                    text: 'Z Offset: --- mm'
-                    font_size: '16sp'
-                    halign: 'left'
-                    valign: 'center'
-                    text_size: self.size
-                    padding: [10, 0]
-        
-        # Row 4: Position display and Close
-        BoxLayout:
-            orientation: 'horizontal'
-            size_hint_y: 0.09
-            spacing: 6
-            
-            Label:
-                id: cal_pos_x
-                text: 'X: ---'
-                size_hint_x: 0.25
-                font_size: '15sp'
-                halign: 'center'
-                valign: 'center'
-                text_size: self.size
-                bold: True
-            
-            Label:
-                id: cal_pos_y
-                text: 'Y: ---'
-                size_hint_x: 0.25
-                font_size: '15sp'
-                halign: 'center'
-                valign: 'center'
-                text_size: self.size
-                bold: True
-            
-            Label:
-                id: cal_pos_z
-                text: 'Z: ---'
-                size_hint_x: 0.25
-                font_size: '15sp'
-                halign: 'center'
-                valign: 'center'
-                text_size: self.size
-                bold: True
-            
-            Button:
-                text: 'Close'
-                size_hint_x: 0.25
-                font_size: '14sp'
-                on_press: app.cal_close()
+                BoxLayout:
+                    orientation: 'horizontal'
+                    spacing: 4
+                    padding: 4
+                    
+                    # Left side: Camera preview and status
+                    BoxLayout:
+                        orientation: 'vertical'
+                        size_hint_x: 0.45
+                        spacing: 4
+                        
+                        # Camera preview area
+                        BoxLayout:
+                            orientation: 'vertical'
+                            
+                            Label:
+                                id: vision_status_label
+                                text: 'Camera Preview'
+                                size_hint_y: None
+                                height: 30
+                                font_size: '14sp'
+                                halign: 'center'
+                                color: 0.5, 0.5, 0.5, 1
+                            
+                            Image:
+                                id: vision_preview_image
+                                size_hint: 1, 1
+                                allow_stretch: True
+                                keep_ratio: True
+                                color: 0, 0, 0, 1
+                        
+                        # QR Detection result display
+                        BoxLayout:
+                            orientation: 'horizontal'
+                            size_hint_y: None
+                            height: 35
+                            spacing: 4
+                            
+                            Label:
+                                id: vision_qr_type_label
+                                text: 'No code detected'
+                                size_hint_x: 0.35
+                                font_size: '13sp'
+                                halign: 'right'
+                                valign: 'center'
+                                text_size: self.size
+                                color: 0.5, 0.5, 0.5, 1
+                            
+                            Label:
+                                id: vision_qr_detected_label
+                                text: ''
+                                size_hint_x: 0.65
+                                font_size: '16sp'
+                                bold: True
+                                halign: 'left'
+                                valign: 'center'
+                                text_size: self.size
+                                color: 0.5, 0.5, 0.5, 1
+                        
+                        # QR Offset display
+                        Label:
+                            id: vision_qr_offset_label
+                            text: 'QR Offset: X=---, Y=---'
+                            size_hint_y: None
+                            height: 25
+                            font_size: '14sp'
+                            halign: 'center'
+                            valign: 'center'
+                        
+                        # Position display
+                        BoxLayout:
+                            orientation: 'horizontal'
+                            size_hint_y: None
+                            height: 25
+                            spacing: 6
+                            
+                            Label:
+                                id: vision_pos_x
+                                text: 'X: ---'
+                                font_size: '14sp'
+                                halign: 'center'
+                                valign: 'center'
+                                text_size: self.size
+                                bold: True
+                            
+                            Label:
+                                id: vision_pos_y
+                                text: 'Y: ---'
+                                font_size: '14sp'
+                                halign: 'center'
+                                valign: 'center'
+                                text_size: self.size
+                                bold: True
+                        
+                        # Rotation controls
+                        BoxLayout:
+                            orientation: 'horizontal'
+                            size_hint_y: None
+                            height: 30
+                            spacing: 4
+                            
+                            Label:
+                                text: 'Rotate:'
+                                size_hint_x: 0.2
+                                font_size: '12sp'
+                                halign: 'right'
+                                valign: 'center'
+                                text_size: self.size
+                            
+                            ToggleButton:
+                                id: vision_rot_0
+                                text: '0°'
+                                group: 'vision_rotation'
+                                size_hint_x: 0.2
+                                font_size: '12sp'
+                                on_state: app.cal_vision_set_rotation(0) if self.state == 'down' else None
+                            
+                            ToggleButton:
+                                id: vision_rot_90
+                                text: '90°'
+                                group: 'vision_rotation'
+                                size_hint_x: 0.2
+                                font_size: '12sp'
+                                on_state: app.cal_vision_set_rotation(90) if self.state == 'down' else None
+                            
+                            ToggleButton:
+                                id: vision_rot_180
+                                text: '180°'
+                                group: 'vision_rotation'
+                                size_hint_x: 0.2
+                                font_size: '12sp'
+                                on_state: app.cal_vision_set_rotation(180) if self.state == 'down' else None
+                            
+                            ToggleButton:
+                                id: vision_rot_270
+                                text: '270°'
+                                group: 'vision_rotation'
+                                size_hint_x: 0.2
+                                font_size: '12sp'
+                                on_state: app.cal_vision_set_rotation(270) if self.state == 'down' else None
+                    
+                    # Right side: XY jog controls and action buttons
+                    BoxLayout:
+                        orientation: 'vertical'
+                        size_hint_x: 0.55
+                        spacing: 4
+                        
+                        # Board selector and XY Jog controls
+                        BoxLayout:
+                            orientation: 'horizontal'
+                            size_hint_y: None
+                            height: 200
+                            spacing: 4
+                            
+                            # Board selector (3x3 grid cross)
+                            BoxLayout:
+                                orientation: 'vertical'
+                                size_hint_x: None
+                                width: 100
+                                spacing: 2
+                                
+                                Label:
+                                    text: 'Board'
+                                    size_hint_y: None
+                                    height: 18
+                                    font_size: '11sp'
+                                    halign: 'center'
+                                    color: 0.7, 0.7, 0.7, 1
+                                
+                                GridLayout:
+                                    cols: 3
+                                    rows: 3
+                                    spacing: 2
+                                    
+                                    Widget:
+                                    Button:
+                                        text: 'R+'
+                                        font_size: '14sp'
+                                        on_press: app.cal_vision_board_change('row', 1)
+                                    Widget:
+                                    
+                                    Button:
+                                        text: 'C-'
+                                        font_size: '14sp'
+                                        on_press: app.cal_vision_board_change('col', -1)
+                                    Label:
+                                        id: vision_board_pos_label
+                                        text: '0,0'
+                                        font_size: '14sp'
+                                        bold: True
+                                        halign: 'center'
+                                        valign: 'middle'
+                                        text_size: self.size
+                                    Button:
+                                        text: 'C+'
+                                        font_size: '14sp'
+                                        on_press: app.cal_vision_board_change('col', 1)
+                                    
+                                    Widget:
+                                    Button:
+                                        text: 'R-'
+                                        font_size: '14sp'
+                                        on_press: app.cal_vision_board_change('row', -1)
+                                    Widget:
+                            
+                            # Spacer to push XY controls to the right
+                            Widget:
+                            
+                            # XY Step selector
+                            BoxLayout:
+                                orientation: 'vertical'
+                                size_hint_x: None
+                                width: 50
+                                spacing: 2
+                                
+                                ToggleButton:
+                                    id: vision_xy_step_20
+                                    text: '20'
+                                    group: 'vision_xy_step'
+                                    font_size: '13sp'
+                                    on_state: app.cal_vision_set_xy_step(20) if self.state == 'down' else None
+                                
+                                ToggleButton:
+                                    id: vision_xy_step_10
+                                    text: '10'
+                                    group: 'vision_xy_step'
+                                    font_size: '13sp'
+                                    on_state: app.cal_vision_set_xy_step(10) if self.state == 'down' else None
+                                
+                                ToggleButton:
+                                    id: vision_xy_step_5
+                                    text: '5'
+                                    group: 'vision_xy_step'
+                                    font_size: '13sp'
+                                    state: 'down'
+                                    on_state: app.cal_vision_set_xy_step(5) if self.state == 'down' else None
+                                
+                                ToggleButton:
+                                    id: vision_xy_step_1
+                                    text: '1'
+                                    group: 'vision_xy_step'
+                                    font_size: '13sp'
+                                    on_state: app.cal_vision_set_xy_step(1) if self.state == 'down' else None
+                                
+                                ToggleButton:
+                                    id: vision_xy_step_05
+                                    text: '.5'
+                                    group: 'vision_xy_step'
+                                    font_size: '13sp'
+                                    on_state: app.cal_vision_set_xy_step(0.5) if self.state == 'down' else None
+                                
+                                ToggleButton:
+                                    id: vision_xy_step_02
+                                    text: '.2'
+                                    group: 'vision_xy_step'
+                                    font_size: '13sp'
+                                    on_state: app.cal_vision_set_xy_step(0.2) if self.state == 'down' else None
+                                
+                                ToggleButton:
+                                    id: vision_xy_step_01
+                                    text: '.1'
+                                    group: 'vision_xy_step'
+                                    font_size: '13sp'
+                                    on_state: app.cal_vision_set_xy_step(0.1) if self.state == 'down' else None
+                            
+                            # XY Arrow Pad (3x3 grid)
+                            GridLayout:
+                                cols: 3
+                                rows: 3
+                                size_hint_x: None
+                                width: 180
+                                spacing: 3
+                                
+                                Widget:
+                                Button:
+                                    id: vision_y_plus
+                                    text: 'Y+'
+                                    font_size: '18sp'
+                                    on_press: app.cal_vision_jog('y', 1)
+                                Widget:
+                                
+                                Button:
+                                    id: vision_x_minus
+                                    text: 'X-'
+                                    font_size: '18sp'
+                                    on_press: app.cal_vision_jog('x', -1)
+                                Widget:
+                                Button:
+                                    id: vision_x_plus
+                                    text: 'X+'
+                                    font_size: '18sp'
+                                    on_press: app.cal_vision_jog('x', 1)
+                                
+                                Widget:
+                                Button:
+                                    id: vision_y_minus
+                                    text: 'Y-'
+                                    font_size: '18sp'
+                                    on_press: app.cal_vision_jog('y', -1)
+                                Widget:
+                        
+                        # Action buttons
+                        BoxLayout:
+                            orientation: 'vertical'
+                            spacing: 4
+                            
+                            Button:
+                                id: vision_goto_qr_btn
+                                text: 'Go to QR Position'
+                                font_size: '14sp'
+                                background_color: 0.3, 0.5, 0.6, 1
+                                on_press: app.cal_vision_goto_qr()
+                            
+                            Button:
+                                id: vision_set_qr_offset_btn
+                                text: 'Set QR Offset'
+                                font_size: '14sp'
+                                background_color: 0.2, 0.6, 0.3, 1
+                                on_press: app.cal_vision_set_qr_offset()
+                            
+                            Button:
+                                text: 'Close'
+                                font_size: '14sp'
+                                on_press: app.cal_close()

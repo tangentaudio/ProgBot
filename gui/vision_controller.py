@@ -50,6 +50,7 @@ class VisionController:
         self.picamera2 = None
         self._picamera_started = False
         self._connecting = False
+        self._last_capture_time = 0  # Track last capture for fast-path optimization
         
         # Camera process for GIL isolation
         self.camera_process = None
@@ -331,6 +332,8 @@ class VisionController:
                 dtype = np.dtype(result['dtype'])
                 
                 frame = np.frombuffer(frame_bytes, dtype=dtype).reshape(shape)
+                # Track capture time for fast-path optimization
+                self._last_capture_time = time.time()
                 return frame
             else:
                 error = result.get('error', 'Unknown error') if result else 'No response'
@@ -346,8 +349,11 @@ class VisionController:
     async def scan_qr_code(self, retries=3, delay=0.5, camera_preview=None, motion_controller=None, search_offset=0.0, base_x=None, base_y=None) -> Optional[str]:
         """Scan for QR code in camera view.
         
+        Uses a fast-path approach: try immediate detection first without delays,
+        then fall back to retry logic only if needed.
+        
         Args:
-            retries: Number of capture attempts
+            retries: Number of capture attempts (after fast-path fails)
             delay: Delay between retries in seconds
             camera_preview: Optional CameraPreview to display preprocessed frames
             motion_controller: Optional MotionController for position search
@@ -361,107 +367,113 @@ class VisionController:
         scan_start = time.time()
         self.update_phase("Scanning QR")
         
+        # Check if camera was recently active (within last 2 seconds)
+        # If so, skip throwaway frame - camera is already warmed up
+        camera_warm = (time.time() - self._last_capture_time) < 2.0
+        
+        # === FAST PATH: Try immediate detection without delays ===
+        try:
+            frame = await self.capture_frame()
+            if frame is not None:
+                # Preprocess frame
+                loop = asyncio.get_event_loop()
+                frame_gray, orig_size = await loop.run_in_executor(None, self._preprocess_frame, frame)
+                
+                if camera_preview:
+                    camera_preview.show_frame(frame_gray, "fast-path")
+                
+                # Try standard QR detection (very fast)
+                data = await loop.run_in_executor(None, self._detect_qr_single, frame_gray)
+                if data:
+                    total_time = time.time() - scan_start
+                    if camera_preview:
+                        camera_preview.show_frame(frame_gray, "QR detected (fast)", qr_found=data)
+                    debug_log(f"[VisionController] FAST PATH: Standard QR FOUND: {data} (total: {total_time:.3f}s)")
+                    return data
+                
+                # Try Micro QR detection
+                data = await loop.run_in_executor(None, self._detect_micro_qr_with_rotation, frame_gray, None)
+                if data:
+                    total_time = time.time() - scan_start
+                    if camera_preview:
+                        camera_preview.show_frame(frame_gray, "QR detected (fast)", qr_found=data)
+                    debug_log(f"[VisionController] FAST PATH: Micro QR FOUND: {data} (total: {total_time:.3f}s)")
+                    return data
+                
+                debug_log(f"[VisionController] Fast path failed, falling back to retry logic")
+        except Exception as e:
+            debug_log(f"[VisionController] Fast path exception: {e}")
+        
+        # === RETRY PATH: Only if fast path failed ===
         for attempt in range(retries):
             try:
-                # Capture a throwaway frame first to let camera auto-adjust
-                if attempt == 0:
+                # Only do throwaway frame on first attempt if camera wasn't recently active
+                if attempt == 0 and not camera_warm:
                     throwaway = await self.capture_frame()
                     if throwaway is not None:
-                        await asyncio.sleep(0.1)  # Brief pause for camera adjustment
+                        await asyncio.sleep(0.05)  # Reduced from 0.1s
                         debug_log(f"[VisionController] Captured throwaway frame for camera adjustment")
                 
                 frame = await self.capture_frame()
                 if frame is None:
                     print(f"[VisionController] Capture failed on attempt {attempt + 1}")
                     if attempt < retries - 1:
-                        await asyncio.sleep(delay)
+                        await asyncio.sleep(delay * 0.5)  # Reduced delay
                     continue
                 
-                # Preprocess frame in executor to avoid blocking event loop
-                def preprocess_frame(img):
-                    """Crop and convert to grayscale"""
-                    # 1. Crop to center square (full height, centered horizontally)
-                    height, width = img.shape[:2]
-                    if width > height:
-                        # Crop left and right to make square
-                        left = (width - height) // 2
-                        right = left + height
-                        img = img[:, left:right]
-                    
-                    # 2. Convert to grayscale for QR detection
-                    if len(img.shape) == 3:
-                        img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-                    
-                    return img, (width, height)
-                
                 loop = asyncio.get_event_loop()
-                frame, orig_size = await loop.run_in_executor(None, preprocess_frame, frame)
-                debug_log(f"[VisionController] Preprocessed frame from {orig_size[0]}x{orig_size[1]} to {frame.shape[1]}x{frame.shape[0]}, grayscale")
+                frame_gray, orig_size = await loop.run_in_executor(None, self._preprocess_frame, frame)
+                debug_log(f"[VisionController] Preprocessed frame from {orig_size[0]}x{orig_size[1]} to {frame_gray.shape[1]}x{frame_gray.shape[0]}, grayscale")
                 
-                # Simplified: Just grayscale with 4 orientations for Micro QR
                 if camera_preview:
-                    camera_preview.show_frame(frame, "grayscale (base)")
+                    camera_preview.show_frame(frame_gray, f"retry {attempt+1}")
                 
                 # Try standard QR detection first (fast)
                 strategy_start = time.time()
-                data = await loop.run_in_executor(None, self._detect_qr_single, frame)
+                data = await loop.run_in_executor(None, self._detect_qr_single, frame_gray)
                 strategy_time = time.time() - strategy_start
                 if data:
                     total_time = time.time() - scan_start
                     if camera_preview:
-                        camera_preview.show_frame(frame, "grayscale - QR detected", qr_found=data)
-                    debug_log(f"[VisionController] Standard QR FOUND (grayscale): {data} (strategy: {strategy_time:.3f}s, total: {total_time:.3f}s)")
+                        camera_preview.show_frame(frame_gray, "QR detected", qr_found=data)
+                    debug_log(f"[VisionController] Standard QR FOUND: {data} (strategy: {strategy_time:.3f}s, total: {total_time:.3f}s)")
                     return data
-                debug_log(f"[VisionController] Standard QR detection: no QR (took {strategy_time:.3f}s)")
                 
-                # Try Micro QR detection with zxing-cpp (always attempt, will log if unavailable)
-                debug_log("[VisionController] Trying Micro QR detection with 4 orientations (0°, 90°, 180°, 270°)")
-                
-                # Show base frame before rotation testing
-                if camera_preview:
-                    camera_preview.show_frame(frame, "Testing 4 orientations...")
-                
-                # Try on simple grayscale with all 4 orientations
-                # Note: Don't pass camera_preview to function called via executor (causes UI freeze)
+                # Try Micro QR detection
                 strategy_start = time.time()
-                data = await loop.run_in_executor(None, self._detect_micro_qr_with_rotation, frame, None)
+                data = await loop.run_in_executor(None, self._detect_micro_qr_with_rotation, frame_gray, None)
                 strategy_time = time.time() - strategy_start
                 if data:
                     total_time = time.time() - scan_start
                     if camera_preview:
-                        camera_preview.show_frame(frame, "QR detected", qr_found=data)
-                    debug_log(f"[VisionController] Micro QR FOUND with zxing-cpp: {data} (strategy: {strategy_time:.3f}s, total: {total_time:.3f}s)")
+                        camera_preview.show_frame(frame_gray, "QR detected", qr_found=data)
+                    debug_log(f"[VisionController] Micro QR FOUND: {data} (strategy: {strategy_time:.3f}s, total: {total_time:.3f}s)")
                     return data
-                debug_log(f"[VisionController] Micro QR detection with 4 orientations: no QR (took {strategy_time:.3f}s)")
                 
-                attempt_time = time.time() - scan_start
-                debug_log(f"[VisionController] All strategies failed on attempt {attempt + 1}/{retries} (attempt time: {attempt_time:.3f}s)")
+                debug_log(f"[VisionController] Attempt {attempt + 1}/{retries} failed")
                 
-                # Save failed frame for debugging
+                # Save failed frame on last attempt
                 if attempt == retries - 1:
                     try:
-                        import os
                         save_path = f"/tmp/failed_qr_scan_{int(scan_start)}.png"
-                        cv2.imwrite(save_path, frame)
+                        cv2.imwrite(save_path, frame_gray)
                         debug_log(f"[VisionController] Saved failed scan frame to {save_path}")
                     except Exception as e:
                         debug_log(f"[VisionController] Could not save frame: {e}")
                 
                 if attempt < retries - 1:
-                    await asyncio.sleep(delay)
+                    await asyncio.sleep(delay * 0.5)  # Reduced delay
                         
             except Exception as e:
                 print(f"[VisionController] Error scanning QR code: {e}")
                 debug_log(f"[VisionController] Exception in scan_qr_code: {e}")
                 if attempt < retries - 1:
-                    await asyncio.sleep(delay)
+                    await asyncio.sleep(delay * 0.5)
         
-        # All retries exhausted - try position search if enabled
+        # === POSITION SEARCH: Only if all retries exhausted ===
         if motion_controller and search_offset > 0 and base_x is not None and base_y is not None:
-            debug_log(f"[VisionController] All preprocessing strategies failed. Trying position search with offset={search_offset}mm")
+            debug_log(f"[VisionController] All retries failed. Trying position search with offset={search_offset}mm")
             
-            # Define search positions in a square pattern around base position
-            # Positions: top-left, top-right, bottom-right, bottom-left
             search_positions = [
                 (base_x - search_offset, base_y + search_offset),  # Top-left
                 (base_x + search_offset, base_y + search_offset),  # Top-right
@@ -472,46 +484,32 @@ class VisionController:
             for idx, (search_x, search_y) in enumerate(search_positions, 1):
                 debug_log(f"[VisionController] Position search {idx}/4: moving to ({search_x:.1f}, {search_y:.1f})") 
                 try:
-                    # Move to search position
                     await motion_controller.rapid_xy_abs(search_x, search_y)
-                    await asyncio.sleep(0.2)  # Brief settling time
+                    await asyncio.sleep(0.1)  # Reduced from 0.2s
                     
-                    # Drain camera buffer and stabilize
                     self.drain_camera_buffer()
-                    await asyncio.sleep(0.2)
+                    await asyncio.sleep(0.1)  # Reduced from 0.2s
                     
-                    # Capture and try to detect
                     frame_search = await self.capture_frame()
                     if frame_search is None:
                         debug_log(f"[VisionController] Position search {idx}/4: capture failed")
                         continue
                     
-                    # Preprocess frame
-                    height, width = frame_search.shape[:2]
-                    if width > height:
-                        left = (width - height) // 2
-                        right = left + height
-                        frame_search = frame_search[:, left:right]
-                    
-                    if len(frame_search.shape) == 3:
-                        frame_search = cv2.cvtColor(frame_search, cv2.COLOR_BGR2GRAY)
-                    
-                    # Try detection at this position (no pre-check, just attempt decode)
-                    debug_log(f"[VisionController] Position search {idx}/4: trying QR detection")
                     loop = asyncio.get_event_loop()
+                    frame_gray, _ = await loop.run_in_executor(None, self._preprocess_frame, frame_search)
                     
-                    # Try standard QR first
                     if camera_preview:
-                        camera_preview.show_frame(frame_search, f"pos{idx}_grayscale")
-                    data = await loop.run_in_executor(None, self._detect_qr_single, frame_search)
+                        camera_preview.show_frame(frame_gray, f"pos{idx}")
+                    
+                    # Try both detection methods
+                    data = await loop.run_in_executor(None, self._detect_qr_single, frame_gray)
                     if data:
-                        debug_log(f"[VisionController] QR FOUND at position search {idx}/4 with grayscale ({search_x:.1f}, {search_y:.1f}): {data}")
+                        debug_log(f"[VisionController] QR FOUND at position {idx}/4: {data}")
                         return data
                     
-                    # Try Micro QR detection at this position
-                    data = await loop.run_in_executor(None, self._detect_micro_qr_with_rotation, frame_search, None)
+                    data = await loop.run_in_executor(None, self._detect_micro_qr_with_rotation, frame_gray, None)
                     if data:
-                        debug_log(f"[VisionController] Micro QR FOUND at position search {idx}/4 ({search_x:.1f}, {search_y:.1f}): {data}")
+                        debug_log(f"[VisionController] Micro QR FOUND at position {idx}/4: {data}")
                         return data
                     
                     debug_log(f"[VisionController] Position search {idx}/4: no QR detected")
@@ -520,12 +518,29 @@ class VisionController:
                     debug_log(f"[VisionController] Position search {idx}/4 error: {e}")
                     continue
             
-            # Return to base position after search
+            # Return to base position
             try:
                 debug_log(f"[VisionController] Returning to base position ({base_x:.1f}, {base_y:.1f})")
                 await motion_controller.rapid_xy_abs(base_x, base_y)
             except Exception as e:
                 debug_log(f"[VisionController] Error returning to base position: {e}")
+        
+        total_time = time.time() - scan_start
+        debug_log(f"[VisionController] QR code scan FAILED (total time: {total_time:.3f}s)")
+        return None
+    
+    def _preprocess_frame(self, img):
+        """Crop to square and convert to grayscale."""
+        height, width = img.shape[:2]
+        if width > height:
+            left = (width - height) // 2
+            right = left + height
+            img = img[:, left:right]
+        
+        if len(img.shape) == 3:
+            img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        
+        return img, (width, height)
         
         total_time = time.time() - scan_start
         debug_log(f"[VisionController] QR code scan FAILED after all retries and position search (total time: {total_time:.3f}s)")

@@ -596,8 +596,8 @@ class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, App):
 
     def _config_from_settings(self):
         """Build a ProgBot config from the loaded settings."""
-        # Load panel-specific settings
-        settings_data = getattr(self, 'settings_data', None) or (self.panel_settings.get_all() if self.panel_settings else {})
+        # Always load fresh panel-specific settings from panel_settings (the source of truth)
+        settings_data = self.panel_settings.get_all() if self.panel_settings else {}
         
         # Load hardware settings (port IDs) from main settings file
         hardware_settings = get_settings().get_all()
@@ -607,11 +607,9 @@ class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, App):
         def _get(key, cast, fallback):
             try:
                 value = settings_data.get(key, fallback)
-                result = cast(value)
-                sequence.debug_log(f"[_build_config._get] key={key}, value={value}, cast={cast.__name__}, result={result}")
-                return result
+                return cast(value)
             except Exception as e:
-                sequence.debug_log(f"[_build_config._get] key={key} FAILED: {e}")
+                sequence.debug_log(f"[_config_from_settings] Cast failed for {key}: {e}")
                 return fallback
 
         mode_mapping = {
@@ -666,8 +664,6 @@ class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, App):
     def _apply_settings_to_widgets(self, root, settings_data):
         """Apply loaded settings to UI widgets."""
         try:
-            debug_log(f"[_apply_settings_to_widgets] qr_offset_x from settings_data: {settings_data.get('qr_offset_x', 'NOT FOUND')}")
-            debug_log(f"[_apply_settings_to_widgets] qr_offset_y from settings_data: {settings_data.get('qr_offset_y', 'NOT FOUND')}")
             # Update spinner values
             cols_spinner = root.ids.get('board_cols_spinner')
             if cols_spinner:
@@ -677,26 +673,26 @@ class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, App):
             if rows_spinner:
                 rows_spinner.text = settings_data.get('board_rows', '5')
             
-            # Update text input values
+            # Update text input values (explicitly convert to string for TextInput)
             col_width_input = root.ids.get('col_width_input')
             if col_width_input:
-                col_width_input.text = settings_data.get('col_width', '48.0')
+                col_width_input.text = str(settings_data.get('col_width', '48.0'))
             
             row_height_input = root.ids.get('row_height_input')
             if row_height_input:
-                row_height_input.text = settings_data.get('row_height', '29.0')
+                row_height_input.text = str(settings_data.get('row_height', '29.0'))
             
             board_x_input = root.ids.get('board_x_input')
             if board_x_input:
-                board_x_input.text = settings_data.get('board_x', '110.2')
+                board_x_input.text = str(settings_data.get('board_x', '110.2'))
             
             board_y_input = root.ids.get('board_y_input')
             if board_y_input:
-                board_y_input.text = settings_data.get('board_y', '121.0')
+                board_y_input.text = str(settings_data.get('board_y', '121.0'))
             
             probe_plane_input = root.ids.get('probe_plane_input')
             if probe_plane_input:
-                probe_plane_input.text = settings_data.get('probe_plane', '4.0')
+                probe_plane_input.text = str(settings_data.get('probe_plane', '4.0'))
             
             # Load contact_adjust_step from main settings (not panel settings)
             from settings import get_settings
@@ -733,6 +729,11 @@ class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, App):
             camera_offset_y_input = root.ids.get('camera_offset_y_input')
             if camera_offset_y_input:
                 camera_offset_y_input.text = str(main_settings.get('camera_offset_y', 50.0))
+            
+            camera_rotation_spinner = root.ids.get('camera_rotation_spinner')
+            if camera_rotation_spinner:
+                rotation = main_settings.get('camera_preview_rotation', 0)
+                camera_rotation_spinner.text = f"{rotation}°"
             
             operation_spinner = root.ids.get('operation_spinner')
             if operation_spinner:
@@ -903,6 +904,35 @@ class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, App):
     def cal_close(self):
         """Close calibration dialog, moving to safe Z first if needed."""
         self.calibration_controller.close()
+    
+    # Vision tab wrapper methods
+    def cal_vision_tab_changed(self, state):
+        """Handle Vision tab state changes."""
+        self.calibration_controller.vision_tab_changed(state)
+    
+    def cal_vision_set_xy_step(self, step):
+        """Set XY jog step size for Vision tab."""
+        self.calibration_controller.vision_set_xy_step(step)
+    
+    def cal_vision_jog(self, axis, direction):
+        """Jog the machine in the specified axis and direction (Vision tab)."""
+        self.calibration_controller.vision_jog(axis, direction)
+    
+    def cal_vision_goto_qr(self):
+        """Move to the currently configured QR offset position from board origin."""
+        self.calibration_controller.vision_goto_qr()
+    
+    def cal_vision_set_qr_offset(self):
+        """Set QR offset from current XY position relative to board origin."""
+        self.calibration_controller.vision_set_qr_offset()
+    
+    def cal_vision_set_rotation(self, rotation):
+        """Set camera preview rotation."""
+        self.calibration_controller.vision_set_rotation(rotation)
+    
+    def cal_vision_board_change(self, axis, delta):
+        """Change the selected board col or row and move to that position."""
+        self.calibration_controller.vision_board_change(axis, delta)
     
     # ==================== End Calibration Dialog ====================
 

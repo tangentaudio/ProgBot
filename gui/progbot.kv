@@ -851,6 +851,22 @@
                                     on_text_validate: app.on_camera_offset_y_change(self.text)
 
                                 Label:
+                                    text: "Preview Rotation:"
+                                    size_hint_y: None
+                                    height: 30
+                                    halign: 'right'
+                                    valign: 'center'
+                                    text_size: self.size
+
+                                Spinner:
+                                    id: camera_rotation_spinner
+                                    text: "0°"
+                                    values: ["0°", "90°", "180°", "270°"]
+                                    size_hint_y: None
+                                    height: 30
+                                    on_text: app.on_camera_rotation_change(self.text)
+
+                                Label:
                                     text: "QR Scan Timeout (s):"
                                     size_hint_y: None
                                     height: 30

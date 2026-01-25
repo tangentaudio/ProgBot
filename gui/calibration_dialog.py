@@ -1,12 +1,16 @@
-"""Calibration dialog for setting board origin and probe offset.
+"""Calibration dialog for setting board origin, probe offset, and QR code offset.
 
 This module provides an interactive dialog for calibrating the ProgBot machine,
-including XY/Z jogging, probing, and setting board origin and probe-to-board offset.
+including XY/Z jogging, probing, setting board origin, probe-to-board offset,
+and QR code offset with camera preview.
 """
 import asyncio
+import cv2
+import numpy as np
 from kivy.clock import Clock
 from kivy.factory import Factory
 from kivy.lang import Builder
+from kivy.graphics.texture import Texture
 
 # Load the calibration KV file
 Builder.load_file('calibration.kv')
@@ -33,9 +37,12 @@ class CalibrationController:
     Attributes:
         app: Reference to the main Kivy App instance
         popup: The CalibrationPopup widget instance
-        xy_step: Current XY jog step size in mm
-        z_step: Current Z jog step size in mm
+        xy_step: Current XY jog step size in mm (Origins tab)
+        z_step: Current Z jog step size in mm (Origins tab)
         probe_z: Z position after last probe (None if not probed)
+        vision_xy_step: Current XY jog step size in mm (Vision tab)
+        vision_preview_active: Whether camera preview is active
+        vision_preview_event: Scheduled event for camera preview updates
     """
     
     def __init__(self, app):
@@ -49,6 +56,13 @@ class CalibrationController:
         self.xy_step = 5.0
         self.z_step = 1.0
         self.probe_z = None
+        # Vision tab state
+        self.vision_xy_step = 5.0
+        self.vision_preview_active = False
+        self.vision_preview_event = None
+        self._black_texture = None
+        self.vision_board_col = 0
+        self.vision_board_row = 0
     
     @property
     def bot(self):
@@ -81,10 +95,15 @@ class CalibrationController:
         self.xy_step = 5.0
         self.z_step = 1.0
         self.probe_z = None
+        self.vision_xy_step = 5.0
         
         # Update current values display
         self._update_origin_label()
         self._update_probe_offset_label()
+        self._update_qr_offset_label()
+        
+        # Initialize Vision tab preview (inactive)
+        self._init_vision_preview()
         
         # Query initial position
         self._refresh_position()
@@ -98,9 +117,10 @@ class CalibrationController:
             return
         origin_label = self.popup.ids.get('cal_origin_label')
         if origin_label:
-            settings = self.get_settings()
-            x = settings.get('board_first_x', 0)
-            y = settings.get('board_first_y', 0)
+            # Read from panel settings (panel-specific values)
+            ps = self.panel_settings
+            x = float(ps.get('board_x', 0) if ps else 0)
+            y = float(ps.get('board_y', 0) if ps else 0)
             origin_label.text = f'Origin: X={x:.2f}, Y={y:.2f}'
     
     def _update_probe_offset_label(self):
@@ -109,8 +129,9 @@ class CalibrationController:
             return
         offset_label = self.popup.ids.get('cal_probe_offset_label')
         if offset_label:
-            settings = self.get_settings()
-            offset = settings.get('probe_plane_to_board', 0)
+            # Read from panel settings (panel-specific values)
+            ps = self.panel_settings
+            offset = float(ps.get('probe_plane', 0) if ps else 0)
             offset_label.text = f'Z Offset: {offset:.2f} mm'
     
     def _refresh_position(self):
@@ -326,9 +347,10 @@ class CalibrationController:
         """Move to the currently configured board origin."""
         async def do_goto():
             try:
-                settings = self.get_settings()
-                x = settings.get('board_first_x', 0)
-                y = settings.get('board_first_y', 0)
+                # Read panel-specific values from panel_settings
+                ps = self.panel_settings
+                x = float(ps.get('board_x', 0) if ps else 0)
+                y = float(ps.get('board_y', 0) if ps else 0)
                 
                 debug_log(f"[Calibration] Moving to origin X={x:.2f}, Y={y:.2f}")
                 
@@ -352,8 +374,9 @@ class CalibrationController:
                     debug_log("[Calibration] Must probe first!")
                     return
                 
-                settings = self.get_settings()
-                offset = settings.get('probe_plane_to_board', 0)
+                # Read panel-specific value from panel_settings
+                ps = self.panel_settings
+                offset = float(ps.get('probe_plane', 0) if ps else 0)
                 
                 # Target Z is probe_z minus the offset (going further down)
                 target_z = self.probe_z - offset
@@ -386,28 +409,21 @@ class CalibrationController:
                 pos = await self.bot.motion.get_position()
                 x, y = pos['x'], pos['y']
                 
-                # Update settings
-                settings = self.get_settings()
-                settings.set('board_first_x', x)
-                settings.set('board_first_y', y)
-                
-                # Update panel settings object
+                # Update panel settings (panel-specific values - this is the source of truth)
                 if self.panel_settings:
-                    self.panel_settings.board_first_x = x
-                    self.panel_settings.board_first_y = y
+                    self.panel_settings.set('board_x', x)
+                    self.panel_settings.set('board_y', y)
+                    debug_log(f"[Calibration] Saved origin to panel file")
                 
-                # Update bot config
+                # Update app's settings_data cache to stay in sync
+                if hasattr(self.app, 'settings_data'):
+                    self.app.settings_data['board_x'] = x
+                    self.app.settings_data['board_y'] = y
+                
+                # Update bot config for runtime
                 if self.bot and self.bot.config:
-                    self.bot.config.board_first_x = x
-                    self.bot.config.board_first_y = y
-                
-                # Save to panel file
-                if self.panel_settings:
-                    try:
-                        self.panel_settings._save_settings()
-                        debug_log(f"[Calibration] Saved origin to panel file")
-                    except Exception as e:
-                        debug_log(f"[Calibration] Error saving panel file: {e}")
+                    self.bot.config.board_x = x
+                    self.bot.config.board_y = y
                 
                 # Update UI widgets
                 def update_ui(dt):
@@ -446,25 +462,18 @@ class CalibrationController:
                 
                 debug_log(f"[Calibration] Probe Z: {self.probe_z:.3f}, Current Z: {current_z:.3f}, Offset: {offset:.3f}")
                 
-                # Update settings
-                settings = self.get_settings()
-                settings.set('probe_plane_to_board', offset)
-                
-                # Update panel settings object
+                # Update panel settings (panel-specific value - this is the source of truth)
                 if self.panel_settings:
-                    self.panel_settings.probe_plane_to_board = offset
+                    self.panel_settings.set('probe_plane', offset)
+                    debug_log(f"[Calibration] Saved probe offset to panel file")
                 
-                # Update bot config
+                # Update app's settings_data cache to stay in sync
+                if hasattr(self.app, 'settings_data'):
+                    self.app.settings_data['probe_plane'] = offset
+                
+                # Update bot config for runtime
                 if self.bot and self.bot.config:
                     self.bot.config.probe_plane_to_board = offset
-                
-                # Save to panel file
-                if self.panel_settings:
-                    try:
-                        self.panel_settings._save_settings()
-                        debug_log(f"[Calibration] Saved probe offset to panel file")
-                    except Exception as e:
-                        debug_log(f"[Calibration] Error saving panel file: {e}")
                 
                 # Update UI widgets
                 def update_ui(dt):
@@ -486,6 +495,10 @@ class CalibrationController:
         """Close calibration dialog, moving to safe Z first if needed."""
         async def do_close():
             debug_log("[Calibration] Closing dialog...")
+            
+            # Stop vision preview if active
+            self._stop_vision_preview()
+            
             try:
                 # Check current Z position and move to safe height if needed
                 pos = await self.bot.motion.get_position()
@@ -505,3 +518,546 @@ class CalibrationController:
             debug_log("[Calibration] Dialog closed")
         
         asyncio.ensure_future(do_close())
+
+    # ==================== Vision Tab Methods ====================
+    
+    def _init_vision_preview(self):
+        """Initialize Vision tab preview to inactive state."""
+        if not self.popup:
+            return
+        
+        # Set initial inactive display
+        status_label = self.popup.ids.get('vision_status_label')
+        if status_label:
+            status_label.text = 'Camera Preview'
+            status_label.color = (0.5, 0.5, 0.5, 1)
+        
+        image_widget = self.popup.ids.get('vision_preview_image')
+        if image_widget:
+            image_widget.color = (0, 0, 0, 1)
+            # Create black texture
+            if not self._black_texture:
+                self._black_texture = Texture.create(size=(1, 1))
+                self._black_texture.blit_buffer(bytes([0, 0, 0]), colorfmt='rgb', bufferfmt='ubyte')
+            image_widget.texture = self._black_texture
+        
+        # Reset QR detection display
+        type_label = self.popup.ids.get('vision_qr_type_label')
+        if type_label:
+            type_label.text = 'No code detected'
+            type_label.color = (0.5, 0.5, 0.5, 1)
+        qr_label = self.popup.ids.get('vision_qr_detected_label')
+        if qr_label:
+            qr_label.text = ''
+            qr_label.color = (0.5, 0.5, 0.5, 1)
+        
+        # Set rotation toggle to match current setting
+        settings = self.get_settings()
+        rotation = settings.get('camera_preview_rotation', 0)
+        rotation_map = {0: 'vision_rot_0', 90: 'vision_rot_90', 180: 'vision_rot_180', 270: 'vision_rot_270'}
+        toggle_id = rotation_map.get(rotation, 'vision_rot_0')
+        if toggle_btn := self.popup.ids.get(toggle_id):
+            toggle_btn.state = 'down'
+        
+        # Initialize board selector to 0,0
+        self._update_board_selector_display()
+    
+    def _update_board_selector_display(self):
+        """Update the board selector display with current col,row."""
+        if not self.popup:
+            return
+        label = self.popup.ids.get('vision_board_pos_label')
+        if label:
+            label.text = f'{self.vision_board_col},{self.vision_board_row}'
+    
+    def vision_board_change(self, axis, delta):
+        """Change the selected board col or row and move to that position."""
+        settings = self.get_settings()
+        max_cols = int(settings.get('board_cols', 2))
+        max_rows = int(settings.get('board_rows', 5))
+        
+        if axis == 'col':
+            new_col = self.vision_board_col + delta
+            if 0 <= new_col < max_cols:
+                self.vision_board_col = new_col
+        elif axis == 'row':
+            new_row = self.vision_board_row + delta
+            if 0 <= new_row < max_rows:
+                self.vision_board_row = new_row
+        
+        self._update_board_selector_display()
+        # Move to the new board position
+        self.vision_goto_board()
+    
+    def vision_goto_board(self):
+        """Move camera to the currently selected board's QR position."""
+        self.vision_goto_board_qr(self.vision_board_col, self.vision_board_row)
+    
+    def vision_goto_board_qr(self, col, row):
+        """Move camera to a specific board's QR position."""
+        if not self.bot or not self.bot.motion:
+            return
+        
+        async def do_move():
+            try:
+                # Read panel-specific values from panel_settings
+                ps = self.panel_settings
+                board_x = float(ps.get('board_x', 0) if ps else 0)
+                board_y = float(ps.get('board_y', 0) if ps else 0)
+                col_width = float(ps.get('col_width', 48.0) if ps else 48.0)
+                row_height = float(ps.get('row_height', 29.0) if ps else 29.0)
+                qr_offset_x = float(ps.get('qr_offset_x', 0) if ps else 0)
+                qr_offset_y = float(ps.get('qr_offset_y', 0) if ps else 0)
+                
+                # Camera offsets are global settings (same for all panels)
+                settings = self.get_settings()
+                camera_offset_x = float(settings.get('camera_offset_x', 0))
+                camera_offset_y = float(settings.get('camera_offset_y', 0))
+                
+                # Calculate board position
+                target_board_x = board_x + (col * col_width)
+                target_board_y = board_y + (row * row_height)
+                
+                # Calculate machine position to put camera over QR
+                # (board + QR offset + camera offset, matching sequence.py)
+                target_x = target_board_x + qr_offset_x + camera_offset_x
+                target_y = target_board_y + qr_offset_y + camera_offset_y
+                
+                debug_log(f"[Calibration] Moving to board [{col},{row}] QR position: "
+                         f"board=({target_board_x:.2f}, {target_board_y:.2f}), "
+                         f"qr_offset=({qr_offset_x:.2f}, {qr_offset_y:.2f}), "
+                         f"camera_offset=({camera_offset_x:.2f}, {camera_offset_y:.2f}), "
+                         f"target=({target_x:.2f}, {target_y:.2f})")
+                
+                # Ensure at safe Z first
+                await self.bot.motion.rapid_z_abs(0.0)
+                await self.bot.motion.send_gcode_wait_ok("M400")
+                
+                # Move to target position
+                await self.bot.motion.rapid_xy_abs(target_x, target_y)
+                await self.bot.motion.send_gcode_wait_ok("M400")
+                
+                # Update position display
+                self._refresh_vision_position()
+                
+            except Exception as e:
+                debug_log(f"[Calibration] Error moving to board QR: {e}")
+        
+        asyncio.ensure_future(do_move())
+    
+    def _update_qr_offset_label(self):
+        """Update the QR offset label with current panel settings."""
+        if not self.popup:
+            return
+        offset_label = self.popup.ids.get('vision_qr_offset_label')
+        if offset_label:
+            # Read from panel settings (panel-specific values)
+            ps = self.panel_settings
+            x = float(ps.get('qr_offset_x', 0) if ps else 0)
+            y = float(ps.get('qr_offset_y', 0) if ps else 0)
+            offset_label.text = f'QR Offset: X={x:.2f}, Y={y:.2f}'
+    
+    def vision_tab_changed(self, state):
+        """Handle Vision tab state changes."""
+        debug_log(f"[Calibration] Vision tab state: {state}")
+        if state == 'down':
+            # Tab selected - start camera preview
+            self._start_vision_preview()
+        else:
+            # Tab deselected - stop camera preview
+            self._stop_vision_preview()
+    
+    def _start_vision_preview(self):
+        """Start camera preview on Vision tab."""
+        if self.vision_preview_active:
+            return
+        
+        debug_log("[Calibration] Starting vision preview")
+        self.vision_preview_active = True
+        
+        # Update status
+        if self.popup:
+            status_label = self.popup.ids.get('vision_status_label')
+            if status_label:
+                status_label.text = 'Connecting camera...'
+                status_label.color = (1, 1, 0, 1)  # Yellow
+        
+        # Connect camera and start preview
+        async def start_camera():
+            try:
+                # Ensure camera is connected via bot.vision
+                if self.bot and self.bot.vision:
+                    await self.bot.vision.connect()
+                    debug_log("[Calibration] Camera connected")
+                    
+                    # Move to safe Z for camera focus
+                    debug_log("[Calibration] Moving to safe Z for camera")
+                    await self.bot.motion.rapid_z_abs(0.0)
+                    await self.bot.motion.send_gcode_wait_ok("M400")
+                    
+                    # Start preview updates at 4 FPS
+                    def schedule_preview(dt):
+                        if self.vision_preview_active:
+                            self.vision_preview_event = Clock.schedule_interval(
+                                self._update_vision_preview, 0.5  # 2 FPS
+                            )
+                            # Update position display
+                            self._refresh_vision_position()
+                    Clock.schedule_once(schedule_preview, 0)
+                    
+                    # Update status
+                    def update_status(dt):
+                        if self.popup:
+                            status_label = self.popup.ids.get('vision_status_label')
+                            if status_label:
+                                status_label.text = 'Camera Active'
+                                status_label.color = (0, 1, 0, 1)  # Green
+                    Clock.schedule_once(update_status, 0)
+                else:
+                    debug_log("[Calibration] No vision controller available")
+                    def show_error(dt):
+                        if self.popup:
+                            status_label = self.popup.ids.get('vision_status_label')
+                            if status_label:
+                                status_label.text = 'No camera available'
+                                status_label.color = (1, 0, 0, 1)  # Red
+                    Clock.schedule_once(show_error, 0)
+                    
+            except Exception as e:
+                debug_log(f"[Calibration] Camera connect error: {e}")
+                def show_error(dt, err=str(e)):
+                    if self.popup:
+                        status_label = self.popup.ids.get('vision_status_label')
+                        if status_label:
+                            status_label.text = f'Camera error: {err[:30]}'
+                            status_label.color = (1, 0, 0, 1)  # Red
+                Clock.schedule_once(show_error, 0)
+        
+        asyncio.ensure_future(start_camera())
+    
+    def _stop_vision_preview(self):
+        """Stop camera preview on Vision tab."""
+        if not self.vision_preview_active:
+            return
+        
+        debug_log("[Calibration] Stopping vision preview")
+        self.vision_preview_active = False
+        
+        # Cancel preview updates
+        if self.vision_preview_event:
+            self.vision_preview_event.cancel()
+            self.vision_preview_event = None
+        
+        # Reset display to inactive
+        self._init_vision_preview()
+    
+    def _update_vision_preview(self, dt):
+        """Update camera preview frame and scan for QR codes (called by Clock at 4 FPS)."""
+        if not self.vision_preview_active or not self.popup:
+            return
+        
+        if not self.bot or not self.bot.vision or not self.bot.vision.camera_process:
+            return
+        
+        try:
+            # Capture frame asynchronously
+            async def capture_and_display():
+                try:
+                    frame = await self.bot.vision.capture_frame()
+                    if frame is None:
+                        return
+                    
+                    # Apply preprocessing (crop to square, convert to grayscale)
+                    height, width = frame.shape[:2]
+                    if width > height:
+                        left = (width - height) // 2
+                        right = left + height
+                        frame = frame[:, left:right]
+                    
+                    # Convert to grayscale
+                    if len(frame.shape) == 3:
+                        frame_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                    else:
+                        frame_gray = frame
+                    
+                    # Attempt QR code detection
+                    qr_data = None
+                    qr_type = None
+                    
+                    # Try standard QR detection first (fast)
+                    try:
+                        loop = asyncio.get_event_loop()
+                        qr_data = await loop.run_in_executor(
+                            None, self.bot.vision._detect_qr_single, frame_gray
+                        )
+                        if qr_data:
+                            qr_type = 'Standard QR'
+                    except Exception as e:
+                        debug_log(f"[Calibration] Standard QR detection error: {e}")
+                    
+                    # If no standard QR found, try Micro QR detection
+                    if not qr_data:
+                        try:
+                            loop = asyncio.get_event_loop()
+                            qr_data = await loop.run_in_executor(
+                                None, self.bot.vision._detect_micro_qr_with_rotation, frame_gray, None
+                            )
+                            if qr_data:
+                                qr_type = 'Micro QR'
+                        except Exception as e:
+                            debug_log(f"[Calibration] Micro QR detection error: {e}")
+                    
+                    # Apply user-configured rotation for display
+                    settings = self.get_settings()
+                    rotation = settings.get('camera_preview_rotation', 0)
+                    if rotation == 90:
+                        frame_display = cv2.rotate(frame_gray, cv2.ROTATE_90_CLOCKWISE)
+                    elif rotation == 180:
+                        frame_display = cv2.rotate(frame_gray, cv2.ROTATE_180)
+                    elif rotation == 270:
+                        frame_display = cv2.rotate(frame_gray, cv2.ROTATE_90_COUNTERCLOCKWISE)
+                    else:
+                        frame_display = frame_gray
+                    
+                    # Flip for Kivy display
+                    frame_flipped = cv2.flip(frame_display, 0)
+                    
+                    # Update texture and QR display on main thread
+                    def update_ui(dt, frame=frame_flipped, qr_data=qr_data, qr_type=qr_type):
+                        if not self.popup or not self.vision_preview_active:
+                            return
+                        
+                        # Update camera preview
+                        image_widget = self.popup.ids.get('vision_preview_image')
+                        if image_widget:
+                            # Convert grayscale to RGB for Kivy
+                            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_GRAY2RGB)
+                            h, w = frame_rgb.shape[:2]
+                            
+                            # Reset color filter for normal display
+                            image_widget.color = (1, 1, 1, 1)
+                            
+                            # Create or reuse texture
+                            if image_widget.texture is None or image_widget.texture.size != (w, h):
+                                image_widget.texture = Texture.create(size=(w, h), colorfmt='rgb')
+                            
+                            # Update texture
+                            buf = frame_rgb.tobytes()
+                            image_widget.texture.blit_buffer(buf, colorfmt='rgb', bufferfmt='ubyte')
+                            image_widget.canvas.ask_update()
+                        
+                        # Update QR type label
+                        type_label = self.popup.ids.get('vision_qr_type_label')
+                        if type_label:
+                            if qr_type:
+                                type_label.text = f'{qr_type}:'
+                                type_label.color = (0, 1, 0, 1)  # Green for detected
+                            else:
+                                type_label.text = 'No code detected'
+                                type_label.color = (0.5, 0.5, 0.5, 1)  # Gray for none
+                        
+                        # Update QR detection display
+                        qr_label = self.popup.ids.get('vision_qr_detected_label')
+                        if qr_label:
+                            if qr_data:
+                                qr_label.text = qr_data
+                                qr_label.color = (0, 1, 0, 1)  # Green for detected
+                            else:
+                                qr_label.text = ''
+                                qr_label.color = (0.5, 0.5, 0.5, 1)  # Gray for none
+                    
+                    Clock.schedule_once(update_ui, 0)
+                    
+                except Exception as e:
+                    debug_log(f"[Calibration] Preview frame error: {e}")
+            
+            asyncio.ensure_future(capture_and_display())
+            
+        except Exception as e:
+            debug_log(f"[Calibration] Vision preview error: {e}")
+    
+    def _refresh_vision_position(self):
+        """Query current position and update Vision tab display."""
+        async def do_refresh():
+            try:
+                pos = await self.bot.motion.get_position()
+                def update_labels(dt, pos=pos):
+                    if not self.popup:
+                        return
+                    if x_label := self.popup.ids.get('vision_pos_x'):
+                        x_label.text = f"X: {pos['x']:.3f}"
+                    if y_label := self.popup.ids.get('vision_pos_y'):
+                        y_label.text = f"Y: {pos['y']:.3f}"
+                Clock.schedule_once(update_labels, 0)
+            except Exception as e:
+                debug_log(f"[Calibration] Vision position refresh error: {e}")
+        
+        asyncio.ensure_future(do_refresh())
+    
+    def vision_set_rotation(self, rotation):
+        """Set camera preview rotation and save to settings."""
+        settings = self.get_settings()
+        settings.set('camera_preview_rotation', rotation)
+        debug_log(f"[Calibration] Camera preview rotation set to {rotation}°")
+        
+        # Also update the Config tab spinner if it exists
+        def update_config_spinner(dt):
+            if self.app.root:
+                spinner = self.app.root.ids.get('camera_rotation_spinner')
+                if spinner:
+                    spinner.text = f"{rotation}°"
+        Clock.schedule_once(update_config_spinner, 0)
+    
+    def vision_set_xy_step(self, step):
+        """Set XY jog step size for Vision tab."""
+        self.vision_xy_step = step
+        debug_log(f"[Calibration] Vision XY step set to {step} mm")
+    
+    def vision_jog(self, axis, direction):
+        """Jog the machine in the specified axis and direction (Vision tab - XY only)."""
+        async def do_jog():
+            try:
+                if axis == 'x':
+                    dist = self.vision_xy_step * direction
+                    await self.bot.motion.rapid_xy_rel(dist, 0)
+                elif axis == 'y':
+                    dist = self.vision_xy_step * direction
+                    await self.bot.motion.rapid_xy_rel(0, dist)
+                # Wait for motion complete and refresh position
+                await self.bot.motion.send_gcode_wait_ok("M400")
+                self._refresh_vision_position()
+            except Exception as e:
+                debug_log(f"[Calibration] Vision jog error: {e}")
+        
+        asyncio.ensure_future(do_jog())
+    
+    def vision_goto_qr(self):
+        """Move to the currently configured QR offset position from board origin."""
+        async def do_goto():
+            try:
+                # Read panel-specific values from panel_settings
+                ps = self.panel_settings
+                origin_x = float(ps.get('board_x', 0) if ps else 0)
+                origin_y = float(ps.get('board_y', 0) if ps else 0)
+                qr_offset_x = float(ps.get('qr_offset_x', 0) if ps else 0)
+                qr_offset_y = float(ps.get('qr_offset_y', 0) if ps else 0)
+                
+                # Camera offsets are global settings (same for all panels)
+                settings = self.get_settings()
+                camera_offset_x = float(settings.get('camera_offset_x', 0))
+                camera_offset_y = float(settings.get('camera_offset_y', 0))
+                
+                # Target position is board origin + QR offset + camera offset
+                target_x = origin_x + qr_offset_x + camera_offset_x
+                target_y = origin_y + qr_offset_y + camera_offset_y
+                
+                debug_log(f"[Calibration] Moving to QR position: origin=({origin_x:.2f}, {origin_y:.2f}), offset=({qr_offset_x:.2f}, {qr_offset_y:.2f}), camera_offset=({camera_offset_x:.2f}, {camera_offset_y:.2f}), target=({target_x:.2f}, {target_y:.2f})")
+                
+                # Update status
+                def update_status(dt):
+                    if self.popup:
+                        status_label = self.popup.ids.get('vision_status_label')
+                        if status_label:
+                            status_label.text = 'Moving to QR position...'
+                            status_label.color = (1, 1, 0, 1)  # Yellow
+                Clock.schedule_once(update_status, 0)
+                
+                # Move to target position
+                await self.bot.motion.rapid_xy_abs(target_x, target_y)
+                await self.bot.motion.send_gcode_wait_ok("M400")
+                
+                debug_log("[Calibration] Arrived at QR position")
+                self._refresh_vision_position()
+                
+                # Update status
+                def restore_status(dt):
+                    if self.popup and self.vision_preview_active:
+                        status_label = self.popup.ids.get('vision_status_label')
+                        if status_label:
+                            status_label.text = 'Camera Active'
+                            status_label.color = (0, 1, 0, 1)  # Green
+                Clock.schedule_once(restore_status, 0)
+                
+            except Exception as e:
+                debug_log(f"[Calibration] Go to QR position error: {e}")
+                def show_error(dt, err=str(e)):
+                    if self.popup:
+                        status_label = self.popup.ids.get('vision_status_label')
+                        if status_label:
+                            status_label.text = f'Error: {err[:30]}'
+                            status_label.color = (1, 0, 0, 1)  # Red
+                Clock.schedule_once(show_error, 0)
+        
+        asyncio.ensure_future(do_goto())
+    
+    def vision_set_qr_offset(self):
+        """Set QR offset from current XY position relative to board origin."""
+        async def do_set_offset():
+            try:
+                pos = await self.bot.motion.get_position()
+                x, y = pos['x'], pos['y']
+                
+                # Read panel-specific values from panel_settings
+                ps = self.panel_settings
+                origin_x = float(ps.get('board_x', 0) if ps else 0)
+                origin_y = float(ps.get('board_y', 0) if ps else 0)
+                
+                # Camera offsets are global settings (same for all panels)
+                settings = self.get_settings()
+                camera_offset_x = float(settings.get('camera_offset_x', 0))
+                camera_offset_y = float(settings.get('camera_offset_y', 0))
+                
+                # QR offset: The camera views (machine_pos - camera_offset),
+                # so QR physical location = current_pos - camera_offset
+                # QR offset = QR location - board origin
+                qr_offset_x = (x - camera_offset_x) - origin_x
+                qr_offset_y = (y - camera_offset_y) - origin_y
+                
+                debug_log(f"[Calibration] Setting QR offset: pos=({x:.2f}, {y:.2f}), camera_offset=({camera_offset_x:.2f}, {camera_offset_y:.2f}), origin=({origin_x:.2f}, {origin_y:.2f}), offset=({qr_offset_x:.2f}, {qr_offset_y:.2f})")
+                
+                # Update panel settings (panel-specific - this is the source of truth)
+                if self.panel_settings:
+                    self.panel_settings.set('qr_offset_x', qr_offset_x)
+                    self.panel_settings.set('qr_offset_y', qr_offset_y)
+                    debug_log(f"[Calibration] Saved QR offset to panel file")
+                
+                # Update app's settings_data cache to stay in sync
+                if hasattr(self.app, 'settings_data'):
+                    self.app.settings_data['qr_offset_x'] = qr_offset_x
+                    self.app.settings_data['qr_offset_y'] = qr_offset_y
+                
+                # Update bot config for runtime
+                if self.bot and self.bot.config:
+                    self.bot.config.qr_offset_x = qr_offset_x
+                    self.bot.config.qr_offset_y = qr_offset_y
+                
+                # Update UI widgets
+                def update_ui(dt):
+                    # Update Panel tab inputs if they exist
+                    if qr_x_input := self.app.root.ids.get('qr_offset_x_input'):
+                        qr_x_input.text = f"{qr_offset_x:.2f}"
+                    if qr_y_input := self.app.root.ids.get('qr_offset_y_input'):
+                        qr_y_input.text = f"{qr_offset_y:.2f}"
+                    # Update calibration dialog label
+                    self._update_qr_offset_label()
+                    # Flash status to indicate success
+                    if self.popup:
+                        status_label = self.popup.ids.get('vision_status_label')
+                        if status_label:
+                            status_label.text = f'QR Offset Set: ({qr_offset_x:.2f}, {qr_offset_y:.2f})'
+                            status_label.color = (0, 1, 0, 1)  # Green
+                Clock.schedule_once(update_ui, 0)
+                
+                debug_log(f"[Calibration] QR offset set to X={qr_offset_x:.2f}, Y={qr_offset_y:.2f}")
+                
+            except Exception as e:
+                debug_log(f"[Calibration] Set QR offset error: {e}")
+                def show_error(dt, err=str(e)):
+                    if self.popup:
+                        status_label = self.popup.ids.get('vision_status_label')
+                        if status_label:
+                            status_label.text = f'Error: {err[:30]}'
+                            status_label.color = (1, 0, 0, 1)  # Red
+                Clock.schedule_once(show_error, 0)
+        
+        asyncio.ensure_future(do_set_offset())

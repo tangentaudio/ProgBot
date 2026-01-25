@@ -1019,20 +1019,19 @@ class ProgBot:
                         await self.motion.rapid_xy_abs(camera_x, camera_y)
                         await self.motion.rapid_z_abs(self.config.camera_z_height)
                         
-                        # Camera buffer drain - use async version
+                        # Camera buffer drain - use async version (no extra delay needed,
+                        # scan_qr_code fast-path handles warm camera optimization)
                         if self.vision:
-                            await self.vision.drain_camera_buffer_async(max_frames=5)
-                            # Give camera time to adjust exposure/focus after position change
-                            await asyncio.sleep(0.3)
+                            await self.vision.drain_camera_buffer_async(max_frames=3)
                         
-                        # QR scanning
+                        # QR scanning (fast-path will try immediate detection first)
                         qr_data = None
                         if self.vision:
                             preview = self.camera_preview if hasattr(self, 'camera_preview') else None
                             
                             qr_data = await self.vision.scan_qr_code(
                                 retries=2, 
-                                delay=0.3, 
+                                delay=0.2,  # Reduced from 0.3 
                                 camera_preview=preview,
                                 motion_controller=self.motion,
                                 search_offset=self.config.qr_search_offset,
