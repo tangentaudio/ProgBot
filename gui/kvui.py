@@ -100,9 +100,12 @@ class GridCell(ButtonBehavior, BoxLayout):
     """A custom grid cell button that toggles on press."""
     cell_label = StringProperty("")
     cell_checked = BooleanProperty(True)
-    cell_bg_color = ListProperty([0, 0.5, 0.5, 1])  # Default dark cyan (ON)
+    cell_bg_color = ListProperty([0.5, 0.5, 0.5, 1])  # Default mid-gray (ON)
+    cell_label_color = ListProperty([1, 1, 1, 1])  # Default white
     status_line1 = StringProperty("")  # First line of status (probe status)
     status_line2 = StringProperty("")  # Second line of status (program status)
+    status_line3 = StringProperty("")  # Third line of status (provision status)
+    status_line4 = StringProperty("")  # Fourth line of status (test status)
     serial_number = StringProperty("")  # Scanned serial number from QR code
     
     def __init__(self, cell_label="", cell_checked=True, bg_color=None, on_toggle_callback=None, **kwargs):
@@ -132,11 +135,11 @@ class GridCell(ButtonBehavior, BoxLayout):
         if getattr(self, '_batch_update', False):
             return
         self._update_bg_color()
-        # Update label to show/hide SKIPPED
+        # Update label color based on checked state
         if self.cell_checked:
-            self.cell_label = self.base_cell_label
+            self.cell_label_color = [1, 1, 1, 1]  # White when enabled
         else:
-            self.cell_label = "SKIPPED"
+            self.cell_label_color = [0.4, 0.4, 0.4, 1]  # Dark gray when skipped
         # Call the callback if provided
         if self.on_toggle_callback:
             self.on_toggle_callback()
@@ -157,8 +160,8 @@ class GridCell(ButtonBehavior, BoxLayout):
     def _update_bg_color(self):
         """Set background color based on cell_checked state."""
         if self.cell_checked:
-            # Dark cyan when ON
-            self.cell_bg_color = [0, 0.5, 0.5, 1]
+            # Mid-gray when ON
+            self.cell_bg_color = [0.5, 0.5, 0.5, 1]
         else:
             # Black when OFF
             self.cell_bg_color = [0, 0, 0, 1]
@@ -167,30 +170,69 @@ class GridCell(ButtonBehavior, BoxLayout):
         """Update cell status from BoardStatus object.
         
         Args:
-            board_status: BoardStatus instance with probe and program status
+            board_status: BoardStatus instance with probe, program, provision, and test status
         """
         try:
-            status_line1, status_line2 = board_status.status_text
+            status_line1, status_line2, status_line3, status_line4 = board_status.status_text
             self.status_line1 = status_line1
             self.status_line2 = status_line2
+            self.status_line3 = status_line3
+            self.status_line4 = status_line4
             
-            # Update serial number if available
+            # Update serial number display based on vision status
             if board_status.board_info and board_status.board_info.serial_number:
+                # We have a scanned serial number
                 self.serial_number = board_status.board_info.serial_number
+            elif board_status.vision_status.name == "FAILED":
+                # Vision scan failed - show shortened failure message
+                self.serial_number = "FAIL"
+            elif board_status.vision_status.name in ("IN_PROGRESS", "IDLE"):
+                # Not yet scanned or currently scanning
+                self.serial_number = ""
             else:
+                # Other states (PASSED but no serial number somehow)
                 self.serial_number = ""
             
             # Update background color based on status
+            # Priority order: disabled > active operations > failures > interrupted > skipped > default
             if not board_status.enabled:
-                self.cell_bg_color = [0.2, 0.2, 0.2, 1]  # Dark gray for disabled
+                # Hard skip - user disabled this board
+                self.cell_bg_color = [0, 0, 0, 1]  # Black for hard skip (user disabled)
+            elif (board_status.program_status.name == "INTERRUPTED" or 
+                  board_status.probe_status.name == "INTERRUPTED" or
+                  board_status.provision_status.name == "INTERRUPTED" or
+                  board_status.test_status.name == "INTERRUPTED"):
+                # Cycle was stopped/cancelled while this board was pending or in progress
+                self.cell_bg_color = [1, 0.5, 0, 1]  # Orange for interrupted
+            elif board_status.test_status.name == "COMPLETED":
+                self.cell_bg_color = [0, 0.8, 0, 1]  # Bright green when fully tested
+            elif board_status.provision_status.name == "COMPLETED":
+                self.cell_bg_color = [0, 0.6, 0, 1]  # Medium green when provisioned
             elif board_status.program_status.name == "IDENTIFIED":
                 self.cell_bg_color = [1, 0, 1, 1]  # Purple when identified
             elif board_status.program_status.name == "COMPLETED":
-                self.cell_bg_color = [0, 1, 0, 1]  # Green when programmed
+                self.cell_bg_color = [0, 0.5, 0, 1]  # Dark green when programmed (not yet provisioned)
+            elif board_status.test_status.name == "FAILED":
+                self.cell_bg_color = [1, 0, 0, 1]  # Red on test failure
+            elif board_status.provision_status.name == "FAILED":
+                self.cell_bg_color = [1, 0, 0, 1]  # Red on provision failure
             elif board_status.program_status.name == "FAILED":
-                self.cell_bg_color = [1, 0, 0, 1]  # Red on failure
-            elif board_status.program_status.name == "SKIPPED":
-                self.cell_bg_color = [0, 0, 0, 1]  # Black when skipped
+                self.cell_bg_color = [1, 0, 0, 1]  # Red on programming failure
+            elif board_status.probe_status.name == "FAILED":
+                self.cell_bg_color = [1, 0, 0, 1]  # Red on probe failure
+            elif board_status.vision_status.name == "FAILED":
+                self.cell_bg_color = [0.5, 0, 0, 1]  # Dark red when QR failed
+            elif (board_status.program_status.name == "SKIPPED" or 
+                  board_status.probe_status.name == "SKIPPED" or
+                  board_status.provision_status.name == "SKIPPED" or
+                  board_status.test_status.name == "SKIPPED"):
+                # Soft skip - failed at an earlier step, marked skipped for remaining steps
+                # Keep red to indicate there was a failure
+                self.cell_bg_color = [1, 0, 0, 1]  # Red for soft skip (error occurred)
+            elif board_status.test_status.name == "TESTING":
+                self.cell_bg_color = [0, 1, 1, 1]  # Cyan while testing
+            elif board_status.provision_status.name == "PROVISIONING":
+                self.cell_bg_color = [0.5, 1, 0.5, 1]  # Light green while provisioning
             elif board_status.program_status.name in ("PROGRAMMING", "IDENTIFYING"):
                 self.cell_bg_color = [1, 1, 0, 1]  # Yellow while programming or identifying
             elif board_status.probe_status.name == "PROBING":
@@ -199,10 +241,8 @@ class GridCell(ButtonBehavior, BoxLayout):
                 self.cell_bg_color = [0.5, 0.5, 1, 1]  # Light blue while scanning
             elif board_status.vision_status.name == "PASSED":
                 self.cell_bg_color = [0, 0.7, 0.7, 1]  # Teal when QR detected
-            elif board_status.vision_status.name == "FAILED":
-                self.cell_bg_color = [0.5, 0, 0, 1]  # Dark red when no QR
             else:
-                self.cell_bg_color = [0, 0.5, 0.5, 1]  # Default dark cyan
+                self.cell_bg_color = [0.5, 0.5, 0.5, 1]  # Default mid-gray
         except Exception as e:
             print(f"[GridCell] Error updating status: {e}")
 
@@ -387,7 +427,7 @@ class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, App):
         # Add cells in grid position order
         for grid_position in range(rows * cols):
             cell_index = cell_mapping[grid_position]
-            label_text = labels[cell_index] if labels and cell_index < len(labels) else f"Board {cell_index}"
+            label_text = labels[cell_index] if labels and cell_index < len(labels) else str(cell_index)
             
             # Convert cell index to [col, row] to check if it's in skip list
             col = cell_index // rows
@@ -405,10 +445,6 @@ class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, App):
             
             # Create cell with appropriate checked state and callback
             cell = GridCell(cell_label=label_text, cell_checked=not is_skipped, on_toggle_callback=make_callback())
-            
-            # If skipped, update the label to show SKIPPED (binding may not fire during init)
-            if is_skipped:
-                cell.cell_label = "SKIPPED"
             
             grid.add_widget(cell)            
             # Store cell reference by ID
@@ -956,13 +992,16 @@ class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, App):
                 # Reset cell properties (status fields don't trigger redraws)
                 cell.status_line1 = ""
                 cell.status_line2 = ""
+                cell.status_line3 = ""
+                cell.status_line4 = ""
                 cell.serial_number = ""
                 
                 # Reset checked state and appearance in one batch
+                # Label should always remain as the board number (base_cell_label)
                 if is_skipped:
-                    cell.set_state_batch(False, [0, 0, 0, 1], "SKIPPED")
+                    cell.set_state_batch(False, [0, 0, 0, 1], cell.base_cell_label)
                 else:
-                    cell.set_state_batch(True, [0, 0.5, 0.5, 1], cell.base_cell_label)
+                    cell.set_state_batch(True, [0.5, 0.5, 0.5, 1], cell.base_cell_label)
             
             # Reset phase label and stats display
             self._set_widget('phase_label', text="Ready")
@@ -986,7 +1025,8 @@ class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, App):
         
         def do_skip(dt):
             for cell_id, cell in self.grid_cells.items():
-                cell.set_state_batch(False, [0, 0, 0, 1], "SKIPPED")
+                # Keep board number label, just change checked state and color
+                cell.set_state_batch(False, [0, 0, 0, 1], cell.base_cell_label)
             
             # Save skip positions to settings and update bot
             skip_pos = self.get_skip_board_pos()
@@ -1003,7 +1043,7 @@ class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, App):
         
         def do_enable(dt):
             for cell_id, cell in self.grid_cells.items():
-                cell.set_state_batch(True, [0, 0.5, 0.5, 1], cell.base_cell_label)
+                cell.set_state_batch(True, [0.5, 0.5, 0.5, 1], cell.base_cell_label)
             
             # Save skip positions to settings and update bot (empty list = all enabled)
             skip_pos = self.get_skip_board_pos()
@@ -1026,18 +1066,8 @@ class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, App):
             self._set_config_widgets_enabled(True)
             self._set_grid_cells_enabled(True)
             
-            # Mark all incomplete cells as failed
-            for cell in self.grid_cells.values():
-                # Only update cells that haven't completed or been skipped
-                if cell.cell_bg_color not in (
-                    [0, 1, 0, 1],      # Green (COMPLETED)
-                    [1, 0, 1, 1],      # Purple (IDENTIFIED)
-                    [0, 0, 0, 1],      # Black (SKIPPED)
-                    [0.2, 0.2, 0.2, 1] # Dark gray (DISABLED)
-                ):
-                    cell.cell_bg_color = [1, 0, 0, 1]  # Red (FAILED)
-                    cell.status_line1 = "Stopped"
-                    cell.status_line2 = "(incomplete)"
+            # Note: Board statuses are updated via BoardStatus.INTERRUPTED in sequence.py
+            # No need to manually update cell colors/text here - the status updates will handle it
         except Exception as e:
             print(f"[Stop] Error in widget updates: {e}")
         

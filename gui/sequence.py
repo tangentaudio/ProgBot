@@ -172,30 +172,53 @@ PROBE_PLANE_TO_BOARD=4.0
 
 class ProgramStatus(Enum):
     """Status of the programming operation."""
-    IDLE = "Idle"
+    IDLE = "Pending"
     IDENTIFYING = "Identifying"
     IDENTIFIED = "Identified"
     PROGRAMMING = "Programming"
     COMPLETED = "Programmed"
     FAILED = "Failed"
     SKIPPED = "Skipped"
+    INTERRUPTED = "Interrupted"
 
 
 class ProbeStatus(Enum):
     """Status of the probing operation."""
-    IDLE = "Idle"
+    IDLE = "Pending"
     PROBING = "Probing"
     COMPLETED = "Probed"
     FAILED = "Probe Failed"
     SKIPPED = "Skipped"
+    INTERRUPTED = "Interrupted"
 
 
 class VisionStatus(Enum):
     """Status of the vision/QR scanning operation."""
-    IDLE = "Idle"
+    IDLE = "Pending"
     IN_PROGRESS = "Scanning"
     PASSED = "QR Detected"
     FAILED = "No QR"
+    INTERRUPTED = "Interrupted"
+
+
+class ProvisionStatus(Enum):
+    """Status of the provisioning operation."""
+    IDLE = "Pending"
+    PROVISIONING = "Provisioning"
+    COMPLETED = "Provisioned"
+    FAILED = "Provision Failed"
+    SKIPPED = "Skipped"
+    INTERRUPTED = "Interrupted"
+
+
+class TestStatus(Enum):
+    """Status of the testing operation."""
+    IDLE = "Pending"
+    TESTING = "Testing"
+    COMPLETED = "Tested"
+    FAILED = "Test Failed"
+    SKIPPED = "Skipped"
+    INTERRUPTED = "Interrupted"
 
 
 class OperationMode(Enum):
@@ -291,6 +314,8 @@ class BoardStatus:
         self.vision_status = VisionStatus.IDLE
         self.probe_status = ProbeStatus.IDLE
         self.program_status = ProgramStatus.IDLE
+        self.provision_status = ProvisionStatus.IDLE
+        self.test_status = TestStatus.IDLE
         self.qr_code: Optional[str] = None  # Scanned QR code data (deprecated - use board_info)
         self.board_info: Optional[BoardInfo] = None  # Detailed board information
         self.failure_reason: Optional[str] = None  # Why the board failed (if applicable)
@@ -300,22 +325,28 @@ class BoardStatus:
         """Return text description of current state.
         
         Returns:
-            Tuple of (status_line1, status_line2) for display
+            Tuple of (status_line1, status_line2, status_line3, status_line4) for display
         """
         if not self.enabled:
-            return ("DISABLED", "")
+            return ("DISABLED", "", "", "")
         
-        # Show probe status on first line, program status on second
-        probe_text = self.probe_status.value if self.probe_status else "Idle"
-        program_text = self.program_status.value if self.program_status else "Idle"
+        # Show probe, program, provision, and test status
+        probe_text = self.probe_status.value if self.probe_status else "Pending"
+        program_text = self.program_status.value if self.program_status else "Pending"
+        provision_text = self.provision_status.value if self.provision_status else "Pending"
+        test_text = self.test_status.value if self.test_status else "Pending"
         
         # If there's a failure reason, include it
         if self.probe_status == ProbeStatus.FAILED and self.failure_reason:
             probe_text = f"{probe_text} ({self.failure_reason})"
         if self.program_status == ProgramStatus.FAILED and self.failure_reason:
             program_text = f"{program_text} ({self.failure_reason})"
+        if self.provision_status == ProvisionStatus.FAILED and self.failure_reason:
+            provision_text = f"{provision_text} ({self.failure_reason})"
+        if self.test_status == TestStatus.FAILED and self.failure_reason:
+            test_text = f"{test_text} ({self.failure_reason})"
         
-        return (probe_text, program_text)
+        return (probe_text, program_text, provision_text, test_text)
     
     def __repr__(self):
         return f"BoardStatus({self.position}, enabled={self.enabled}, probe={self.probe_status.name}, prog={self.program_status.name})"
@@ -489,7 +520,11 @@ class ProgBot:
         """
         position = (col, row)
         if position not in self.board_statuses:
-            self.board_statuses[position] = BoardStatus(position)
+            board_status = BoardStatus(position)
+            # Set enabled=False if position is in skip list
+            if [col, row] in self.config.skip_board_pos:
+                board_status.enabled = False
+            self.board_statuses[position] = board_status
         return self.board_statuses[position]
     
     def set_skip_board_pos(self, skip_positions):
@@ -500,6 +535,11 @@ class ProgBot:
         """
         self.config.skip_board_pos = skip_positions
         print(f"Updated skip_board_pos: {self.config.skip_board_pos}")
+        
+        # Update enabled field for all existing board statuses
+        for position, board_status in self.board_statuses.items():
+            col, row = position
+            board_status.enabled = [col, row] not in skip_positions
     
     def init_panel(self):
         """Call this after listeners are connected to emit panel dimensions."""
@@ -732,6 +772,14 @@ class ProgBot:
         board_status.program_status = status
         self._emit_status(cell_id, board_status)
     
+    def _mark_provision(self, cell_id, board_status, status):
+        board_status.provision_status = status
+        self._emit_status(cell_id, board_status)
+    
+    def _mark_test(self, cell_id, board_status, status):
+        board_status.test_status = status
+        self._emit_status(cell_id, board_status)
+    
     def _mark_vision(self, cell_id, board_status, status):
         board_status.vision_status = status
         self._emit_status(cell_id, board_status)
@@ -798,15 +846,18 @@ class ProgBot:
         except Exception as e:
             print(f"Probe failed: {e}")
             debug_log(f"[_run_board] Probe failed: {e}")
+            board_status.failure_reason = f"Probe error: {e}"
             self._mark_probe(cell_id, board_status, ProbeStatus.FAILED)
+            self._mark_program(cell_id, board_status, ProgramStatus.SKIPPED)
             self.stats.record_failure()
             self.stats_updated.emit(self.stats.get_summary_text())
-            # SAFETY: Return to safe Z height before exiting
+            # SAFETY: Return to safe Z height before continuing to next board
             try:
                 await self.motion.rapid_z_abs(0.0)
             except Exception:
                 pass
-            raise
+            self.current_board = None
+            return  # Soft-skip this board, continue cycle
 
         debug_log(f"[_run_board] Moving to safe height: {-1.0 * dist_to_probe}")
         self.update_phase("Move to safe height above board...")
@@ -903,13 +954,15 @@ class ProgBot:
                 )
             except Exception as e:
                 print(f"Identification failed: {e}")
+                board_status.failure_reason = f"Identification error: {e}"
                 self._mark_program(cell_id, board_status, ProgramStatus.FAILED)
                 self.stats.record_failure()
                 self.stats_updated.emit(self.stats.get_summary_text())
-                # SAFETY: Return to safe Z height before re-raising
+                # SAFETY: Return to safe Z height before continuing to next board
                 await self.head.set_all(False)
                 await self.motion.rapid_z_abs(0.0)
-                raise
+                self.current_board = None
+                return  # Soft-skip this board, continue cycle
 
         elif self.config.operation_mode in (OperationMode.PROGRAM, OperationMode.PROGRAM_AND_TEST):
             self._mark_program(cell_id, board_status, ProgramStatus.PROGRAMMING)
@@ -924,13 +977,15 @@ class ProgBot:
                 )
             except Exception as e:
                 print(f"Programming failed: {e}")
+                board_status.failure_reason = f"Programming error: {e}"
                 self._mark_program(cell_id, board_status, ProgramStatus.FAILED)
                 self.stats.record_failure()
                 self.stats_updated.emit(self.stats.get_summary_text())
-                # SAFETY: Return to safe Z height before re-raising
+                # SAFETY: Return to safe Z height before continuing to next board
                 await self.head.set_all(False)
                 await self.motion.rapid_z_abs(0.0)
-                raise
+                self.current_board = None
+                return  # Soft-skip this board, continue cycle
 
             if success:
                 monitor_task = self.target.create_monitor_task()
@@ -1067,6 +1122,8 @@ class ProgBot:
                             board_status.vision_status = VisionStatus.FAILED
                             board_status.probe_status = ProbeStatus.SKIPPED
                             board_status.program_status = ProgramStatus.SKIPPED
+                            board_status.provision_status = ProvisionStatus.SKIPPED
+                            board_status.test_status = TestStatus.SKIPPED
                             self.stats.record_skip()
                             self._emit_status(cell_id, board_status)
                     
@@ -1079,6 +1136,8 @@ class ProgBot:
                         board_status.vision_status = VisionStatus.FAILED
                         board_status.probe_status = ProbeStatus.SKIPPED
                         board_status.program_status = ProgramStatus.SKIPPED
+                        board_status.provision_status = ProvisionStatus.SKIPPED
+                        board_status.test_status = TestStatus.SKIPPED
                         self.stats.record_failure()
                         self._emit_status(cell_id, board_status)
         
@@ -1167,6 +1226,61 @@ class ProgBot:
 
         except asyncio.CancelledError:
             debug_log("[full_cycle] Cycle cancelled")
+            
+            # Mark remaining boards as interrupted or skipped
+            for col in range(self.config.board_num_cols):
+                for row in range(self.config.board_num_rows):
+                    board_status = self.get_board_status(col, row)
+                    # Skip disabled boards
+                    if not board_status.enabled:
+                        continue
+                    
+                    # Skip boards that have already failed at any stage
+                    if (board_status.vision_status.name == "FAILED" or
+                        board_status.probe_status.name == "FAILED" or
+                        board_status.program_status.name == "FAILED" or
+                        board_status.provision_status.name == "FAILED" or
+                        board_status.test_status.name == "FAILED"):
+                        continue
+                    
+                    cell_id = col * self.config.board_num_rows + row
+                    
+                    # Terminal states that should not be modified
+                    terminal_states = ("FAILED", "COMPLETED", "SKIPPED")
+                    # Active states are: PROBING, PROGRAMMING, IDENTIFYING, PROVISIONING, TESTING
+                    active_probe_states = ("PROBING",)
+                    active_program_states = ("PROGRAMMING", "IDENTIFYING")
+                    active_provision_states = ("PROVISIONING",)
+                    active_test_states = ("TESTING",)
+                    
+                    # Only modify non-terminal states
+                    if board_status.probe_status.name not in terminal_states:
+                        if board_status.probe_status.name in active_probe_states:
+                            self._mark_probe(cell_id, board_status, ProbeStatus.INTERRUPTED)
+                        elif board_status.probe_status.name == "IDLE":
+                            # Never started probing - mark as skipped
+                            self._mark_probe(cell_id, board_status, ProbeStatus.SKIPPED)
+                    
+                    if board_status.program_status.name not in terminal_states:
+                        if board_status.program_status.name in active_program_states:
+                            self._mark_program(cell_id, board_status, ProgramStatus.INTERRUPTED)
+                        elif board_status.program_status.name == "IDLE":
+                            # Never started programming - mark as skipped
+                            self._mark_program(cell_id, board_status, ProgramStatus.SKIPPED)
+                    
+                    if board_status.provision_status.name not in terminal_states:
+                        if board_status.provision_status.name in active_provision_states:
+                            self._mark_provision(cell_id, board_status, ProvisionStatus.INTERRUPTED)
+                        elif board_status.provision_status.name == "IDLE":
+                            # Never started provisioning - mark as skipped
+                            self._mark_provision(cell_id, board_status, ProvisionStatus.SKIPPED)
+                    
+                    if board_status.test_status.name not in terminal_states:
+                        if board_status.test_status.name in active_test_states:
+                            self._mark_test(cell_id, board_status, TestStatus.INTERRUPTED)
+                        elif board_status.test_status.name == "IDLE":
+                            # Never started testing - mark as skipped
+                            self._mark_test(cell_id, board_status, TestStatus.SKIPPED)
             
             # End cycle statistics even when cancelled
             self.stats.end_cycle()
