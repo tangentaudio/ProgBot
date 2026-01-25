@@ -21,16 +21,31 @@ class HeadController:
 
     async def connect(self):
         """Connect to head controller if not already connected."""
+        # Check if existing connection is still alive
+        if self.device is not None:
+            try:
+                # Quick health check - see if reader/writer still exist
+                if self.device.reader is None or self.device.writer is None or self.device.writer.is_closing():
+                    print(f"[HeadController] Connection dead, reconnecting to {self.port}")
+                    self.device = None
+            except Exception as e:
+                print(f"[HeadController] Health check failed: {e}, reconnecting")
+                self.device = None
+        
         if self.device is None:
+            print(f"[HeadController] Connecting to {self.port} at {self.baudrate} baud...")
             self.device = AsyncSerialDevice(self.port, self.baudrate)
             await self.device.connect()
+            print(f"[HeadController] Connected successfully to {self.port}")
 
     # Head device contact/power operations
     
     async def check_contact(self):
         """Check if probe is in contact with device."""
         await self.connect()
+        print(f"[HeadController] Sending 'Stat' command...")
         response = await self.device.send_command("Stat", retries=3)
+        print(f"[HeadController] Received response: '{response}'")
         if 'ERROR' in response:
             raise RuntimeError("proghead error")
         contacted = 'PRESENT' in response

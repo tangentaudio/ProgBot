@@ -49,7 +49,13 @@ class PanelSettings:
             'operation_mode': 'Program',
             'skip_board_pos': [],
             'network_core_firmware': '/home/steve/fw/merged_CPUNET.hex',
-            'main_core_firmware': '/home/steve/fw/merged.hex'
+            'main_core_firmware': '/home/steve/fw/merged.hex',
+            'use_camera': True,
+            'use_picamera': True,
+            'camera_index': 0,
+            'camera_z_height': 0.0,
+            'qr_offset_x': 0.0,  # X offset from board origin to QR code
+            'qr_offset_y': 0.0   # Y offset from board origin to QR code
         }
     
     def get(self, key, default=None):

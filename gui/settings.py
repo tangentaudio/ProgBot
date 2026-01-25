@@ -42,7 +42,12 @@ class Settings:
             'skip_board_pos': [],
             'motion_port_id': '',
             'head_port_id': '',
-            'target_port_id': ''
+            'target_port_id': '',
+            'camera_offset_x': 50.0,
+            'camera_offset_y': 50.0,
+            'qr_scan_timeout': 5.0,  # Seconds to wait for QR code (1-10)
+            'qr_search_offset': 2.0,  # XY offset in mm to search around QR position (0=disabled)
+            'contact_adjust_step': 0.1,  # Y adjustment step in mm when contact fails (0.01-1.0)
         }
     
     def get(self, key, default=None):

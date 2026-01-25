@@ -21,6 +21,17 @@ class TargetController:
 
     async def connect(self):
         """Connect to target UART if not already connected."""
+        # Check if existing connection is still alive
+        if self.device is not None:
+            try:
+                # Quick health check - see if reader/writer still exist
+                if self.device.reader is None or self.device.writer is None or self.device.writer.is_closing():
+                    print(f"[TargetController] Connection dead, reconnecting to {self.port}")
+                    self.device = None
+            except Exception as e:
+                print(f"[TargetController] Health check failed: {e}, reconnecting")
+                self.device = None
+        
         if self.device is None:
             self.device = AsyncSerialDevice(self.port, self.baudrate)
             await self.device.connect()

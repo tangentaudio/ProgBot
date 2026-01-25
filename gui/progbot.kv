@@ -44,22 +44,33 @@
             width: 1
     
     Label:
+        text: root.serial_number
+        bold: True
+        color: 1, 1, 0, 1
+        size_hint_y: 0.25
+        font_size: '14sp'
+        halign: 'left'
+        valign: 'top'
+        text_size: self.size
+        padding: 5, 0
+    
+    Label:
         text: root.status_line1
         bold: True
         color: 1, 1, 1, 1
-        size_hint_y: 0.4
+        size_hint_y: 0.3
         font_size: '12sp'
     
     Label:
         text: root.status_line2
         color: 1, 1, 1, 1
-        size_hint_y: 0.3
+        size_hint_y: 0.25
         font_size: '10sp'
     
     Label:
         text: root.cell_label
         color: 1, 1, 1, 1
-        size_hint_y: 0.3
+        size_hint_y: 0.2
         font_size: '10sp'
 
 <LogViewer>:
@@ -351,6 +362,59 @@
                                 font_size: '24sp'
                                 on_press: app.start(self)
                         
+                        BoxLayout:
+                            orientation: 'horizontal'
+                            size_hint_y: None
+                            height: 50
+                            spacing: 5
+                            
+                            Button:
+                                id: reset_grid_btn
+                                text: 'Reset Grid'
+                                background_color: 0.4, 0.4, 0.6, 1
+                                font_size: '16sp'
+                                on_press: app.reset_grid(self)
+                            
+                            Button:
+                                id: home_btn
+                                text: 'Home'
+                                background_color: 0.6, 0.4, 0.4, 1
+                                font_size: '16sp'
+                                on_press: app.home_machine(self)
+                        
+                        # Camera preview section
+                        BoxLayout:
+                            orientation: 'vertical'
+                            size_hint: None, None
+                            width: 165
+                            height: 165
+                            padding: 4
+                            spacing: 2
+                            pos_hint: {'center_x': 0.5}
+                            
+                            Label:
+                                id: camera_status_label
+                                text: ''
+                                size_hint_y: None
+                                height: 25
+                                font_size: '14sp'
+                                halign: 'center'
+                                valign: 'center'
+                                text_size: self.size
+                            
+                            Image:
+                                id: camera_preview_image
+                                size_hint_y: 1
+                                allow_stretch: True
+                                keep_ratio: True
+                                color: 0, 0, 0, 1
+                                canvas.before:
+                                    Color:
+                                        rgba: 0, 0, 0, 1
+                                    Rectangle:
+                                        pos: self.pos
+                                        size: self.size
+                        
                         Widget:
                             size_hint_y: 1
 
@@ -502,6 +566,42 @@
                                 on_text_validate: app.on_probe_plane_change(self.text)
 
                             Label:
+                                text: "QR Offset X (mm):"
+                                size_hint_y: None
+                                height: 30
+                                halign: 'right'
+                                valign: 'center'
+                                text_size: self.size
+
+                            TextInput:
+                                id: qr_offset_x_input
+                                text: "0.0"
+                                size_hint_y: None
+                                height: 30
+                                multiline: False
+                                input_filter: 'float'
+                                on_focus: app.set_keyboard_layout('numpad') if self.focus else None
+                                on_text_validate: app.on_qr_offset_x_change(self.text)
+
+                            Label:
+                                text: "QR Offset Y (mm):"
+                                size_hint_y: None
+                                height: 30
+                                halign: 'right'
+                                valign: 'center'
+                                text_size: self.size
+
+                            TextInput:
+                                id: qr_offset_y_input
+                                text: "0.0"
+                                size_hint_y: None
+                                height: 30
+                                multiline: False
+                                input_filter: 'float'
+                                on_focus: app.set_keyboard_layout('numpad') if self.focus else None
+                                on_text_validate: app.on_qr_offset_y_change(self.text)
+
+                            Label:
                                 text: "Operation:"
                                 size_hint_y: None
                                 height: 30
@@ -516,6 +616,21 @@
                                 size_hint_y: None
                                 height: 30
                                 on_text: app.on_operation_change(self.text)
+
+                            Label:
+                                text: "QR Code Scan:"
+                                size_hint_y: None
+                                height: 30
+                                halign: 'right'
+                                valign: 'center'
+                                text_size: self.size
+
+                            CheckBox:
+                                id: use_camera_checkbox
+                                active: True
+                                size_hint_y: None
+                                height: 30
+                                on_active: app.on_use_camera_change(self.active)
 
                             Label:
                                 text: "Network Core FW:"
@@ -609,6 +724,154 @@
                             height: self.minimum_height
                             spacing: 8
                             padding: 8
+
+                            Label:
+                                text: "Camera Configuration"
+                                size_hint_y: None
+                                height: 40
+                                font_size: '16sp'
+                                bold: True
+                                halign: 'center'
+                                valign: 'center'
+                                text_size: self.size
+                            
+                            Widget:
+                                size_hint_y: None
+                                height: 10
+                            
+                            GridLayout:
+                                cols: 2
+                                size_hint_y: None
+                                height: self.minimum_height
+                                spacing: 4
+                                
+                                Label:
+                                    text: "Camera Offset X (mm):"
+                                    size_hint_y: None
+                                    height: 30
+                                    halign: 'right'
+                                    valign: 'center'
+                                    text_size: self.size
+
+                                TextInput:
+                                    id: camera_offset_x_input
+                                    text: "50.0"
+                                    size_hint_y: None
+                                    height: 30
+                                    multiline: False
+                                    input_filter: 'float'
+                                    on_focus: app.set_keyboard_layout('numpad') if self.focus else None
+                                    on_text_validate: app.on_camera_offset_x_change(self.text)
+
+                                Label:
+                                    text: "Camera Offset Y (mm):"
+                                    size_hint_y: None
+                                    height: 30
+                                    halign: 'right'
+                                    valign: 'center'
+                                    text_size: self.size
+
+                                TextInput:
+                                    id: camera_offset_y_input
+                                    text: "50.0"
+                                    size_hint_y: None
+                                    height: 30
+                                    multiline: False
+                                    input_filter: 'float'
+                                    on_focus: app.set_keyboard_layout('numpad') if self.focus else None
+                                    on_text_validate: app.on_camera_offset_y_change(self.text)
+
+                                Label:
+                                    text: "QR Scan Timeout (s):"
+                                    size_hint_y: None
+                                    height: 30
+                                    halign: 'right'
+                                    valign: 'center'
+                                    text_size: self.size
+
+                                TextInput:
+                                    id: qr_scan_timeout_input
+                                    text: "5.0"
+                                    size_hint_y: None
+                                    height: 30
+                                    multiline: False
+                                    input_filter: 'float'
+                                    on_focus: app.set_keyboard_layout('numpad') if self.focus else None
+                                    on_text_validate: app.on_qr_scan_timeout_change(self.text)
+
+                                Label:
+                                    text: "QR Search Offset (mm):"
+                                    size_hint_y: None
+                                    height: 30
+                                    halign: 'right'
+                                    valign: 'center'
+                                    text_size: self.size
+
+                                TextInput:
+                                    id: qr_search_offset_input
+                                    text: "2.0"
+                                    size_hint_y: None
+                                    height: 30
+                                    multiline: False
+                                    input_filter: 'float'
+                                    on_focus: app.set_keyboard_layout('numpad') if self.focus else None
+                                    on_text_validate: app.on_qr_search_offset_change(self.text)
+                            
+                            Widget:
+                                size_hint_y: None
+                                height: 10
+                            
+                            Button:
+                                text: "Open QR Scanner Debug Tool"
+                                size_hint_y: None
+                                height: 50
+                                on_press: app.open_qr_debug_dialog()
+                            
+                            Widget:
+                                size_hint_y: None
+                                height: 20
+
+                            Label:
+                                text: "Probing"
+                                size_hint_y: None
+                                height: 40
+                                font_size: '16sp'
+                                bold: True
+                                halign: 'center'
+                                valign: 'center'
+                                text_size: self.size
+                            
+                            Widget:
+                                size_hint_y: None
+                                height: 10
+
+                            GridLayout:
+                                cols: 2
+                                size_hint_y: None
+                                height: self.minimum_height
+                                spacing: 4
+
+                                Label:
+                                    text: "Contact Adjust Step (mm):"
+                                    size_hint_y: None
+                                    height: 30
+                                    halign: 'right'
+                                    valign: 'center'
+                                    text_size: self.size
+
+                                TextInput:
+                                    id: contact_adjust_step_input
+                                    text: "0.1"
+                                    size_hint_y: None
+                                    height: 30
+                                    multiline: False
+                                    input_filter: 'float'
+                                    on_focus: app.set_keyboard_layout('numpad') if self.focus else None
+                                    on_text_validate: app.on_contact_adjust_step_change(self.text)
+
+                            Widget:
+                                size_hint_y: None
+                                height: 20
 
                             Label:
                                 text: "Serial Port Configuration"

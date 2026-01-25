@@ -1,12 +1,26 @@
 import os
 os.environ['KCFG_INPUT_MOUSE'] = 'mouse,disable_on_activity'
 
+def debug_log(msg):
+    """Write debug message to /tmp/debug.txt"""
+    try:
+        with open('/tmp/debug.txt', 'a') as f:
+            import datetime
+            timestamp = datetime.datetime.now().strftime('%H:%M:%S.%f')[:-3]
+            f.write(f"[{timestamp}] {msg}\n")
+            f.flush()
+    except Exception:
+        pass
+
 from kivy.config import Config
 
 #Config.set('graphics', 'width', 800)
 #Config.set('graphics', 'height', 415)
 #Config.set('graphics', 'resizable', 0)
 Config.set('graphics', 'fullscreen', 'auto')
+Config.set('graphics', 'maxfps', 10)  # Very low FPS (10 updates/sec) to minimize overhead
+Config.set('graphics', 'multisamples', 0)  # Disable antialiasing
+Config.set('graphics', 'vsync', 0)  # Disable vsync to reduce frame timing overhead
 Config.set('kivy', 'keyboard_mode', 'systemanddock') 
 
 import sys
@@ -86,6 +100,7 @@ class GridCell(ButtonBehavior, BoxLayout):
     cell_bg_color = ListProperty([0, 0.5, 0.5, 1])  # Default dark cyan (ON)
     status_line1 = StringProperty("")  # First line of status (probe status)
     status_line2 = StringProperty("")  # Second line of status (program status)
+    serial_number = StringProperty("")  # Scanned serial number from QR code
     
     def __init__(self, cell_label="", cell_checked=True, bg_color=None, on_toggle_callback=None, **kwargs):
         super().__init__(**kwargs)
@@ -140,6 +155,12 @@ class GridCell(ButtonBehavior, BoxLayout):
             self.status_line1 = status_line1
             self.status_line2 = status_line2
             
+            # Update serial number if available
+            if board_status.board_info and board_status.board_info.serial_number:
+                self.serial_number = board_status.board_info.serial_number
+            else:
+                self.serial_number = ""
+            
             # Update background color based on status
             if not board_status.enabled:
                 self.cell_bg_color = [0.2, 0.2, 0.2, 1]  # Dark gray for disabled
@@ -155,6 +176,14 @@ class GridCell(ButtonBehavior, BoxLayout):
                 self.cell_bg_color = [1, 1, 0, 1]  # Yellow while programming or identifying
             elif board_status.probe_status.name == "PROBING":
                 self.cell_bg_color = [0, 1, 1, 1]  # Cyan while probing
+            elif board_status.vision_status.name == "IN_PROGRESS":
+                self.cell_bg_color = [0.5, 0.5, 1, 1]  # Light blue while scanning
+            elif board_status.vision_status.name == "PASSED":
+                self.cell_bg_color = [0, 0.7, 0.7, 1]  # Teal when QR detected
+            elif board_status.vision_status.name == "FAILED":
+                self.cell_bg_color = [0.5, 0, 0, 1]  # Dark red when no QR
+            else:
+                self.cell_bg_color = [0, 0.5, 0.5, 1]  # Default dark cyan
         except Exception as e:
             print(f"[GridCell] Error updating status: {e}")
 
@@ -487,7 +516,190 @@ class AsyncApp(App):
                 self.settings_data['probe_plane'] = value
             if self.bot:
                 self.bot.config.probe_plane_to_board = probe_plane
-            print(f"Updated probe_plane_to_board: {probe_plane}")
+        except ValueError:
+            pass
+    
+    def on_contact_adjust_step_change(self, value):
+        """Handle contact adjust step text input change."""
+        try:
+            step = float(value)
+            # Validate range (0.01 to 1.0 mm)
+            if step < 0.01 or step > 1.0:
+                debug_log(f"[on_contact_adjust_step_change] Invalid value {step}, must be 0.01-1.0")
+                return
+            # Save to main settings (machine config, not panel)
+            from settings import get_settings
+            settings = get_settings()
+            settings.set('contact_adjust_step', step)
+            debug_log(f"[on_contact_adjust_step_change] Saved step={step} to settings")
+            if self.bot:
+                self.bot.config.contact_adjust_step = step
+                debug_log(f"[on_contact_adjust_step_change] Updated bot.config.contact_adjust_step={step}")
+            print(f"Updated contact_adjust_step: {step}")
+        except ValueError:
+            debug_log(f"[on_contact_adjust_step_change] ValueError for value: {value}")
+            pass
+    
+    def on_qr_offset_x_change(self, value):
+        """Handle QR offset X text input change."""
+        try:
+            qr_offset_x = float(value)
+            sequence.debug_log(f"[on_qr_offset_x_change] Setting qr_offset_x to {qr_offset_x}")
+            if self.panel_settings:
+                self.panel_settings.set('qr_offset_x', qr_offset_x)
+            if hasattr(self, 'settings_data'):
+                self.settings_data['qr_offset_x'] = qr_offset_x
+            if self.bot:
+                self.bot.config.qr_offset_x = qr_offset_x
+                sequence.debug_log(f"[on_qr_offset_x_change] Bot config updated: {self.bot.config.qr_offset_x}")
+        except ValueError:
+            pass
+    
+    def on_qr_offset_y_change(self, value):
+        """Handle QR offset Y text input change."""
+        try:
+            qr_offset_y = float(value)
+            sequence.debug_log(f"[on_qr_offset_y_change] Setting qr_offset_y to {qr_offset_y}")
+            if self.panel_settings:
+                self.panel_settings.set('qr_offset_y', qr_offset_y)
+            if hasattr(self, 'settings_data'):
+                self.settings_data['qr_offset_y'] = qr_offset_y
+            if self.bot:
+                self.bot.config.qr_offset_y = qr_offset_y
+                sequence.debug_log(f"[on_qr_offset_y_change] Bot config updated: {self.bot.config.qr_offset_y}")
+            print(f"Updated qr_offset_y: {qr_offset_y}")
+        except ValueError:
+            pass
+    
+    def on_qr_scan_timeout_change(self, value):
+        """Handle QR scan timeout text input change."""
+        try:
+            timeout = float(value)
+            # Clamp to 1-10 second range
+            timeout = max(1.0, min(10.0, timeout))
+            # Save to main settings (machine config, not panel)
+            from settings import get_settings
+            settings = get_settings()
+            settings.set('qr_scan_timeout', timeout)
+            if self.bot:
+                self.bot.config.qr_scan_timeout = timeout
+            # Update the input field to show clamped value
+            if hasattr(self, 'root') and self.root:
+                timeout_input = self.root.ids.get('qr_scan_timeout_input')
+                if timeout_input and timeout_input.text != str(timeout):
+                    timeout_input.text = str(timeout)
+            print(f"Updated qr_scan_timeout: {timeout}s")
+        except ValueError:
+            pass
+    
+    def on_qr_search_offset_change(self, value):
+        """Handle QR search offset text input change."""
+        try:
+            offset = float(value)
+            # Clamp to 0-10mm range (0 = disabled)
+            offset = max(0.0, min(10.0, offset))
+            # Save to main settings (machine config, not panel)
+            from settings import get_settings
+            settings = get_settings()
+            settings.set('qr_search_offset', offset)
+            if self.bot:
+                self.bot.config.qr_search_offset = offset
+            # Update the input field to show clamped value
+            if hasattr(self, 'root') and self.root:
+                offset_input = self.root.ids.get('qr_search_offset_input')
+                if offset_input and offset_input.text != str(offset):
+                    offset_input.text = str(offset)
+            print(f"Updated qr_search_offset: {offset}mm")
+        except ValueError:
+            pass
+    
+    def open_qr_debug_dialog(self):
+        """Open the QR code debug dialog."""
+        if not self.bot:
+            print("[open_qr_debug_dialog] Bot not initialized yet")
+            return
+        
+        if not self.bot.vision or not self.bot.motion:
+            print("[open_qr_debug_dialog] Vision or motion not initialized")
+            return
+        
+        try:
+            # Sync current panel settings to config before opening dialog
+            self._sync_panel_settings_to_config()
+            
+            from qr_debug_dialog import QRDebugDialog
+            dialog = QRDebugDialog(
+                vision_controller=self.bot.vision,
+                motion_controller=self.bot.motion,
+                config=self.bot.config
+            )
+            dialog.open()
+        except Exception as e:
+            print(f"[open_qr_debug_dialog] Error opening dialog: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    def _sync_panel_settings_to_config(self):
+        """Sync current panel settings from UI widgets to config object."""
+        try:
+            # Get current values from text inputs
+            if hasattr(self.root, 'ids') and hasattr(self.root.ids, 'qr_offset_x_input'):
+                try:
+                    self.bot.config.qr_offset_x = float(self.root.ids.qr_offset_x_input.text)
+                except (ValueError, AttributeError):
+                    pass
+            
+            if hasattr(self.root, 'ids') and hasattr(self.root.ids, 'qr_offset_y_input'):
+                try:
+                    self.bot.config.qr_offset_y = float(self.root.ids.qr_offset_y_input.text)
+                except (ValueError, AttributeError):
+                    pass
+            
+            if hasattr(self.root, 'ids') and hasattr(self.root.ids, 'camera_offset_x_input'):
+                try:
+                    self.bot.config.camera_offset_x = float(self.root.ids.camera_offset_x_input.text)
+                except (ValueError, AttributeError):
+                    pass
+            
+            if hasattr(self.root, 'ids') and hasattr(self.root.ids, 'camera_offset_y_input'):
+                try:
+                    self.bot.config.camera_offset_y = float(self.root.ids.camera_offset_y_input.text)
+                except (ValueError, AttributeError):
+                    pass
+            
+            debug_log(f"[_sync_panel_settings_to_config] Updated config: qr_offset=({self.bot.config.qr_offset_x},{self.bot.config.qr_offset_y}), camera_offset=({self.bot.config.camera_offset_x},{self.bot.config.camera_offset_y})")
+        except Exception as e:
+            debug_log(f"[_sync_panel_settings_to_config] Error: {e}")
+    
+    def on_camera_offset_x_change(self, value):
+        """Handle camera offset X text input change."""
+        try:
+            offset_x = float(value)
+            # Save to main settings (machine config, not panel)
+            from settings import get_settings
+            settings = get_settings()
+            settings.set('camera_offset_x', offset_x)
+            debug_log(f"[on_camera_offset_x_change] Saved offset_x={offset_x} to settings")
+            if self.bot:
+                self.bot.config.camera_offset_x = offset_x
+                debug_log(f"[on_camera_offset_x_change] Updated bot.config.camera_offset_x={offset_x}")
+            print(f"Updated camera_offset_x: {offset_x}")
+        except ValueError:
+            pass
+    
+    def on_camera_offset_y_change(self, value):
+        """Handle camera offset Y text input change."""
+        try:
+            offset_y = float(value)
+            # Save to main settings (machine config, not panel)
+            from settings import get_settings
+            settings = get_settings()
+            settings.set('camera_offset_y', offset_y)
+            debug_log(f"[on_camera_offset_y_change] Saved offset_y={offset_y} to settings")
+            if self.bot:
+                self.bot.config.camera_offset_y = offset_y
+                debug_log(f"[on_camera_offset_y_change] Updated bot.config.camera_offset_y={offset_y}")
+            print(f"Updated camera_offset_y: {offset_y}")
         except ValueError:
             pass
 
@@ -508,6 +720,26 @@ class AsyncApp(App):
         if hasattr(self, 'settings_data'):
             self.settings_data['operation_mode'] = value
         print(f"Updated operation_mode: {selected}")
+
+    def on_use_camera_change(self, active):
+        """Handle QR code scan checkbox change."""
+        if self.bot:
+            self.bot.config.use_camera = active
+            # Update vision controller availability
+            if active and not self.bot.vision:
+                # Re-create vision controller if it was disabled
+                from vision_controller import VisionController
+                self.bot.vision = VisionController(
+                    self.bot.update_phase,
+                    use_picamera=self.bot.config.use_picamera,
+                    camera_index=self.bot.config.camera_index
+                )
+            elif not active and self.bot.vision:
+                # Disable vision controller when camera is turned off
+                self.bot.vision = None
+        if self.panel_settings:
+            self.panel_settings.set('use_camera', active)
+        print(f"Updated use_camera: {active}")
 
     def on_network_firmware_change(self, value):
         """Handle network core firmware path change."""
@@ -691,8 +923,12 @@ class AsyncApp(App):
 
         def _get(key, cast, fallback):
             try:
-                return cast(settings_data.get(key, fallback))
-            except Exception:
+                value = settings_data.get(key, fallback)
+                result = cast(value)
+                sequence.debug_log(f"[_build_config._get] key={key}, value={value}, cast={cast.__name__}, result={result}")
+                return result
+            except Exception as e:
+                sequence.debug_log(f"[_build_config._get] key={key} FAILED: {e}")
                 return fallback
 
         mode_mapping = {
@@ -705,6 +941,13 @@ class AsyncApp(App):
         mode_text = settings_data.get('operation_mode', defaults.operation_mode.value)
         skip_positions = settings_data.get('skip_board_pos', []) or []
 
+        # Camera offsets and probing settings come from main settings (machine config), not panel settings
+        camera_offset_x = hardware_settings.get('camera_offset_x', defaults.camera_offset_x)
+        camera_offset_y = hardware_settings.get('camera_offset_y', defaults.camera_offset_y)
+        qr_scan_timeout = hardware_settings.get('qr_scan_timeout', defaults.qr_scan_timeout)
+        qr_search_offset = hardware_settings.get('qr_search_offset', defaults.qr_search_offset)
+        contact_adjust_step = hardware_settings.get('contact_adjust_step', 0.1)
+
         return sequence.Config(
             board_x=_get('board_x', float, defaults.board_x),
             board_y=_get('board_y', float, defaults.board_y),
@@ -713,6 +956,7 @@ class AsyncApp(App):
             board_num_rows=_get('board_rows', int, defaults.board_num_rows),
             board_num_cols=_get('board_cols', int, defaults.board_num_cols),
             probe_plane_to_board=_get('probe_plane', float, defaults.probe_plane_to_board),
+            contact_adjust_step=contact_adjust_step,
             operation_mode=mode_mapping.get(mode_text, defaults.operation_mode),
             skip_board_pos=skip_positions,
             motion_port_id=hardware_settings.get('motion_port_id', ''),
@@ -723,11 +967,24 @@ class AsyncApp(App):
             target_baud=defaults.target_baud,
             network_core_firmware=settings_data.get('network_core_firmware', defaults.network_core_firmware),
             main_core_firmware=settings_data.get('main_core_firmware', defaults.main_core_firmware),
+            # Camera settings
+            use_camera=_get('use_camera', bool, defaults.use_camera),
+            use_picamera=_get('use_picamera', bool, defaults.use_picamera),
+            camera_index=_get('camera_index', int, defaults.camera_index),
+            camera_offset_x=camera_offset_x,
+            camera_offset_y=camera_offset_y,
+            camera_z_height=_get('camera_z_height', float, defaults.camera_z_height),
+            qr_offset_x=_get('qr_offset_x', float, defaults.qr_offset_x),
+            qr_offset_y=_get('qr_offset_y', float, defaults.qr_offset_y),
+            qr_scan_timeout=qr_scan_timeout,
+            qr_search_offset=qr_search_offset,
         )
     
     def _apply_settings_to_widgets(self, root, settings_data):
         """Apply loaded settings to UI widgets."""
         try:
+            debug_log(f"[_apply_settings_to_widgets] qr_offset_x from settings_data: {settings_data.get('qr_offset_x', 'NOT FOUND')}")
+            debug_log(f"[_apply_settings_to_widgets] qr_offset_y from settings_data: {settings_data.get('qr_offset_y', 'NOT FOUND')}")
             # Update spinner values
             cols_spinner = root.ids.get('board_cols_spinner')
             if cols_spinner:
@@ -758,9 +1015,50 @@ class AsyncApp(App):
             if probe_plane_input:
                 probe_plane_input.text = settings_data.get('probe_plane', '4.0')
             
+            # Load contact_adjust_step from main settings (not panel settings)
+            from settings import get_settings
+            main_settings = get_settings()
+            
+            contact_adjust_step_input = root.ids.get('contact_adjust_step_input')
+            if contact_adjust_step_input:
+                contact_adjust_step_input.text = str(float(main_settings.get('contact_adjust_step', 0.1)))
+            
+            qr_offset_x_input = root.ids.get('qr_offset_x_input')
+            if qr_offset_x_input:
+                qr_offset_x_input.text = str(float(settings_data.get('qr_offset_x', 0.0)))
+            
+            qr_offset_y_input = root.ids.get('qr_offset_y_input')
+            if qr_offset_y_input:
+                qr_offset_y_input.text = str(float(settings_data.get('qr_offset_y', 0.0)))
+            
+            # Load camera offsets and QR timeout from main settings (not panel settings)
+            from settings import get_settings
+            main_settings = get_settings()
+            
+            qr_scan_timeout_input = root.ids.get('qr_scan_timeout_input')
+            if qr_scan_timeout_input:
+                qr_scan_timeout_input.text = str(float(main_settings.get('qr_scan_timeout', 5.0)))
+            
+            qr_search_offset_input = root.ids.get('qr_search_offset_input')
+            if qr_search_offset_input:
+                qr_search_offset_input.text = str(float(main_settings.get('qr_search_offset', 2.0)))
+            
+            camera_offset_x_input = root.ids.get('camera_offset_x_input')
+            if camera_offset_x_input:
+                camera_offset_x_input.text = str(main_settings.get('camera_offset_x', 50.0))
+            
+            camera_offset_y_input = root.ids.get('camera_offset_y_input')
+            if camera_offset_y_input:
+                camera_offset_y_input.text = str(main_settings.get('camera_offset_y', 50.0))
+            
             operation_spinner = root.ids.get('operation_spinner')
             if operation_spinner:
                 operation_spinner.text = settings_data.get('operation_mode', 'Program')
+            
+            use_camera_checkbox = root.ids.get('use_camera_checkbox')
+            if use_camera_checkbox:
+                camera_setting = settings_data.get('use_camera', True)
+                use_camera_checkbox.active = camera_setting
             
             network_firmware_input = root.ids.get('network_firmware_input')
             if network_firmware_input:
@@ -824,9 +1122,94 @@ class AsyncApp(App):
             except Exception as e:
                 print(f"[Grid] Error setting cell enabled state: {e}")
 
+    def home_machine(self, instance):
+        """Force machine homing."""
+        print(f"[HomeMachine] Button pressed")
+        
+        if not self.bot or not self.bot.motion:
+            print(f"[HomeMachine] Bot or motion controller not initialized")
+            return
+        
+        # Disable buttons during homing
+        self._set_widget('home_btn', disabled=True)
+        self._set_widget('start_btn', disabled=True)
+        
+        async def do_homing():
+            try:
+                print("[HomeMachine] Starting forced homing...")
+                await self.bot.motion.connect()
+                
+                # Clear alarm
+                await self.bot.motion.device.send_command("M999")
+                
+                # Force homing
+                print("[HomeMachine] Homing...")
+                await self.bot.motion.send_gcode_wait_ok("$H", timeout=20)
+                
+                # Set work coordinates
+                print("[HomeMachine] Setting work coordinates...")
+                await self.bot.motion.send_gcode_wait_ok("G92 X0 Y0 Z0")
+                
+                print("[HomeMachine] Homing complete")
+            except Exception as e:
+                print(f"[HomeMachine] Error: {e}")
+                import traceback
+                traceback.print_exc()
+            finally:
+                # Re-enable buttons
+                self._set_widget('home_btn', disabled=False)
+                self._set_widget('start_btn', disabled=False)
+        
+        # Run homing in async context
+        import asyncio
+        asyncio.ensure_future(do_homing())
+    
+    def reset_grid(self, instance):
+        """Reset all grid cells to their default state as if panel was just loaded."""
+        print(f"[ResetGrid] Button pressed")
+        
+        # Get skip positions from current panel settings
+        skip_pos = get_settings().get('skip_board_pos', [])
+        
+        # Reset all cells to default state
+        for cell_id, cell in self.grid_cells.items():
+            # Convert cell_id to [col, row]
+            col = cell_id // self.grid_rows
+            row_from_bottom = cell_id % self.grid_rows
+            
+            # Check if this cell is in skip list
+            is_skipped = [col, row_from_bottom] in skip_pos
+            
+            # Reset cell properties
+            cell.status_line1 = ""
+            cell.status_line2 = ""
+            cell.serial_number = ""
+            
+            # Reset checked state
+            cell.cell_checked = not is_skipped
+            
+            # Reset background color based on checked state
+            if is_skipped:
+                cell.cell_bg_color = [0, 0, 0, 1]  # Black (SKIPPED)
+                cell.cell_label = "SKIPPED"
+            else:
+                cell.cell_bg_color = [0, 0.5, 0.5, 1]  # Dark cyan (default)
+                cell.cell_label = cell.base_cell_label
+        
+        # Reset phase label
+        self._set_widget('phase_label', text="Ready")
+        
+        # Clear board statuses in bot
+        if self.bot:
+            self.bot.board_statuses = {}
+            print(f"[ResetGrid] Cleared board statuses")
+        
+        print(f"[ResetGrid] Grid reset complete")
+    
     def stop(self, instance):
         # concise stops using helper
         print(f"[Stop] Button pressed")
+        debug_log("[Stop] Stop button pressed")
         try:
             self._set_widget('start_button', disabled=False)
             self._set_widget('stop_button', disabled=True)
@@ -850,18 +1233,68 @@ class AsyncApp(App):
         except Exception as e:
             print(f"[Stop] Error in widget updates: {e}")
         
+        # Ensure camera preview is stopped
+        if hasattr(self, 'bot') and self.bot and hasattr(self.bot, 'camera_preview'):
+            if self.bot.camera_preview:
+                try:
+                    self.bot.camera_preview.stop_preview()
+                    debug_log("[Stop] Camera preview stopped")
+                except Exception as e:
+                    debug_log(f"[Stop] Error stopping camera preview: {e}")
+        
+        # Cancel the running task
         if (bot := getattr(self, 'bot_task', None)):
             try:
                 print(f"[Stop] Cancelling bot task")
+                debug_log("[Stop] Cancelling bot task")
                 bot.cancel()
                 print(f"[Stop] Bot task cancelled")
+                debug_log("[Stop] Bot task cancelled")
             except Exception as e:
                 print(f"[Stop] Error cancelling bot task: {e}")
+        
+        # Camera cleanup happens automatically in full_cycle cleanup
+        # Don't schedule it here - causes race condition with next start
+        debug_log("[Stop] Camera will be cleaned up when task finishes")
+        print(f"[Stop] Waiting for task cleanup to complete...")
         
         
     def start(self, instance):
         # concise widget updates using helper
         print(f"[Start] Button pressed")
+        
+        # If there's a previous task still cleaning up, wait for it
+        if hasattr(self, 'bot_task') and self.bot_task and not self.bot_task.done():
+            print(f"[Start] Previous task still running, waiting for cleanup...")
+            async def wait_and_start():
+                try:
+                    # Wait up to 3 seconds for previous task to finish
+                    await asyncio.wait_for(asyncio.shield(self.bot_task), timeout=3.0)
+                except (asyncio.TimeoutError, asyncio.CancelledError):
+                    pass
+                except Exception as e:
+                    print(f"[Start] Error waiting for previous task: {e}")
+                
+                # Small delay to ensure cleanup is complete
+                await asyncio.sleep(0.5)
+                
+                # Now actually start
+                await self._do_start()
+            
+            loop = asyncio.get_event_loop()
+            loop.create_task(wait_and_start())
+            return
+        
+        # No previous task, start immediately
+        async def start_now():
+            await self._do_start()
+        
+        loop = asyncio.get_event_loop()
+        loop.create_task(start_now())
+    
+    async def _do_start(self):
+        """Actually start the bot cycle."""
+        print(f"[Start] Starting bot cycle")
         self._set_widget('start_button', disabled=True)
         self._set_widget('stop_button', disabled=False)
         # Disable config widgets during operation
@@ -886,15 +1319,16 @@ class AsyncApp(App):
         
         # Update skip board positions from unchecked cells
         if (b := getattr(self, 'bot', None)):
-            print(f"[Start] Bot found, updating skip positions")
+            # Reload the entire config from current settings
+            new_config = self._config_from_settings()
+            b.config = new_config
             b.set_skip_board_pos(skip_pos)
         else:
             print(f"[Start] Warning: Bot not found")
         
-        loop = asyncio.get_event_loop()
         if (b := getattr(self, 'bot', None)):
             print(f"[Start] Creating bot task")
-            self.bot_task = loop.create_task(b.full_cycle())
+            self.bot_task = asyncio.create_task(b.full_cycle())
             # Add callback to re-enable config widgets when task completes
             self.bot_task.add_done_callback(self._on_task_complete)
             print(f"[Start] Bot task created")
@@ -1328,6 +1762,7 @@ class AsyncApp(App):
     def app_func(self):
         async def run_wrapper():
             config = self._config_from_settings()
+            
             self.bot = sequence.ProgBot(
                 config=config, 
                 panel_settings=self.panel_settings,
@@ -1343,9 +1778,25 @@ class AsyncApp(App):
             # Now emit panel dimensions after listeners are connected
             self.bot.init_panel()
             
-            # Schedule port configuration after window is visible
+            # Schedule port configuration and camera setup after window is visible
             async def configure_ports_delayed():
                 await asyncio.sleep(1.0)  # Wait for window to fully render
+                
+                # Set up camera preview if camera is enabled
+                if self.bot.vision:
+                    from camera_preview import CameraPreview
+                    camera_image = self.root.ids.get('camera_preview_image')
+                    camera_status = self.root.ids.get('camera_status_label')
+                    if camera_image and camera_status:
+                        self.bot.camera_preview = CameraPreview(
+                            self.bot.vision,
+                            camera_image,
+                            camera_status
+                        )
+                        print("[AsyncApp] Camera preview initialized")
+                    else:
+                        print("[AsyncApp] Warning: Camera preview widgets not found")
+                
                 print("[AsyncApp] Starting port configuration...")
                 await self.bot.configure_ports()
                 print("[AsyncApp] Port configuration complete")

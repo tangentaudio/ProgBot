@@ -12,3 +12,13 @@ pyserial-asyncio
 
 # Serial port enumeration (included with pyserial)
 pyserial
+
+# Computer vision and QR code scanning
+opencv-python
+
+# Micro QR code support (zxing-cpp has proper Micro QR detection)
+zxing-cpp
+
+# Raspberry Pi camera support (optional, only needed on RPi)
+# Install with: pip install picamera2
+# Note: picamera2 requires libcamera, typically pre-installed on Raspberry Pi OS
