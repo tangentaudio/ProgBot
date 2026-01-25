@@ -654,13 +654,6 @@ class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, App):
         
         # Store references to config widgets for enable/disable
         self.config_widgets = [
-            root.ids.get('board_cols_spinner'),
-            root.ids.get('board_rows_spinner'),
-            root.ids.get('col_width_input'),
-            root.ids.get('row_height_input'),
-            root.ids.get('board_x_input'),
-            root.ids.get('board_y_input'),
-            root.ids.get('probe_plane_input'),
             root.ids.get('operation_spinner'),
             root.ids.get('network_firmware_input'),
             root.ids.get('main_firmware_input'),
@@ -755,35 +748,7 @@ class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, App):
     def _apply_settings_to_widgets(self, root, settings_data):
         """Apply loaded settings to UI widgets."""
         try:
-            # Update spinner values
-            cols_spinner = root.ids.get('board_cols_spinner')
-            if cols_spinner:
-                cols_spinner.text = settings_data.get('board_cols', '2')
-            
-            rows_spinner = root.ids.get('board_rows_spinner')
-            if rows_spinner:
-                rows_spinner.text = settings_data.get('board_rows', '5')
-            
-            # Update text input values (explicitly convert to string for TextInput)
-            col_width_input = root.ids.get('col_width_input')
-            if col_width_input:
-                col_width_input.text = str(settings_data.get('col_width', '48.0'))
-            
-            row_height_input = root.ids.get('row_height_input')
-            if row_height_input:
-                row_height_input.text = str(settings_data.get('row_height', '29.0'))
-            
-            board_x_input = root.ids.get('board_x_input')
-            if board_x_input:
-                board_x_input.text = str(settings_data.get('board_x', '110.2'))
-            
-            board_y_input = root.ids.get('board_y_input')
-            if board_y_input:
-                board_y_input.text = str(settings_data.get('board_y', '121.0'))
-            
-            probe_plane_input = root.ids.get('probe_plane_input')
-            if probe_plane_input:
-                probe_plane_input.text = str(settings_data.get('probe_plane', '4.0'))
+            # Grid/origin/QR settings are now in the Panel Setup dialog and synced on open
             
             # Load contact_adjust_step from main settings (not panel settings)
             from settings import get_settings
@@ -792,14 +757,6 @@ class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, App):
             contact_adjust_step_input = root.ids.get('contact_adjust_step_input')
             if contact_adjust_step_input:
                 contact_adjust_step_input.text = str(float(main_settings.get('contact_adjust_step', 0.1)))
-            
-            qr_offset_x_input = root.ids.get('qr_offset_x_input')
-            if qr_offset_x_input:
-                qr_offset_x_input.text = str(float(settings_data.get('qr_offset_x', 0.0)))
-            
-            qr_offset_y_input = root.ids.get('qr_offset_y_input')
-            if qr_offset_y_input:
-                qr_offset_y_input.text = str(float(settings_data.get('qr_offset_y', 0.0)))
             
             # Load camera offsets and QR timeout from main settings (not panel settings)
             from settings import get_settings
@@ -1009,9 +966,9 @@ class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, App):
         """Jog the machine in the specified axis and direction (Vision tab)."""
         self.calibration_controller.vision_jog(axis, direction)
     
-    def cal_vision_goto_qr(self):
-        """Move to the currently configured QR offset position from board origin."""
-        self.calibration_controller.vision_goto_qr()
+    def cal_vision_reset_qr_offset(self):
+        """Reset QR offset values to what they were when entering the Vision tab."""
+        self.calibration_controller.vision_reset_qr_offset()
     
     def cal_vision_set_qr_offset(self):
         """Set QR offset from current XY position relative to board origin."""
@@ -1024,6 +981,48 @@ class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, App):
     def cal_vision_board_change(self, axis, delta):
         """Change the selected board col or row and move to that position."""
         self.calibration_controller.vision_board_change(axis, delta)
+    
+    # ==================== Panel Setup Parameters Tab ====================
+    
+    def cal_on_board_cols_change(self, value):
+        """Handle board columns change from Panel Setup dialog."""
+        self.on_board_cols_change(value)
+    
+    def cal_on_board_rows_change(self, value):
+        """Handle board rows change from Panel Setup dialog."""
+        self.on_board_rows_change(value)
+    
+    def cal_on_col_width_change(self, value):
+        """Handle column width change from Panel Setup dialog."""
+        self.on_col_width_change(value)
+    
+    def cal_on_row_height_change(self, value):
+        """Handle row height change from Panel Setup dialog."""
+        self.on_row_height_change(value)
+    
+    def cal_on_board_x_change(self, value):
+        """Handle board X change from Panel Setup dialog."""
+        self.on_board_x_change(value)
+    
+    def cal_on_board_y_change(self, value):
+        """Handle board Y change from Panel Setup dialog."""
+        self.on_board_y_change(value)
+    
+    def cal_on_probe_plane_change(self, value):
+        """Handle probe-to-board offset change from Panel Setup dialog."""
+        self.on_probe_plane_change(value)
+    
+    def cal_on_qr_offset_x_change(self, value):
+        """Handle QR offset X change from Panel Setup dialog."""
+        self.on_qr_offset_x_change(value)
+    
+    def cal_on_qr_offset_y_change(self, value):
+        """Handle QR offset Y change from Panel Setup dialog."""
+        self.on_qr_offset_y_change(value)
+    
+    def cal_on_use_camera_change(self, active):
+        """Handle QR Code Scan checkbox change from Panel Setup dialog."""
+        self.on_use_camera_change(active)
     
     # ==================== End Calibration Dialog ====================
 

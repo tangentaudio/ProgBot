@@ -649,8 +649,8 @@
                                 on_press: app.open_save_panel_dialog()
 
                             Button:
-                                id: calibrate_btn
-                                text: 'Calibrate'
+                                id: panel_setup_btn
+                                text: 'Panel Setup'
                                 size_hint_y: None
                                 height: 40
                                 background_color: 0.6, 0.4, 0.5, 1
@@ -663,168 +663,6 @@
                             Widget:
                                 size_hint_y: None
                                 height: 10
-
-                            Widget:
-                                size_hint_y: None
-                                height: 10
-
-                            Label:
-                                text: "Board Columns:"
-                                size_hint_y: None
-                                height: 30
-                                halign: 'right'
-                                valign: 'center'
-                                text_size: self.size
-
-                            Spinner:
-                                id: board_cols_spinner
-                                text: "2"
-                                values: ["1", "2", "3", "4", "5", "6"]
-                                size_hint_y: None
-                                height: 30
-                                on_text: app.on_board_cols_change(self.text)
-
-                            Label:
-                                text: "Board Rows:"
-                                size_hint_y: None
-                                height: 30
-                                halign: 'right'
-                                valign: 'center'
-                                text_size: self.size
-
-                            Spinner:
-                                id: board_rows_spinner
-                                text: "5"
-                                values: ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]
-                                size_hint_y: None
-                                height: 30
-                                on_text: app.on_board_rows_change(self.text)
-
-                            Label:
-                                text: "Column Width (mm):"
-                                size_hint_y: None
-                                height: 30
-                                halign: 'right'
-                                valign: 'center'
-                                text_size: self.size
-
-                            TextInput:
-                                id: col_width_input
-                                text: "48.0"
-                                size_hint_y: None
-                                height: 30
-                                multiline: False
-                                input_filter: 'float'
-                                on_focus: app.set_keyboard_layout('numpad') if self.focus else None
-                                on_text_validate: app.on_col_width_change(self.text)
-
-                            Label:
-                                text: "Row Height (mm):"
-                                size_hint_y: None
-                                height: 30
-                                halign: 'right'
-                                valign: 'center'
-                                text_size: self.size
-
-                            TextInput:
-                                id: row_height_input
-                                text: "29.0"
-                                size_hint_y: None
-                                height: 30
-                                multiline: False
-                                input_filter: 'float'
-                                on_focus: app.set_keyboard_layout('numpad') if self.focus else None
-                                on_text_validate: app.on_row_height_change(self.text)
-
-                            Label:
-                                text: "Board X (mm):"
-                                size_hint_y: None
-                                height: 30
-                                halign: 'right'
-                                valign: 'center'
-                                text_size: self.size
-
-                            TextInput:
-                                id: board_x_input
-                                text: "110.2"
-                                size_hint_y: None
-                                height: 30
-                                multiline: False
-                                input_filter: 'float'
-                                on_focus: app.set_keyboard_layout('numpad') if self.focus else None
-                                on_text_validate: app.on_board_x_change(self.text)
-
-                            Label:
-                                text: "Board Y (mm):"
-                                size_hint_y: None
-                                height: 30
-                                halign: 'right'
-                                valign: 'center'
-                                text_size: self.size
-
-                            TextInput:
-                                id: board_y_input
-                                text: "121.0"
-                                size_hint_y: None
-                                height: 30
-                                multiline: False
-                                input_filter: 'float'
-                                on_focus: app.set_keyboard_layout('numpad') if self.focus else None
-                                on_text_validate: app.on_board_y_change(self.text)
-
-                            Label:
-                                text: "Probe to Board (mm):"
-                                size_hint_y: None
-                                height: 30
-                                halign: 'right'
-                                valign: 'center'
-                                text_size: self.size
-
-                            TextInput:
-                                id: probe_plane_input
-                                text: "4.0"
-                                size_hint_y: None
-                                height: 30
-                                multiline: False
-                                input_filter: 'float'
-                                on_focus: app.set_keyboard_layout('numpad') if self.focus else None
-                                on_text_validate: app.on_probe_plane_change(self.text)
-
-                            Label:
-                                text: "QR Offset X (mm):"
-                                size_hint_y: None
-                                height: 30
-                                halign: 'right'
-                                valign: 'center'
-                                text_size: self.size
-
-                            TextInput:
-                                id: qr_offset_x_input
-                                text: "0.0"
-                                size_hint_y: None
-                                height: 30
-                                multiline: False
-                                input_filter: 'float'
-                                on_focus: app.set_keyboard_layout('numpad') if self.focus else None
-                                on_text_validate: app.on_qr_offset_x_change(self.text)
-
-                            Label:
-                                text: "QR Offset Y (mm):"
-                                size_hint_y: None
-                                height: 30
-                                halign: 'right'
-                                valign: 'center'
-                                text_size: self.size
-
-                            TextInput:
-                                id: qr_offset_y_input
-                                text: "0.0"
-                                size_hint_y: None
-                                height: 30
-                                multiline: False
-                                input_filter: 'float'
-                                on_focus: app.set_keyboard_layout('numpad') if self.focus else None
-                                on_text_validate: app.on_qr_offset_y_change(self.text)
 
                             Label:
                                 text: "Operation:"
@@ -841,21 +679,6 @@
                                 size_hint_y: None
                                 height: 30
                                 on_text: app.on_operation_change(self.text)
-
-                            Label:
-                                text: "QR Code Scan:"
-                                size_hint_y: None
-                                height: 30
-                                halign: 'right'
-                                valign: 'center'
-                                text_size: self.size
-
-                            CheckBox:
-                                id: use_camera_checkbox
-                                active: True
-                                size_hint_y: None
-                                height: 30
-                                on_active: app.on_use_camera_change(self.active)
 
                             Label:
                                 text: "Network Core FW:"

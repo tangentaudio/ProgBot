@@ -1,9 +1,12 @@
-# Calibration Dialog Layout
-# This file defines the CalibrationPopup widget for calibrating board origin, probe offset, and QR offset.
+# Panel Setup Dialog Layout
+# This file defines the CalibrationPopup widget for panel configuration:
+# - Parameters tab: Grid dimensions (columns, rows, width, height)
+# - Origins tab: Board origin (X, Y), probe offset, Z calibration, jogging
+# - Vision tab: Camera preview, QR code detection, QR offset calibration
 
 <CalibrationPopup@Popup>:
     id: calibration_popup
-    title: 'Calibration'
+    title: 'Panel Setup'
     size_hint: 1, 1
     auto_dismiss: False
     title_size: '14sp'
@@ -19,6 +22,119 @@
             do_default_tab: False
             tab_width: 150
             tab_height: 40
+            
+            TabbedPanelItem:
+                id: parameters_tab
+                text: 'Parameters'
+                
+                BoxLayout:
+                    orientation: 'vertical'
+                    spacing: 10
+                    padding: 20
+                    
+                    # Grid Parameters section
+                    Label:
+                        text: 'Grid Parameters'
+                        size_hint_y: None
+                        height: 30
+                        font_size: '16sp'
+                        bold: True
+                        halign: 'left'
+                        valign: 'center'
+                        text_size: self.size
+                    
+                    GridLayout:
+                        cols: 2
+                        spacing: 10
+                        size_hint_y: None
+                        height: 240
+                        
+                        Label:
+                            text: 'Board Columns:'
+                            size_hint_y: None
+                            height: 40
+                            font_size: '14sp'
+                            halign: 'right'
+                            valign: 'center'
+                            text_size: self.size
+                        
+                        Spinner:
+                            id: cal_board_cols_spinner
+                            text: '2'
+                            values: ['1', '2', '3', '4', '5', '6']
+                            size_hint_y: None
+                            height: 40
+                            size_hint_x: 0.5
+                            on_text: app.cal_on_board_cols_change(self.text)
+                        
+                        Label:
+                            text: 'Board Rows:'
+                            size_hint_y: None
+                            height: 40
+                            font_size: '14sp'
+                            halign: 'right'
+                            valign: 'center'
+                            text_size: self.size
+                        
+                        Spinner:
+                            id: cal_board_rows_spinner
+                            text: '5'
+                            values: ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10']
+                            size_hint_y: None
+                            height: 40
+                            size_hint_x: 0.5
+                            on_text: app.cal_on_board_rows_change(self.text)
+                        
+                        Label:
+                            text: 'Column Width (mm):'
+                            size_hint_y: None
+                            height: 40
+                            font_size: '14sp'
+                            halign: 'right'
+                            valign: 'center'
+                            text_size: self.size
+                        
+                        TextInput:
+                            id: cal_col_width_input
+                            text: '48.0'
+                            size_hint_y: None
+                            height: 40
+                            size_hint_x: 0.5
+                            multiline: False
+                            input_filter: 'float'
+                            on_focus: app.set_keyboard_layout('numpad') if self.focus else None
+                            on_text_validate: app.cal_on_col_width_change(self.text)
+                        
+                        Label:
+                            text: 'Row Height (mm):'
+                            size_hint_y: None
+                            height: 40
+                            font_size: '14sp'
+                            halign: 'right'
+                            valign: 'center'
+                            text_size: self.size
+                        
+                        TextInput:
+                            id: cal_row_height_input
+                            text: '29.0'
+                            size_hint_y: None
+                            height: 40
+                            size_hint_x: 0.5
+                            multiline: False
+                            input_filter: 'float'
+                            on_focus: app.set_keyboard_layout('numpad') if self.focus else None
+                            on_text_validate: app.cal_on_row_height_change(self.text)
+                    
+                    Widget:
+                        size_hint_y: 1
+                    
+                    # Close button at bottom
+                    Button:
+                        text: 'Close'
+                        size_hint_y: None
+                        height: 50
+                        font_size: '14sp'
+                        on_press: app.cal_close()
             
             TabbedPanelItem:
                 id: origins_tab
@@ -234,12 +350,49 @@
                         Label:
                             id: cal_origin_label
                             text: 'Origin: X=---, Y=---'
-                            size_hint_x: 0.55
-                            font_size: '16sp'
+                            size_hint_x: 0.25
+                            font_size: '14sp'
                             halign: 'left'
                             valign: 'center'
                             text_size: self.size
                             padding: [10, 0]
+                        
+                        # Board X/Y inputs
+                        Label:
+                            text: 'X:'
+                            size_hint_x: 0.04
+                            font_size: '12sp'
+                            halign: 'right'
+                            valign: 'center'
+                            text_size: self.size
+                        
+                        TextInput:
+                            id: cal_board_x_input
+                            text: '110.2'
+                            size_hint_x: 0.09
+                            multiline: False
+                            input_filter: 'float'
+                            font_size: '12sp'
+                            on_focus: app.set_keyboard_layout('numpad') if self.focus else None
+                            on_text_validate: app.cal_on_board_x_change(self.text)
+                        
+                        Label:
+                            text: 'Y:'
+                            size_hint_x: 0.04
+                            font_size: '12sp'
+                            halign: 'right'
+                            valign: 'center'
+                            text_size: self.size
+                        
+                        TextInput:
+                            id: cal_board_y_input
+                            text: '121.0'
+                            size_hint_x: 0.09
+                            multiline: False
+                            input_filter: 'float'
+                            font_size: '12sp'
+                            on_focus: app.set_keyboard_layout('numpad') if self.focus else None
+                            on_text_validate: app.cal_on_board_y_change(self.text)
                     
                     # Row 3: Z controls - Go Safe Z, Probe, Go Ofs, Set Z Offset
                     BoxLayout:
@@ -283,12 +436,12 @@
                         
                         BoxLayout:
                             orientation: 'vertical'
-                            size_hint_x: 0.55
+                            size_hint_x: 0.25
                             
                             Label:
                                 id: cal_probe_result
                                 text: 'Probe: ---'
-                                font_size: '16sp'
+                                font_size: '14sp'
                                 halign: 'left'
                                 valign: 'center'
                                 text_size: self.size
@@ -297,11 +450,30 @@
                             Label:
                                 id: cal_probe_offset_label
                                 text: 'Z Offset: --- mm'
-                                font_size: '16sp'
+                                font_size: '14sp'
                                 halign: 'left'
                                 valign: 'center'
                                 text_size: self.size
                                 padding: [10, 0]
+                        
+                        # Probe-to-Board offset input
+                        Label:
+                            text: 'Probe-Board:'
+                            size_hint_x: 0.12
+                            font_size: '11sp'
+                            halign: 'right'
+                            valign: 'center'
+                            text_size: self.size
+                        
+                        TextInput:
+                            id: cal_probe_plane_input
+                            text: '4.0'
+                            size_hint_x: 0.1
+                            multiline: False
+                            input_filter: 'float'
+                            font_size: '12sp'
+                            on_focus: app.set_keyboard_layout('numpad') if self.focus else None
+                            on_text_validate: app.cal_on_probe_plane_change(self.text)
                     
                     # Row 4: Position display and Close
                     BoxLayout:
@@ -361,27 +533,7 @@
                         size_hint_x: 0.45
                         spacing: 4
                         
-                        # Camera preview area
-                        BoxLayout:
-                            orientation: 'vertical'
-                            
-                            Label:
-                                id: vision_status_label
-                                text: 'Camera Preview'
-                                size_hint_y: None
-                                height: 30
-                                font_size: '14sp'
-                                halign: 'center'
-                                color: 0.5, 0.5, 0.5, 1
-                            
-                            Image:
-                                id: vision_preview_image
-                                size_hint: 1, 1
-                                allow_stretch: True
-                                keep_ratio: True
-                                color: 0, 0, 0, 1
-                        
-                        # QR Detection result display
+                        # QR Code Scan enable/disable at top of left column
                         BoxLayout:
                             orientation: 'horizontal'
                             size_hint_y: None
@@ -389,113 +541,212 @@
                             spacing: 4
                             
                             Label:
-                                id: vision_qr_type_label
-                                text: 'No code detected'
-                                size_hint_x: 0.35
+                                text: 'QR Code Scan:'
+                                size_hint_x: 0.6
+                                font_size: '14sp'
+                                halign: 'right'
+                                valign: 'center'
+                                text_size: self.size
+                            
+                            ToggleButton:
+                                id: cal_use_camera_checkbox
+                                text: 'Enabled' if self.state == 'down' else 'Disabled'
+                                state: 'down'
+                                size_hint_x: 0.4
                                 font_size: '13sp'
-                                halign: 'right'
-                                valign: 'center'
-                                text_size: self.size
-                                color: 0.5, 0.5, 0.5, 1
-                            
-                            Label:
-                                id: vision_qr_detected_label
-                                text: ''
-                                size_hint_x: 0.65
-                                font_size: '16sp'
-                                bold: True
-                                halign: 'left'
-                                valign: 'center'
-                                text_size: self.size
-                                color: 0.5, 0.5, 0.5, 1
+                                on_state: app.cal_on_use_camera_change(self.state == 'down')
                         
-                        # QR Offset display
-                        Label:
-                            id: vision_qr_offset_label
-                            text: 'QR Offset: X=---, Y=---'
-                            size_hint_y: None
-                            height: 25
-                            font_size: '14sp'
-                            halign: 'center'
-                            valign: 'center'
-                        
-                        # Position display
+                        # Left side content (disabled when QR scan is off)
                         BoxLayout:
-                            orientation: 'horizontal'
-                            size_hint_y: None
-                            height: 25
-                            spacing: 6
-                            
-                            Label:
-                                id: vision_pos_x
-                                text: 'X: ---'
-                                font_size: '14sp'
-                                halign: 'center'
-                                valign: 'center'
-                                text_size: self.size
-                                bold: True
-                            
-                            Label:
-                                id: vision_pos_y
-                                text: 'Y: ---'
-                                font_size: '14sp'
-                                halign: 'center'
-                                valign: 'center'
-                                text_size: self.size
-                                bold: True
-                        
-                        # Rotation controls
-                        BoxLayout:
-                            orientation: 'horizontal'
-                            size_hint_y: None
-                            height: 30
+                            id: vision_left_content
+                            orientation: 'vertical'
                             spacing: 4
+                            disabled: cal_use_camera_checkbox.state != 'down'
+                            opacity: 1.0 if cal_use_camera_checkbox.state == 'down' else 0.4
                             
-                            Label:
-                                text: 'Rotate:'
-                                size_hint_x: 0.2
-                                font_size: '12sp'
-                                halign: 'right'
-                                valign: 'center'
-                                text_size: self.size
+                            # Camera preview area
+                            BoxLayout:
+                                orientation: 'vertical'
+                                
+                                Label:
+                                    id: vision_status_label
+                                    text: 'Camera Preview'
+                                    size_hint_y: None
+                                    height: 30
+                                    font_size: '14sp'
+                                    halign: 'center'
+                                    color: 0.5, 0.5, 0.5, 1
+                                
+                                Image:
+                                    id: vision_preview_image
+                                    size_hint: 1, 1
+                                    allow_stretch: True
+                                    keep_ratio: True
+                                    color: 0, 0, 0, 1
                             
-                            ToggleButton:
-                                id: vision_rot_0
-                                text: '0°'
-                                group: 'vision_rotation'
-                                size_hint_x: 0.2
-                                font_size: '12sp'
-                                on_state: app.cal_vision_set_rotation(0) if self.state == 'down' else None
+                            # QR Detection result display (centered)
+                            BoxLayout:
+                                orientation: 'horizontal'
+                                size_hint_y: None
+                                height: 35
+                                spacing: 4
+                                
+                                Label:
+                                    id: vision_qr_type_label
+                                    text: 'No code detected'
+                                    size_hint_x: 1.0
+                                    font_size: '13sp'
+                                    halign: 'center'
+                                    valign: 'center'
+                                    text_size: self.size
+                                    color: 0.5, 0.5, 0.5, 1
+                                
+                                Label:
+                                    id: vision_qr_detected_label
+                                    text: ''
+                                    size_hint_x: 0
+                                    font_size: '16sp'
+                                    bold: True
+                                    halign: 'left'
+                                    valign: 'center'
+                                    text_size: self.size
+                                    color: 0.5, 0.5, 0.5, 1
                             
-                            ToggleButton:
-                                id: vision_rot_90
-                                text: '90°'
-                                group: 'vision_rotation'
-                                size_hint_x: 0.2
-                                font_size: '12sp'
-                                on_state: app.cal_vision_set_rotation(90) if self.state == 'down' else None
+                            # QR Offset display and inputs
+                            BoxLayout:
+                                orientation: 'horizontal'
+                                size_hint_y: None
+                                height: 30
+                                spacing: 4
+                                
+                                Label:
+                                    id: vision_qr_offset_label
+                                    text: 'QR Offset:'
+                                    size_hint_x: 0.25
+                                    font_size: '13sp'
+                                    halign: 'right'
+                                    valign: 'center'
+                                    text_size: self.size
+                                
+                                Label:
+                                    text: 'X:'
+                                    size_hint_x: 0.08
+                                    font_size: '12sp'
+                                    halign: 'right'
+                                    valign: 'center'
+                                    text_size: self.size
+                                
+                                TextInput:
+                                    id: cal_qr_offset_x_input
+                                    text: '0.0'
+                                    size_hint_x: 0.22
+                                    multiline: False
+                                    input_filter: 'float'
+                                    font_size: '12sp'
+                                    on_focus: app.set_keyboard_layout('numpad') if self.focus else None
+                                    on_text_validate: app.cal_on_qr_offset_x_change(self.text)
+                                
+                                Label:
+                                    text: 'Y:'
+                                    size_hint_x: 0.08
+                                    font_size: '12sp'
+                                    halign: 'right'
+                                    valign: 'center'
+                                    text_size: self.size
+                                
+                                TextInput:
+                                    id: cal_qr_offset_y_input
+                                    text: '0.0'
+                                    size_hint_x: 0.22
+                                    multiline: False
+                                    input_filter: 'float'
+                                    font_size: '12sp'
+                                    on_focus: app.set_keyboard_layout('numpad') if self.focus else None
+                                    on_text_validate: app.cal_on_qr_offset_y_change(self.text)
+                                
+                                Widget:
+                                    size_hint_x: 0.15
                             
-                            ToggleButton:
-                                id: vision_rot_180
-                                text: '180°'
-                                group: 'vision_rotation'
-                                size_hint_x: 0.2
-                                font_size: '12sp'
-                                on_state: app.cal_vision_set_rotation(180) if self.state == 'down' else None
+                            # Position display
+                            BoxLayout:
+                                orientation: 'horizontal'
+                                size_hint_y: None
+                                height: 25
+                                spacing: 6
+                                
+                                Label:
+                                    id: vision_pos_x
+                                    text: 'X: ---'
+                                    font_size: '14sp'
+                                    halign: 'center'
+                                    valign: 'center'
+                                    text_size: self.size
+                                    bold: True
+                                
+                                Label:
+                                    id: vision_pos_y
+                                    text: 'Y: ---'
+                                    font_size: '14sp'
+                                    halign: 'center'
+                                    valign: 'center'
+                                    text_size: self.size
+                                    bold: True
                             
-                            ToggleButton:
-                                id: vision_rot_270
-                                text: '270°'
-                                group: 'vision_rotation'
-                                size_hint_x: 0.2
-                                font_size: '12sp'
-                                on_state: app.cal_vision_set_rotation(270) if self.state == 'down' else None
+                            # Rotation controls
+                            BoxLayout:
+                                orientation: 'horizontal'
+                                size_hint_y: None
+                                height: 30
+                                spacing: 4
+                                
+                                Label:
+                                    text: 'Rotate:'
+                                    size_hint_x: 0.2
+                                    font_size: '12sp'
+                                    halign: 'right'
+                                    valign: 'center'
+                                    text_size: self.size
+                                
+                                ToggleButton:
+                                    id: vision_rot_0
+                                    text: '0°'
+                                    group: 'vision_rotation'
+                                    size_hint_x: 0.2
+                                    font_size: '12sp'
+                                    on_state: app.cal_vision_set_rotation(0) if self.state == 'down' else None
+                                
+                                ToggleButton:
+                                    id: vision_rot_90
+                                    text: '90°'
+                                    group: 'vision_rotation'
+                                    size_hint_x: 0.2
+                                    font_size: '12sp'
+                                    on_state: app.cal_vision_set_rotation(90) if self.state == 'down' else None
+                                
+                                ToggleButton:
+                                    id: vision_rot_180
+                                    text: '180°'
+                                    group: 'vision_rotation'
+                                    size_hint_x: 0.2
+                                    font_size: '12sp'
+                                    on_state: app.cal_vision_set_rotation(180) if self.state == 'down' else None
+                                
+                                ToggleButton:
+                                    id: vision_rot_270
+                                    text: '270°'
+                                    group: 'vision_rotation'
+                                    size_hint_x: 0.2
+                                    font_size: '12sp'
+                                    on_state: app.cal_vision_set_rotation(270) if self.state == 'down' else None
                     
-                    # Right side: XY jog controls and action buttons
+                    # Right side: XY jog controls and action buttons (disabled when QR scan is off)
                     BoxLayout:
+                        id: vision_right_content
                         orientation: 'vertical'
                         size_hint_x: 0.55
                         spacing: 4
+                        disabled: cal_use_camera_checkbox.state != 'down'
+                        opacity: 1.0 if cal_use_camera_checkbox.state == 'down' else 0.4
                         
                         # Board selector and XY Jog controls
                         BoxLayout:
@@ -657,11 +908,11 @@
                             spacing: 4
                             
                             Button:
-                                id: vision_goto_qr_btn
-                                text: 'Go to QR Position'
+                                id: vision_reset_qr_offset_btn
+                                text: 'Reset QR Offset'
                                 font_size: '14sp'
-                                background_color: 0.3, 0.5, 0.6, 1
-                                on_press: app.cal_vision_goto_qr()
+                                background_color: 0.5, 0.4, 0.3, 1
+                                on_press: app.cal_vision_reset_qr_offset()
                             
                             Button:
                                 id: vision_set_qr_offset_btn

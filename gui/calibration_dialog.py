@@ -97,6 +97,9 @@ class CalibrationController:
         self.probe_z = None
         self.vision_xy_step = 5.0
         
+        # Sync panel settings to dialog widgets
+        self._sync_panel_settings_to_dialog()
+        
         # Update current values display
         self._update_origin_label()
         self._update_probe_offset_label()
@@ -133,6 +136,42 @@ class CalibrationController:
             ps = self.panel_settings
             offset = float(ps.get('probe_plane', 0) if ps else 0)
             offset_label.text = f'Z Offset: {offset:.2f} mm'
+    
+    def _sync_panel_settings_to_dialog(self):
+        """Sync current panel settings values to dialog input widgets."""
+        if not self.popup:
+            return
+        
+        ps = self.panel_settings
+        settings = self.get_settings()
+        
+        # Parameters tab
+        if cols_spinner := self.popup.ids.get('cal_board_cols_spinner'):
+            cols_spinner.text = str(ps.get('board_cols', '2') if ps else settings.get('board_cols', '2'))
+        if rows_spinner := self.popup.ids.get('cal_board_rows_spinner'):
+            rows_spinner.text = str(ps.get('board_rows', '5') if ps else settings.get('board_rows', '5'))
+        if col_width := self.popup.ids.get('cal_col_width_input'):
+            col_width.text = str(ps.get('col_width', '48.0') if ps else settings.get('col_width', '48.0'))
+        if row_height := self.popup.ids.get('cal_row_height_input'):
+            row_height.text = str(ps.get('row_height', '29.0') if ps else settings.get('row_height', '29.0'))
+        
+        # Origin tab
+        if board_x := self.popup.ids.get('cal_board_x_input'):
+            board_x.text = str(ps.get('board_x', '110.2') if ps else settings.get('board_x', '110.2'))
+        if board_y := self.popup.ids.get('cal_board_y_input'):
+            board_y.text = str(ps.get('board_y', '121.0') if ps else settings.get('board_y', '121.0'))
+        if probe_plane := self.popup.ids.get('cal_probe_plane_input'):
+            probe_plane.text = str(ps.get('probe_plane', '4.0') if ps else settings.get('probe_plane', '4.0'))
+        
+        # Vision tab
+        if qr_offset_x := self.popup.ids.get('cal_qr_offset_x_input'):
+            qr_offset_x.text = str(ps.get('qr_offset_x', '0.0') if ps else settings.get('qr_offset_x', '0.0'))
+        if qr_offset_y := self.popup.ids.get('cal_qr_offset_y_input'):
+            qr_offset_y.text = str(ps.get('qr_offset_y', '0.0') if ps else settings.get('qr_offset_y', '0.0'))
+        if use_camera := self.popup.ids.get('cal_use_camera_checkbox'):
+            use_camera.state = 'down' if settings.get('use_camera', True) else 'normal'
+        
+        debug_log("[Calibration] Synced panel settings to dialog")
     
     def _refresh_position(self):
         """Query current position and update display."""
@@ -347,10 +386,22 @@ class CalibrationController:
         """Move to the currently configured board origin."""
         async def do_goto():
             try:
-                # Read panel-specific values from panel_settings
+                # Read origin from the input fields (user may have edited without pressing Enter)
                 ps = self.panel_settings
                 x = float(ps.get('board_x', 0) if ps else 0)
                 y = float(ps.get('board_y', 0) if ps else 0)
+                
+                if self.popup:
+                    if x_input := self.popup.ids.get('cal_board_x_input'):
+                        try:
+                            x = float(x_input.text)
+                        except ValueError:
+                            pass
+                    if y_input := self.popup.ids.get('cal_board_y_input'):
+                        try:
+                            y = float(y_input.text)
+                        except ValueError:
+                            pass
                 
                 debug_log(f"[Calibration] Moving to origin X={x:.2f}, Y={y:.2f}")
                 
@@ -374,9 +425,16 @@ class CalibrationController:
                     debug_log("[Calibration] Must probe first!")
                     return
                 
-                # Read panel-specific value from panel_settings
+                # Read probe-to-board offset from input field (user may have edited without pressing Enter)
                 ps = self.panel_settings
                 offset = float(ps.get('probe_plane', 0) if ps else 0)
+                
+                if self.popup:
+                    if probe_input := self.popup.ids.get('cal_probe_plane_input'):
+                        try:
+                            offset = float(probe_input.text)
+                        except ValueError:
+                            pass
                 
                 # Target Z is probe_z minus the offset (going further down)
                 target_z = self.probe_z - offset
@@ -427,10 +485,10 @@ class CalibrationController:
                 
                 # Update UI widgets
                 def update_ui(dt):
-                    # Update Panel tab inputs
-                    if x_input := self.app.root.ids.get('board_x_input'):
+                    # Update calibration dialog inputs
+                    if x_input := self.popup.ids.get('cal_board_x_input'):
                         x_input.text = f"{x:.2f}"
-                    if y_input := self.app.root.ids.get('board_y_input'):
+                    if y_input := self.popup.ids.get('cal_board_y_input'):
                         y_input.text = f"{y:.2f}"
                     # Update calibration dialog label
                     self._update_origin_label()
@@ -477,8 +535,8 @@ class CalibrationController:
                 
                 # Update UI widgets
                 def update_ui(dt):
-                    # Update Panel tab input
-                    if probe_input := self.app.root.ids.get('probe_plane_input'):
+                    # Update calibration dialog input
+                    if probe_input := self.popup.ids.get('cal_probe_plane_input'):
                         probe_input.text = f"{offset:.2f}"
                     # Update calibration dialog label
                     self._update_probe_offset_label()
@@ -572,9 +630,22 @@ class CalibrationController:
     
     def vision_board_change(self, axis, delta):
         """Change the selected board col or row and move to that position."""
-        settings = self.get_settings()
-        max_cols = int(settings.get('board_cols', 2))
-        max_rows = int(settings.get('board_rows', 5))
+        # Get grid dimensions from input fields if available
+        ps = self.panel_settings
+        max_cols = int(ps.get('board_cols', 2) if ps else 2)
+        max_rows = int(ps.get('board_rows', 5) if ps else 5)
+        
+        if self.popup:
+            if cols_spinner := self.popup.ids.get('cal_board_cols_spinner'):
+                try:
+                    max_cols = int(cols_spinner.text)
+                except ValueError:
+                    pass
+            if rows_spinner := self.popup.ids.get('cal_board_rows_spinner'):
+                try:
+                    max_rows = int(rows_spinner.text)
+                except ValueError:
+                    pass
         
         if axis == 'col':
             new_col = self.vision_board_col + delta
@@ -600,8 +671,10 @@ class CalibrationController:
         
         async def do_move():
             try:
-                # Read panel-specific values from panel_settings
+                # Read values from input fields where available, fallback to panel_settings
                 ps = self.panel_settings
+                
+                # Get default values from settings
                 board_x = float(ps.get('board_x', 0) if ps else 0)
                 board_y = float(ps.get('board_y', 0) if ps else 0)
                 col_width = float(ps.get('col_width', 48.0) if ps else 48.0)
@@ -609,10 +682,43 @@ class CalibrationController:
                 qr_offset_x = float(ps.get('qr_offset_x', 0) if ps else 0)
                 qr_offset_y = float(ps.get('qr_offset_y', 0) if ps else 0)
                 
+                # Override with input field values if available
+                if self.popup:
+                    if x_input := self.popup.ids.get('cal_board_x_input'):
+                        try:
+                            board_x = float(x_input.text)
+                        except ValueError:
+                            pass
+                    if y_input := self.popup.ids.get('cal_board_y_input'):
+                        try:
+                            board_y = float(y_input.text)
+                        except ValueError:
+                            pass
+                    if cw_input := self.popup.ids.get('cal_col_width_input'):
+                        try:
+                            col_width = float(cw_input.text)
+                        except ValueError:
+                            pass
+                    if rh_input := self.popup.ids.get('cal_row_height_input'):
+                        try:
+                            row_height = float(rh_input.text)
+                        except ValueError:
+                            pass
+                    if qr_x_input := self.popup.ids.get('cal_qr_offset_x_input'):
+                        try:
+                            qr_offset_x = float(qr_x_input.text)
+                        except ValueError:
+                            pass
+                    if qr_y_input := self.popup.ids.get('cal_qr_offset_y_input'):
+                        try:
+                            qr_offset_y = float(qr_y_input.text)
+                        except ValueError:
+                            pass
+                
                 # Camera offsets are global settings (same for all panels)
                 settings = self.get_settings()
-                camera_offset_x = float(settings.get('camera_offset_x', 0))
-                camera_offset_y = float(settings.get('camera_offset_y', 0))
+                camera_offset_x = float(settings.get('camera_offset_x', 50.0))
+                camera_offset_y = float(settings.get('camera_offset_y', 50.0))
                 
                 # Calculate board position
                 target_board_x = board_x + (col * col_width)
@@ -646,16 +752,18 @@ class CalibrationController:
         asyncio.ensure_future(do_move())
     
     def _update_qr_offset_label(self):
-        """Update the QR offset label with current panel settings."""
+        """Update the QR offset input fields with current panel settings."""
         if not self.popup:
             return
-        offset_label = self.popup.ids.get('vision_qr_offset_label')
-        if offset_label:
-            # Read from panel settings (panel-specific values)
-            ps = self.panel_settings
-            x = float(ps.get('qr_offset_x', 0) if ps else 0)
-            y = float(ps.get('qr_offset_y', 0) if ps else 0)
-            offset_label.text = f'QR Offset: X={x:.2f}, Y={y:.2f}'
+        # Update input fields with current values
+        ps = self.panel_settings
+        x = float(ps.get('qr_offset_x', 0) if ps else 0)
+        y = float(ps.get('qr_offset_y', 0) if ps else 0)
+        
+        if qr_x_input := self.popup.ids.get('cal_qr_offset_x_input'):
+            qr_x_input.text = f'{x:.1f}'
+        if qr_y_input := self.popup.ids.get('cal_qr_offset_y_input'):
+            qr_y_input.text = f'{y:.1f}'
     
     def vision_tab_changed(self, state):
         """Handle Vision tab state changes."""
@@ -674,6 +782,17 @@ class CalibrationController:
         
         debug_log("[Calibration] Starting vision preview")
         self.vision_preview_active = True
+        
+        # Reset board selector to 0,0
+        self.vision_board_col = 0
+        self.vision_board_row = 0
+        self._update_board_selector_display()
+        
+        # Store original QR offset values for reset functionality
+        ps = self.panel_settings
+        self._saved_qr_offset_x = float(ps.get('qr_offset_x', 0) if ps else 0)
+        self._saved_qr_offset_y = float(ps.get('qr_offset_y', 0) if ps else 0)
+        debug_log(f"[Calibration] Saved QR offset for reset: ({self._saved_qr_offset_x:.2f}, {self._saved_qr_offset_y:.2f})")
         
         # Update status
         if self.popup:
@@ -695,7 +814,64 @@ class CalibrationController:
                     await self.bot.motion.rapid_z_abs(0.0)
                     await self.bot.motion.send_gcode_wait_ok("M400")
                     
-                    # Start preview updates at 4 FPS
+                    # Move camera to board 0,0 QR position
+                    # Get board origin from input fields
+                    ps = self.panel_settings
+                    board_x = float(ps.get('board_x', 0) if ps else 0)
+                    board_y = float(ps.get('board_y', 0) if ps else 0)
+                    qr_offset_x = float(ps.get('qr_offset_x', 0) if ps else 0)
+                    qr_offset_y = float(ps.get('qr_offset_y', 0) if ps else 0)
+                    
+                    if self.popup:
+                        if x_input := self.popup.ids.get('cal_board_x_input'):
+                            try:
+                                board_x = float(x_input.text)
+                            except ValueError:
+                                pass
+                        if y_input := self.popup.ids.get('cal_board_y_input'):
+                            try:
+                                board_y = float(y_input.text)
+                            except ValueError:
+                                pass
+                        if qr_x_input := self.popup.ids.get('cal_qr_offset_x_input'):
+                            try:
+                                qr_offset_x = float(qr_x_input.text)
+                            except ValueError:
+                                pass
+                        if qr_y_input := self.popup.ids.get('cal_qr_offset_y_input'):
+                            try:
+                                qr_offset_y = float(qr_y_input.text)
+                            except ValueError:
+                                pass
+                    
+                    # Get camera offset from global settings
+                    settings = self.get_settings()
+                    camera_offset_x = float(settings.get('camera_offset_x', 50.0))
+                    camera_offset_y = float(settings.get('camera_offset_y', 50.0))
+                    
+                    # Move to camera position over board 0,0 QR code
+                    # (board_origin + qr_offset + camera_offset puts camera over QR)
+                    target_x = board_x + qr_offset_x + camera_offset_x
+                    target_y = board_y + qr_offset_y + camera_offset_y
+                    
+                    debug_log(f"[Calibration] Moving camera to board 0,0 QR: origin=({board_x:.2f},{board_y:.2f}), "
+                             f"qr_offset=({qr_offset_x:.2f},{qr_offset_y:.2f}), "
+                             f"camera_offset=({camera_offset_x:.2f},{camera_offset_y:.2f}), target=({target_x:.2f},{target_y:.2f})")
+                    
+                    def update_moving_status(dt):
+                        if self.popup:
+                            status_label = self.popup.ids.get('vision_status_label')
+                            if status_label:
+                                status_label.text = 'Moving to board 0,0...'
+                                status_label.color = (1, 1, 0, 1)  # Yellow
+                    Clock.schedule_once(update_moving_status, 0)
+                    
+                    await self.bot.motion.rapid_xy_abs(target_x, target_y)
+                    await self.bot.motion.send_gcode_wait_ok("M400")
+                    
+                    debug_log("[Calibration] Camera positioned over board 0,0")
+                    
+                    # Start preview updates at 2 FPS
                     def schedule_preview(dt):
                         if self.vision_preview_active:
                             self.vision_preview_event = Clock.schedule_interval(
@@ -795,15 +971,15 @@ class CalibrationController:
                     except Exception as e:
                         debug_log(f"[Calibration] Standard QR detection error: {e}")
                     
-                    # If no standard QR found, try Micro QR detection
+                    # If no standard QR found, try zxing detection (handles Micro QR and can also detect standard QR)
                     if not qr_data:
                         try:
                             loop = asyncio.get_event_loop()
-                            qr_data = await loop.run_in_executor(
+                            result = await loop.run_in_executor(
                                 None, self.bot.vision._detect_micro_qr_with_rotation, frame_gray, None
                             )
-                            if qr_data:
-                                qr_type = 'Micro QR'
+                            if result:
+                                qr_data, qr_type = result
                         except Exception as e:
                             debug_log(f"[Calibration] Micro QR detection error: {e}")
                     
@@ -848,23 +1024,29 @@ class CalibrationController:
                         
                         # Update QR type label
                         type_label = self.popup.ids.get('vision_qr_type_label')
+                        qr_label = self.popup.ids.get('vision_qr_detected_label')
                         if type_label:
                             if qr_type:
                                 type_label.text = f'{qr_type}:'
                                 type_label.color = (0, 1, 0, 1)  # Green for detected
+                                type_label.halign = 'right'
+                                type_label.size_hint_x = 0.5
                             else:
                                 type_label.text = 'No code detected'
                                 type_label.color = (0.5, 0.5, 0.5, 1)  # Gray for none
+                                type_label.halign = 'center'
+                                type_label.size_hint_x = 1.0  # Full width when no code
                         
                         # Update QR detection display
-                        qr_label = self.popup.ids.get('vision_qr_detected_label')
                         if qr_label:
                             if qr_data:
                                 qr_label.text = qr_data
                                 qr_label.color = (0, 1, 0, 1)  # Green for detected
+                                qr_label.size_hint_x = 0.5
                             else:
                                 qr_label.text = ''
                                 qr_label.color = (0.5, 0.5, 0.5, 1)  # Gray for none
+                                qr_label.size_hint_x = 0  # Hide when no code
                     
                     Clock.schedule_once(update_ui, 0)
                     
@@ -877,17 +1059,76 @@ class CalibrationController:
             debug_log(f"[Calibration] Vision preview error: {e}")
     
     def _refresh_vision_position(self):
-        """Query current position and update Vision tab display."""
+        """Query current position and update Vision tab display with relative coordinates.
+        
+        Shows position relative to the currently selected board's expected QR position.
+        When at the correct QR position, this will show values matching the QR offset inputs.
+        
+        Formula: displayed = (machine_pos - camera_offset) - board_origin
+        Where board_origin = board_x + (col * col_width), board_y + (row * row_height)
+        """
         async def do_refresh():
             try:
                 pos = await self.bot.motion.get_position()
-                def update_labels(dt, pos=pos):
+                machine_x, machine_y = pos['x'], pos['y']
+                
+                # Get values from input fields where available
+                ps = self.panel_settings
+                board_x = float(ps.get('board_x', 0) if ps else 0)
+                board_y = float(ps.get('board_y', 0) if ps else 0)
+                col_width = float(ps.get('col_width', 48.0) if ps else 48.0)
+                row_height = float(ps.get('row_height', 29.0) if ps else 29.0)
+                
+                if self.popup:
+                    if x_input := self.popup.ids.get('cal_board_x_input'):
+                        try:
+                            board_x = float(x_input.text)
+                        except ValueError:
+                            pass
+                    if y_input := self.popup.ids.get('cal_board_y_input'):
+                        try:
+                            board_y = float(y_input.text)
+                        except ValueError:
+                            pass
+                    if cw_input := self.popup.ids.get('cal_col_width_input'):
+                        try:
+                            col_width = float(cw_input.text)
+                        except ValueError:
+                            pass
+                    if rh_input := self.popup.ids.get('cal_row_height_input'):
+                        try:
+                            row_height = float(rh_input.text)
+                        except ValueError:
+                            pass
+                
+                # Camera offsets are global settings (use 50.0 as default to match sequence.py)
+                settings = self.get_settings()
+                camera_offset_x = float(settings.get('camera_offset_x', 50.0))
+                camera_offset_y = float(settings.get('camera_offset_y', 50.0))
+                
+                # Calculate current board's origin
+                current_board_x = board_x + (self.vision_board_col * col_width)
+                current_board_y = board_y + (self.vision_board_row * row_height)
+                
+                # Calculate relative position (what QR offset would be if Set was pressed)
+                # Camera views (machine_pos - camera_offset), so:
+                # relative = (machine_pos - camera_offset) - board_origin
+                rel_x = (machine_x - camera_offset_x) - current_board_x
+                rel_y = (machine_y - camera_offset_y) - current_board_y
+                
+                debug_log(f"[Vision] Position refresh: machine=({machine_x:.2f},{machine_y:.2f}), "
+                         f"camera_offset=({camera_offset_x:.2f},{camera_offset_y:.2f}), "
+                         f"board_origin=({current_board_x:.2f},{current_board_y:.2f}), "
+                         f"board_sel=({self.vision_board_col},{self.vision_board_row}), "
+                         f"rel=({rel_x:.2f},{rel_y:.2f})")
+                
+                def update_labels(dt, rel_x=rel_x, rel_y=rel_y):
                     if not self.popup:
                         return
                     if x_label := self.popup.ids.get('vision_pos_x'):
-                        x_label.text = f"X: {pos['x']:.3f}"
+                        x_label.text = f"X: {rel_x:.2f}"
                     if y_label := self.popup.ids.get('vision_pos_y'):
-                        y_label.text = f"Y: {pos['y']:.3f}"
+                        y_label.text = f"Y: {rel_y:.2f}"
                 Clock.schedule_once(update_labels, 0)
             except Exception as e:
                 debug_log(f"[Calibration] Vision position refresh error: {e}")
@@ -931,64 +1172,45 @@ class CalibrationController:
         
         asyncio.ensure_future(do_jog())
     
-    def vision_goto_qr(self):
-        """Move to the currently configured QR offset position from board origin."""
-        async def do_goto():
+    def vision_reset_qr_offset(self):
+        """Reset QR offset values to what they were when entering the Vision tab."""
+        # Restore saved values to input fields
+        saved_x = getattr(self, '_saved_qr_offset_x', 0.0)
+        saved_y = getattr(self, '_saved_qr_offset_y', 0.0)
+        
+        if self.popup:
+            if qr_x_input := self.popup.ids.get('cal_qr_offset_x_input'):
+                qr_x_input.text = f"{saved_x:.2f}"
+            if qr_y_input := self.popup.ids.get('cal_qr_offset_y_input'):
+                qr_y_input.text = f"{saved_y:.2f}"
+        
+        debug_log(f"[Calibration] Reset QR offset to saved values: ({saved_x:.2f}, {saved_y:.2f})")
+        
+        # Move back to the original QR position
+        async def do_move():
             try:
-                # Read panel-specific values from panel_settings
                 ps = self.panel_settings
                 origin_x = float(ps.get('board_x', 0) if ps else 0)
                 origin_y = float(ps.get('board_y', 0) if ps else 0)
-                qr_offset_x = float(ps.get('qr_offset_x', 0) if ps else 0)
-                qr_offset_y = float(ps.get('qr_offset_y', 0) if ps else 0)
                 
-                # Camera offsets are global settings (same for all panels)
                 settings = self.get_settings()
-                camera_offset_x = float(settings.get('camera_offset_x', 0))
-                camera_offset_y = float(settings.get('camera_offset_y', 0))
+                camera_offset_x = float(settings.get('camera_offset_x', 50.0))
+                camera_offset_y = float(settings.get('camera_offset_y', 50.0))
                 
-                # Target position is board origin + QR offset + camera offset
-                target_x = origin_x + qr_offset_x + camera_offset_x
-                target_y = origin_y + qr_offset_y + camera_offset_y
+                target_x = origin_x + saved_x + camera_offset_x
+                target_y = origin_y + saved_y + camera_offset_y
                 
-                debug_log(f"[Calibration] Moving to QR position: origin=({origin_x:.2f}, {origin_y:.2f}), offset=({qr_offset_x:.2f}, {qr_offset_y:.2f}), camera_offset=({camera_offset_x:.2f}, {camera_offset_y:.2f}), target=({target_x:.2f}, {target_y:.2f})")
+                debug_log(f"[Calibration] Moving to reset QR position: ({target_x:.2f}, {target_y:.2f})")
                 
-                # Update status
-                def update_status(dt):
-                    if self.popup:
-                        status_label = self.popup.ids.get('vision_status_label')
-                        if status_label:
-                            status_label.text = 'Moving to QR position...'
-                            status_label.color = (1, 1, 0, 1)  # Yellow
-                Clock.schedule_once(update_status, 0)
-                
-                # Move to target position
                 await self.bot.motion.rapid_xy_abs(target_x, target_y)
                 await self.bot.motion.send_gcode_wait_ok("M400")
                 
-                debug_log("[Calibration] Arrived at QR position")
                 self._refresh_vision_position()
                 
-                # Update status
-                def restore_status(dt):
-                    if self.popup and self.vision_preview_active:
-                        status_label = self.popup.ids.get('vision_status_label')
-                        if status_label:
-                            status_label.text = 'Camera Active'
-                            status_label.color = (0, 1, 0, 1)  # Green
-                Clock.schedule_once(restore_status, 0)
-                
             except Exception as e:
-                debug_log(f"[Calibration] Go to QR position error: {e}")
-                def show_error(dt, err=str(e)):
-                    if self.popup:
-                        status_label = self.popup.ids.get('vision_status_label')
-                        if status_label:
-                            status_label.text = f'Error: {err[:30]}'
-                            status_label.color = (1, 0, 0, 1)  # Red
-                Clock.schedule_once(show_error, 0)
+                debug_log(f"[Calibration] Reset QR position error: {e}")
         
-        asyncio.ensure_future(do_goto())
+        asyncio.ensure_future(do_move())
     
     def vision_set_qr_offset(self):
         """Set QR offset from current XY position relative to board origin."""
@@ -1004,8 +1226,8 @@ class CalibrationController:
                 
                 # Camera offsets are global settings (same for all panels)
                 settings = self.get_settings()
-                camera_offset_x = float(settings.get('camera_offset_x', 0))
-                camera_offset_y = float(settings.get('camera_offset_y', 0))
+                camera_offset_x = float(settings.get('camera_offset_x', 50.0))
+                camera_offset_y = float(settings.get('camera_offset_y', 50.0))
                 
                 # QR offset: The camera views (machine_pos - camera_offset),
                 # so QR physical location = current_pos - camera_offset
@@ -1033,12 +1255,7 @@ class CalibrationController:
                 
                 # Update UI widgets
                 def update_ui(dt):
-                    # Update Panel tab inputs if they exist
-                    if qr_x_input := self.app.root.ids.get('qr_offset_x_input'):
-                        qr_x_input.text = f"{qr_offset_x:.2f}"
-                    if qr_y_input := self.app.root.ids.get('qr_offset_y_input'):
-                        qr_y_input.text = f"{qr_offset_y:.2f}"
-                    # Update calibration dialog label
+                    # Update calibration dialog input fields
                     self._update_qr_offset_label()
                     # Flash status to indicate success
                     if self.popup:

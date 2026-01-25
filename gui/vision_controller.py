@@ -570,8 +570,8 @@ class VisionController:
             debug_log(f"[VisionController] QR detection error: {e}")
             return None
     
-    def _detect_micro_qr_with_rotation(self, frame: np.ndarray, camera_preview=None) -> Optional[str]:
-        """Try Micro QR detection at multiple rotations using zxing-cpp.
+    def _detect_micro_qr_with_rotation(self, frame: np.ndarray, camera_preview=None) -> Optional[Tuple[str, str]]:
+        """Try QR/Micro QR detection at multiple rotations using zxing-cpp.
         
         Micro QR codes have only one position marker, making them more sensitive
         to orientation than standard QR codes with three markers.
@@ -581,7 +581,7 @@ class VisionController:
             camera_preview: Optional CameraPreview to update with rotated images
             
         Returns:
-            Decoded QR string or None
+            Tuple of (decoded string, barcode format name) or None
         """
         import time
         timestamp = int(time.time())
@@ -598,8 +598,9 @@ class VisionController:
                 results = zxingcpp.read_barcodes(frame)
                 if results:
                     data = results[0].text
-                    debug_log(f"[VisionController] Micro QR detected at 0° (zxing raw): '{data}'")
-                    return data
+                    fmt = str(results[0].format).replace('BarcodeFormat.', '')
+                    debug_log(f"[VisionController] {fmt} detected at 0° (zxing raw): '{data}'")
+                    return (data, fmt)
             except Exception as e:
                 debug_log(f"[VisionController] zxing 0° raw failed: {e}")
             
@@ -610,8 +611,9 @@ class VisionController:
                 results = zxingcpp.read_barcodes(otsu)
                 if results:
                     data = results[0].text
-                    debug_log(f"[VisionController] Micro QR detected at 0° (zxing OTSU): '{data}'")
-                    return data
+                    fmt = str(results[0].format).replace('BarcodeFormat.', '')
+                    debug_log(f"[VisionController] {fmt} detected at 0° (zxing OTSU): '{data}'")
+                    return (data, fmt)
                     
                 # Save 0° images for debugging
                 cv2.imwrite(f"/tmp/micro_qr_0deg_raw_{timestamp}.png", frame)
@@ -633,8 +635,9 @@ class VisionController:
                     results = zxingcpp.read_barcodes(rotated)
                     if results:
                         data = results[0].text
-                        debug_log(f"[VisionController] Micro QR detected at {angle}° (zxing raw): '{data}'")
-                        return data
+                        fmt = str(results[0].format).replace('BarcodeFormat.', '')
+                        debug_log(f"[VisionController] {fmt} detected at {angle}° (zxing raw): '{data}'")
+                        return (data, fmt)
                     
                     # Try OTSU
                     rotated_blurred = cv2.GaussianBlur(rotated, (5, 5), 0)
@@ -642,8 +645,9 @@ class VisionController:
                     results = zxingcpp.read_barcodes(rotated_otsu)
                     if results:
                         data = results[0].text
-                        debug_log(f"[VisionController] Micro QR detected at {angle}° (zxing OTSU): '{data}'")
-                        return data
+                        fmt = str(results[0].format).replace('BarcodeFormat.', '')
+                        debug_log(f"[VisionController] {fmt} detected at {angle}° (zxing OTSU): '{data}'")
+                        return (data, fmt)
                     
                     # Save for debugging
                     cv2.imwrite(f"/tmp/micro_qr_{angle}deg_raw_{timestamp}.png", rotated)
