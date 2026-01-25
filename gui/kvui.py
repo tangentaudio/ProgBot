@@ -51,6 +51,9 @@ import os
 import sequence
 from panel_settings import get_panel_settings, find_panel_files
 from numpad_keyboard import switch_keyboard_layout
+from calibration_dialog import CalibrationController
+from settings_handlers import SettingsHandlersMixin
+from panel_file_manager import PanelFileManagerMixin
 
 class OutputCapture:
     """Captures print/stderr output and stores it until LogViewer is ready."""
@@ -255,7 +258,8 @@ class LogViewer(ScrollView):
         pass
 
 
-class AsyncApp(App):
+class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, App):
+    """Main application class with settings and panel file handlers mixed in."""
     
     other_task = None
     bot_task = None
@@ -268,12 +272,15 @@ class AsyncApp(App):
     config_widgets = []  # List of config widgets for enable/disable
     bot = None  # Bot instance
     panel_settings = None
+    calibration_controller = None  # Calibration dialog controller
     
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         # Load KV file early so Factory classes are available
         kv_file = os.path.join(os.path.dirname(__file__), 'progbot.kv')
         Builder.load_file(kv_file)
+        # Initialize calibration controller
+        self.calibration_controller = CalibrationController(self)
     
     def toggle_log_popup(self):
         """Toggle the log viewer popup."""
@@ -428,356 +435,10 @@ class AsyncApp(App):
                 skip_positions.append([col, row_from_bottom])
         return skip_positions
     
-    def on_board_cols_change(self, value):
-        """Handle board columns spinner change."""
-        try:
-            cols = int(value)
-            if self.panel_settings:
-                self.panel_settings.set('board_cols', value)
-            if hasattr(self, 'settings_data'):
-                self.settings_data['board_cols'] = value
-            print(f"Updated board_num_cols: {cols}")
-            # Repopulate grid with new dimensions
-            current_rows = self.bot.config.board_num_rows if self.bot else int(get_settings().get('board_rows', '5'))
-            self.populate_grid(current_rows, cols)
-            # Notify bot of panel change
-            if self.bot:
-                self.bot.config.board_num_cols = cols
-                self.bot.init_panel()
-        except ValueError:
-            pass
+    # Settings handlers (on_board_cols_change, on_board_rows_change, etc.)
+    # are provided by SettingsHandlersMixin
     
-    def on_board_rows_change(self, value):
-        """Handle board rows spinner change."""
-        try:
-            rows = int(value)
-            if self.panel_settings:
-                self.panel_settings.set('board_rows', value)
-            if hasattr(self, 'settings_data'):
-                self.settings_data['board_rows'] = value
-            print(f"Updated board_num_rows: {rows}")
-            # Repopulate grid with new dimensions
-            current_cols = self.bot.config.board_num_cols if self.bot else int(get_settings().get('board_cols', '2'))
-            self.populate_grid(rows, current_cols)
-            # Notify bot of panel change
-            if self.bot:
-                self.bot.config.board_num_rows = rows
-                self.bot.init_panel()
-        except ValueError:
-            pass
-    
-    def on_col_width_change(self, value):
-        """Handle column width text input change."""
-        try:
-            width = float(value)
-            if self.panel_settings:
-                self.panel_settings.set('col_width', value)
-            if hasattr(self, 'settings_data'):
-                self.settings_data['col_width'] = value
-            if self.bot:
-                self.bot.config.board_col_width = width
-            print(f"Updated board_col_width: {width}")
-        except ValueError:
-            pass
-    
-    def on_row_height_change(self, value):
-        """Handle row height text input change."""
-        try:
-            height = float(value)
-            if self.panel_settings:
-                self.panel_settings.set('row_height', value)
-            if hasattr(self, 'settings_data'):
-                self.settings_data['row_height'] = value
-            if self.bot:
-                self.bot.config.board_row_height = height
-            print(f"Updated board_row_height: {height}")
-        except ValueError:
-            pass
-    
-    def on_board_x_change(self, value):
-        """Handle board X text input change."""
-        try:
-            board_x = float(value)
-            if self.panel_settings:
-                self.panel_settings.set('board_x', value)
-            if hasattr(self, 'settings_data'):
-                self.settings_data['board_x'] = value
-            if self.bot:
-                self.bot.config.board_x = board_x
-            print(f"Updated board_x: {board_x}")
-        except ValueError:
-            pass
-    
-    def on_board_y_change(self, value):
-        """Handle board Y text input change."""
-        try:
-            board_y = float(value)
-            if self.panel_settings:
-                self.panel_settings.set('board_y', value)
-            if hasattr(self, 'settings_data'):
-                self.settings_data['board_y'] = value
-            if self.bot:
-                self.bot.config.board_y = board_y
-            print(f"Updated board_y: {board_y}")
-        except ValueError:
-            pass
-    
-    def on_probe_plane_change(self, value):
-        """Handle probe plane to board text input change."""
-        try:
-            probe_plane = float(value)
-            if self.panel_settings:
-                self.panel_settings.set('probe_plane', value)
-            if hasattr(self, 'settings_data'):
-                self.settings_data['probe_plane'] = value
-            if self.bot:
-                self.bot.config.probe_plane_to_board = probe_plane
-        except ValueError:
-            pass
-    
-    def on_contact_adjust_step_change(self, value):
-        """Handle contact adjust step text input change."""
-        try:
-            step = float(value)
-            # Validate range (0.01 to 1.0 mm)
-            if step < 0.01 or step > 1.0:
-                debug_log(f"[on_contact_adjust_step_change] Invalid value {step}, must be 0.01-1.0")
-                return
-            # Save to main settings (machine config, not panel)
-            from settings import get_settings
-            settings = get_settings()
-            settings.set('contact_adjust_step', step)
-            debug_log(f"[on_contact_adjust_step_change] Saved step={step} to settings")
-            if self.bot:
-                self.bot.config.contact_adjust_step = step
-                debug_log(f"[on_contact_adjust_step_change] Updated bot.config.contact_adjust_step={step}")
-            print(f"Updated contact_adjust_step: {step}")
-        except ValueError:
-            debug_log(f"[on_contact_adjust_step_change] ValueError for value: {value}")
-            pass
-    
-    def on_qr_offset_x_change(self, value):
-        """Handle QR offset X text input change."""
-        try:
-            qr_offset_x = float(value)
-            sequence.debug_log(f"[on_qr_offset_x_change] Setting qr_offset_x to {qr_offset_x}")
-            if self.panel_settings:
-                self.panel_settings.set('qr_offset_x', qr_offset_x)
-            if hasattr(self, 'settings_data'):
-                self.settings_data['qr_offset_x'] = qr_offset_x
-            if self.bot:
-                self.bot.config.qr_offset_x = qr_offset_x
-                sequence.debug_log(f"[on_qr_offset_x_change] Bot config updated: {self.bot.config.qr_offset_x}")
-        except ValueError:
-            pass
-    
-    def on_qr_offset_y_change(self, value):
-        """Handle QR offset Y text input change."""
-        try:
-            qr_offset_y = float(value)
-            sequence.debug_log(f"[on_qr_offset_y_change] Setting qr_offset_y to {qr_offset_y}")
-            if self.panel_settings:
-                self.panel_settings.set('qr_offset_y', qr_offset_y)
-            if hasattr(self, 'settings_data'):
-                self.settings_data['qr_offset_y'] = qr_offset_y
-            if self.bot:
-                self.bot.config.qr_offset_y = qr_offset_y
-                sequence.debug_log(f"[on_qr_offset_y_change] Bot config updated: {self.bot.config.qr_offset_y}")
-            print(f"Updated qr_offset_y: {qr_offset_y}")
-        except ValueError:
-            pass
-    
-    def on_qr_scan_timeout_change(self, value):
-        """Handle QR scan timeout text input change."""
-        try:
-            timeout = float(value)
-            # Clamp to 1-10 second range
-            timeout = max(1.0, min(10.0, timeout))
-            # Save to main settings (machine config, not panel)
-            from settings import get_settings
-            settings = get_settings()
-            settings.set('qr_scan_timeout', timeout)
-            if self.bot:
-                self.bot.config.qr_scan_timeout = timeout
-            # Update the input field to show clamped value
-            if hasattr(self, 'root') and self.root:
-                timeout_input = self.root.ids.get('qr_scan_timeout_input')
-                if timeout_input and timeout_input.text != str(timeout):
-                    timeout_input.text = str(timeout)
-            print(f"Updated qr_scan_timeout: {timeout}s")
-        except ValueError:
-            pass
-    
-    def on_qr_search_offset_change(self, value):
-        """Handle QR search offset text input change."""
-        try:
-            offset = float(value)
-            # Clamp to 0-10mm range (0 = disabled)
-            offset = max(0.0, min(10.0, offset))
-            # Save to main settings (machine config, not panel)
-            from settings import get_settings
-            settings = get_settings()
-            settings.set('qr_search_offset', offset)
-            if self.bot:
-                self.bot.config.qr_search_offset = offset
-            # Update the input field to show clamped value
-            if hasattr(self, 'root') and self.root:
-                offset_input = self.root.ids.get('qr_search_offset_input')
-                if offset_input and offset_input.text != str(offset):
-                    offset_input.text = str(offset)
-            print(f"Updated qr_search_offset: {offset}mm")
-        except ValueError:
-            pass
-    
-    def open_qr_debug_dialog(self):
-        """Open the QR code debug dialog."""
-        if not self.bot:
-            print("[open_qr_debug_dialog] Bot not initialized yet")
-            return
-        
-        if not self.bot.vision or not self.bot.motion:
-            print("[open_qr_debug_dialog] Vision or motion not initialized")
-            return
-        
-        try:
-            # Sync current panel settings to config before opening dialog
-            self._sync_panel_settings_to_config()
-            
-            from qr_debug_dialog import QRDebugDialog
-            dialog = QRDebugDialog(
-                vision_controller=self.bot.vision,
-                motion_controller=self.bot.motion,
-                config=self.bot.config
-            )
-            dialog.open()
-        except Exception as e:
-            print(f"[open_qr_debug_dialog] Error opening dialog: {e}")
-            import traceback
-            traceback.print_exc()
-    
-    def _sync_panel_settings_to_config(self):
-        """Sync current panel settings from UI widgets to config object."""
-        try:
-            # Get current values from text inputs
-            if hasattr(self.root, 'ids') and hasattr(self.root.ids, 'qr_offset_x_input'):
-                try:
-                    self.bot.config.qr_offset_x = float(self.root.ids.qr_offset_x_input.text)
-                except (ValueError, AttributeError):
-                    pass
-            
-            if hasattr(self.root, 'ids') and hasattr(self.root.ids, 'qr_offset_y_input'):
-                try:
-                    self.bot.config.qr_offset_y = float(self.root.ids.qr_offset_y_input.text)
-                except (ValueError, AttributeError):
-                    pass
-            
-            if hasattr(self.root, 'ids') and hasattr(self.root.ids, 'camera_offset_x_input'):
-                try:
-                    self.bot.config.camera_offset_x = float(self.root.ids.camera_offset_x_input.text)
-                except (ValueError, AttributeError):
-                    pass
-            
-            if hasattr(self.root, 'ids') and hasattr(self.root.ids, 'camera_offset_y_input'):
-                try:
-                    self.bot.config.camera_offset_y = float(self.root.ids.camera_offset_y_input.text)
-                except (ValueError, AttributeError):
-                    pass
-            
-            debug_log(f"[_sync_panel_settings_to_config] Updated config: qr_offset=({self.bot.config.qr_offset_x},{self.bot.config.qr_offset_y}), camera_offset=({self.bot.config.camera_offset_x},{self.bot.config.camera_offset_y})")
-        except Exception as e:
-            debug_log(f"[_sync_panel_settings_to_config] Error: {e}")
-    
-    def on_camera_offset_x_change(self, value):
-        """Handle camera offset X text input change."""
-        try:
-            offset_x = float(value)
-            # Save to main settings (machine config, not panel)
-            from settings import get_settings
-            settings = get_settings()
-            settings.set('camera_offset_x', offset_x)
-            debug_log(f"[on_camera_offset_x_change] Saved offset_x={offset_x} to settings")
-            if self.bot:
-                self.bot.config.camera_offset_x = offset_x
-                debug_log(f"[on_camera_offset_x_change] Updated bot.config.camera_offset_x={offset_x}")
-            print(f"Updated camera_offset_x: {offset_x}")
-        except ValueError:
-            pass
-    
-    def on_camera_offset_y_change(self, value):
-        """Handle camera offset Y text input change."""
-        try:
-            offset_y = float(value)
-            # Save to main settings (machine config, not panel)
-            from settings import get_settings
-            settings = get_settings()
-            settings.set('camera_offset_y', offset_y)
-            debug_log(f"[on_camera_offset_y_change] Saved offset_y={offset_y} to settings")
-            if self.bot:
-                self.bot.config.camera_offset_y = offset_y
-                debug_log(f"[on_camera_offset_y_change] Updated bot.config.camera_offset_y={offset_y}")
-            print(f"Updated camera_offset_y: {offset_y}")
-        except ValueError:
-            pass
-
-    def on_operation_change(self, value):
-        """Handle operation mode spinner change."""
-        # Map display text to OperationMode enum values
-        mode_mapping = {
-            "Identify Only": sequence.OperationMode.IDENTIFY_ONLY,
-            "Program": sequence.OperationMode.PROGRAM,
-            "Program & Test": sequence.OperationMode.PROGRAM_AND_TEST,
-            "Test Only": sequence.OperationMode.TEST_ONLY,
-        }
-        selected = mode_mapping.get(value, sequence.OperationMode.PROGRAM)
-        if self.bot:
-            self.bot.config.operation_mode = selected
-        if self.panel_settings:
-            self.panel_settings.set('operation_mode', value)
-        if hasattr(self, 'settings_data'):
-            self.settings_data['operation_mode'] = value
-        print(f"Updated operation_mode: {selected}")
-
-    def on_use_camera_change(self, active):
-        """Handle QR code scan checkbox change."""
-        if self.bot:
-            self.bot.config.use_camera = active
-            # Update vision controller availability
-            if active and not self.bot.vision:
-                # Re-create vision controller if it was disabled
-                from vision_controller import VisionController
-                self.bot.vision = VisionController(
-                    self.bot.update_phase,
-                    use_picamera=self.bot.config.use_picamera,
-                    camera_index=self.bot.config.camera_index
-                )
-            elif not active and self.bot.vision:
-                # Disable vision controller when camera is turned off
-                self.bot.vision = None
-        if self.panel_settings:
-            self.panel_settings.set('use_camera', active)
-        print(f"Updated use_camera: {active}")
-
-    def on_network_firmware_change(self, value):
-        """Handle network core firmware path change."""
-        if self.bot:
-            self.bot.config.network_core_firmware = value
-            # Update the programmer controller with new path
-            if self.bot.programmer:
-                self.bot.programmer.network_core_firmware = value
-        if self.panel_settings:
-            self.panel_settings.set('network_core_firmware', value)
-        print(f"Updated network_core_firmware: {value}")
-
-    def on_main_firmware_change(self, value):
-        """Handle main core firmware path change."""
-        if self.bot:
-            self.bot.config.main_core_firmware = value
-            # Update the programmer controller with new path
-            if self.bot.programmer:
-                self.bot.programmer.main_core_firmware = value
-        if self.panel_settings:
-            self.panel_settings.set('main_core_firmware', value)
-        print(f"Updated main_core_firmware: {value}")
+    # Camera, operation mode, and firmware handlers are provided by SettingsHandlersMixin
 
     def open_network_firmware_chooser(self):
         """Open file chooser to select network core firmware."""
@@ -1187,468 +848,61 @@ class AsyncApp(App):
         asyncio.ensure_future(do_homing())
     
     # ==================== Calibration Dialog ====================
+    # Thin wrapper methods that delegate to CalibrationController
+    # These methods are called from the KV file (app.cal_*)
     
     def open_calibration_dialog(self):
         """Open the calibration dialog for setting board origin and probe offset."""
-        debug_log("[Calibration] Opening dialog")
-        
-        if not self.bot or not self.bot.motion:
-            debug_log("[Calibration] Bot or motion controller not initialized")
-            return
-        
-        # Create popup if needed
-        if not hasattr(self, 'calibration_popup') or not self.calibration_popup:
-            self.calibration_popup = Factory.CalibrationPopup()
-        
-        # Initialize calibration state
-        self.cal_xy_step = 5.0  # Default XY step
-        self.cal_z_step = 1.0   # Default Z step
-        self.cal_probe_z = None  # Z position after probe (None = not probed yet)
-        self.cal_position_task = None
-        
-        # Update current values display
-        self._cal_update_origin_label()
-        self._cal_update_probe_offset_label()
-        
-        # Query initial position
-        self._cal_refresh_position()
-        
-        # Open popup
-        self.calibration_popup.open()
+        self.calibration_controller.open()
     
-    def _cal_update_origin_label(self):
-        """Update the origin label with current panel settings."""
-        if not self.calibration_popup:
-            return
-        origin_label = self.calibration_popup.ids.get('cal_origin_label')
-        if origin_label:
-            settings = get_settings()
-            x = settings.get('board_first_x', 0)
-            y = settings.get('board_first_y', 0)
-            origin_label.text = f'Origin: X={x:.2f}, Y={y:.2f}'
+    @property
+    def calibration_popup(self):
+        """Access the calibration popup from the controller."""
+        return self.calibration_controller.popup if self.calibration_controller else None
     
-    def _cal_update_probe_offset_label(self):
-        """Update the probe offset label with current panel settings."""
-        if not self.calibration_popup:
-            return
-        offset_label = self.calibration_popup.ids.get('cal_probe_offset_label')
-        if offset_label:
-            settings = get_settings()
-            offset = settings.get('probe_plane_to_board', 0)
-            offset_label.text = f'Z Offset: {offset:.2f} mm'
-    
-    def _cal_refresh_position(self):
-        """Query current position and update display."""
-        import asyncio
-        
-        async def do_refresh():
-            try:
-                pos = await self.bot.motion.get_position()
-                # Check if at safe Z (within 0.5mm of Z=0)
-                at_safe_z = pos['z'] >= -0.5
-                # Update labels on main thread
-                def update_labels(dt, pos=pos, at_safe_z=at_safe_z):
-                    if not self.calibration_popup:
-                        return
-                    popup = self.calibration_popup
-                    if x_label := popup.ids.get('cal_pos_x'):
-                        x_label.text = f"X: {pos['x']:.3f}"
-                    if y_label := popup.ids.get('cal_pos_y'):
-                        y_label.text = f"Y: {pos['y']:.3f}"
-                    if z_label := popup.ids.get('cal_pos_z'):
-                        z_label.text = f"Z: {pos['z']:.3f}"
-                    # Enable/disable probe button based on Z position
-                    if probe_btn := popup.ids.get('cal_probe_btn'):
-                        probe_btn.disabled = not at_safe_z
-                Clock.schedule_once(update_labels, 0)
-            except Exception as e:
-                debug_log(f"[Calibration] Position refresh error: {e}")
-                def show_error(dt):
-                    if not self.calibration_popup:
-                        return
-                    popup = self.calibration_popup
-                    if x_label := popup.ids.get('cal_pos_x'):
-                        x_label.text = "X: err"
-                    if y_label := popup.ids.get('cal_pos_y'):
-                        y_label.text = "Y: err"
-                    if z_label := popup.ids.get('cal_pos_z'):
-                        z_label.text = "Z: err"
-                Clock.schedule_once(show_error, 0)
-        
-        asyncio.ensure_future(do_refresh())
-
     def cal_set_xy_step(self, step):
         """Set XY jog step size."""
-        self.cal_xy_step = step
-        debug_log(f"[Calibration] XY step set to {step} mm")
+        self.calibration_controller.set_xy_step(step)
     
     def cal_set_z_step(self, step):
         """Set Z jog step size."""
-        self.cal_z_step = step
-        debug_log(f"[Calibration] Z step set to {step} mm")
+        self.calibration_controller.set_z_step(step)
     
     def cal_home(self):
         """Home the machine from calibration dialog."""
-        import asyncio
-        
-        async def do_home():
-            try:
-                debug_log("[Calibration] Starting homing...")
-                # Disable home button during homing
-                def disable_btn(dt):
-                    if self.calibration_popup:
-                        btn = self.calibration_popup.ids.get('cal_home_btn')
-                        if btn:
-                            btn.disabled = True
-                            btn.text = 'Homing...'
-                Clock.schedule_once(disable_btn, 0)
-                
-                await self.bot.motion.connect()
-                
-                # Clear alarm
-                await self.bot.motion.device.send_command("M999")
-                
-                # Force homing
-                await self.bot.motion.send_gcode_wait_ok("$H", timeout=20)
-                
-                # Set work coordinates
-                await self.bot.motion.send_gcode_wait_ok("G92 X0 Y0 Z0")
-                
-                debug_log("[Calibration] Homing complete")
-                
-                # Reset probe state since we're now at origin
-                self.cal_probe_z = None
-            except Exception as e:
-                debug_log(f"[Calibration] Homing error: {e}")
-            finally:
-                # Re-enable home button and refresh position
-                def enable_btn(dt):
-                    if self.calibration_popup:
-                        btn = self.calibration_popup.ids.get('cal_home_btn')
-                        if btn:
-                            btn.disabled = False
-                            btn.text = 'Go Home'
-                        # Disable Go Ofs button since probe state is reset
-                        goto_ofs_btn = self.calibration_popup.ids.get('cal_goto_offset_btn')
-                        if goto_ofs_btn:
-                            goto_ofs_btn.disabled = True
-                        # Disable capture button since probe state is reset
-                        capture_btn = self.calibration_popup.ids.get('cal_set_probe_offset_btn')
-                        if capture_btn:
-                            capture_btn.disabled = True
-                Clock.schedule_once(enable_btn, 0)
-                # Refresh position display
-                self._cal_refresh_position()
-        
-        asyncio.ensure_future(do_home())
+        self.calibration_controller.home()
     
     def cal_jog(self, axis, direction):
         """Jog the machine in the specified axis and direction."""
-        import asyncio
-        
-        async def do_jog():
-            try:
-                if axis == 'x':
-                    dist = self.cal_xy_step * direction
-                    await self.bot.motion.rapid_xy_rel(dist, 0)
-                elif axis == 'y':
-                    dist = self.cal_xy_step * direction
-                    await self.bot.motion.rapid_xy_rel(0, dist)
-                elif axis == 'z':
-                    dist = self.cal_z_step * direction
-                    # Use slower controlled movement for Z
-                    await self.bot.motion.move_z_rel(dist, 500)
-                # Wait for motion complete and refresh position
-                await self.bot.motion.send_gcode_wait_ok("M400")
-                self._cal_refresh_position()
-            except Exception as e:
-                debug_log(f"[Calibration] Jog error: {e}")
-        
-        asyncio.ensure_future(do_jog())
+        self.calibration_controller.jog(axis, direction)
     
     def cal_safe_z(self):
         """Move to safe Z height (Z=0)."""
-        import asyncio
-        
-        async def do_safe_z():
-            try:
-                debug_log("[Calibration] Moving to safe Z...")
-                await self.bot.motion.rapid_z_abs(0.0)
-                await self.bot.motion.send_gcode_wait_ok("M400")
-                debug_log("[Calibration] At safe Z")
-                # Reset probe state since we're no longer at probe height
-                self.cal_probe_z = None
-                # Disable Go Ofs and capture buttons, refresh position
-                def update_ui(dt):
-                    if self.calibration_popup:
-                        goto_ofs_btn = self.calibration_popup.ids.get('cal_goto_offset_btn')
-                        if goto_ofs_btn:
-                            goto_ofs_btn.disabled = True
-                        btn = self.calibration_popup.ids.get('cal_set_probe_offset_btn')
-                        if btn:
-                            btn.disabled = True
-                Clock.schedule_once(update_ui, 0)
-                self._cal_refresh_position()
-            except Exception as e:
-                debug_log(f"[Calibration] Safe Z error: {e}")
-        
-        asyncio.ensure_future(do_safe_z())
+        self.calibration_controller.safe_z()
     
     def cal_do_probe(self):
         """Execute probe operation."""
-        import asyncio
-        
-        async def do_probe():
-            try:
-                debug_log("[Calibration] Starting probe...")
-                
-                # Disable probe button during probe
-                def disable_probe_btn(dt):
-                    if self.calibration_popup:
-                        if btn := self.calibration_popup.ids.get('cal_probe_btn'):
-                            btn.disabled = True
-                        result_label = self.calibration_popup.ids.get('cal_probe_result')
-                        if result_label:
-                            result_label.text = 'Probing...'
-                Clock.schedule_once(disable_probe_btn, 0)
-                
-                # Execute probe
-                dist = await self.bot.motion.do_probe()
-                self.cal_probe_z = -dist  # Store the Z position after probe (negative)
-                
-                debug_log(f"[Calibration] Probe result: {dist} mm, Z position: {self.cal_probe_z}")
-                
-                # Move to probe height and wait
-                await self.bot.motion.rapid_z_abs(self.cal_probe_z)
-                await self.bot.motion.send_gcode_wait_ok("M400")
-                
-                # Refresh position display (probe button will stay disabled since not at safe Z)
-                self._cal_refresh_position()
-                
-                # Update UI
-                def update_ui(dt):
-                    if self.calibration_popup:
-                        result_label = self.calibration_popup.ids.get('cal_probe_result')
-                        if result_label:
-                            result_label.text = f'Probe: {dist:.3f} mm'
-                        # Enable Go Ofs button now that we've probed and are at probe height
-                        goto_ofs_btn = self.calibration_popup.ids.get('cal_goto_offset_btn')
-                        if goto_ofs_btn:
-                            goto_ofs_btn.disabled = False
-                        # Enable capture button now that we've probed
-                        btn = self.calibration_popup.ids.get('cal_set_probe_offset_btn')
-                        if btn:
-                            btn.disabled = False
-                Clock.schedule_once(update_ui, 0)
-                
-            except Exception as e:
-                import traceback
-                debug_log(f"[Calibration] Probe error: {e}")
-                debug_log(traceback.format_exc())
-                # Refresh position on error too
-                self._cal_refresh_position()
-                def show_error(dt, err=str(e)):
-                    if self.calibration_popup:
-                        result_label = self.calibration_popup.ids.get('cal_probe_result')
-                        if result_label:
-                            result_label.text = f'FAILED: {err[:20]}'
-                Clock.schedule_once(show_error, 0)
-        
-        asyncio.ensure_future(do_probe())
+        self.calibration_controller.do_probe()
     
     def cal_goto_origin(self):
         """Move to the currently configured board origin."""
-        import asyncio
-        
-        async def do_goto():
-            try:
-                settings = get_settings()
-                x = settings.get('board_first_x', 0)
-                y = settings.get('board_first_y', 0)
-                
-                debug_log(f"[Calibration] Moving to origin X={x:.2f}, Y={y:.2f}")
-                
-                # Move to origin position
-                await self.bot.motion.rapid_xy_abs(x, y)
-                await self.bot.motion.send_gcode_wait_ok("M400")
-                
-                debug_log("[Calibration] Arrived at origin")
-                self._cal_refresh_position()
-                
-            except Exception as e:
-                debug_log(f"[Calibration] Go to origin error: {e}")
-        
-        asyncio.ensure_future(do_goto())
+        self.calibration_controller.goto_origin()
     
     def cal_goto_offset(self):
         """Move Z down by the configured offset from probe position to board surface."""
-        import asyncio
-        
-        async def do_goto_offset():
-            try:
-                if self.cal_probe_z is None:
-                    debug_log("[Calibration] Must probe first!")
-                    return
-                
-                settings = get_settings()
-                offset = settings.get('probe_plane_to_board', 0)
-                
-                # Target Z is probe_z minus the offset (going further down)
-                target_z = self.cal_probe_z - offset
-                
-                debug_log(f"[Calibration] Moving to offset: probe_z={self.cal_probe_z:.3f}, offset={offset:.3f}, target_z={target_z:.3f}")
-                
-                # Move Z to target position slowly (same speed as full_cycle)
-                await self.bot.motion.move_z_abs(target_z, 200)
-                
-                debug_log("[Calibration] Arrived at offset position")
-                self._cal_refresh_position()
-                
-                # Disable Go Ofs button since we're no longer at probe height
-                def update_ui(dt):
-                    if self.calibration_popup:
-                        btn = self.calibration_popup.ids.get('cal_goto_offset_btn')
-                        if btn:
-                            btn.disabled = True
-                Clock.schedule_once(update_ui, 0)
-                
-            except Exception as e:
-                debug_log(f"[Calibration] Go to offset error: {e}")
-        
-        asyncio.ensure_future(do_goto_offset())
+        self.calibration_controller.goto_offset()
     
     def cal_set_board_origin(self):
         """Set board origin from current XY position."""
-        import asyncio
-        
-        async def do_set_origin():
-            try:
-                pos = await self.bot.motion.get_position()
-                x, y = pos['x'], pos['y']
-                
-                # Update settings
-                settings = get_settings()
-                settings.set('board_first_x', x)
-                settings.set('board_first_y', y)
-                
-                # Update panel settings object
-                if self.panel_settings:
-                    self.panel_settings.board_first_x = x
-                    self.panel_settings.board_first_y = y
-                
-                # Update bot config
-                if self.bot and self.bot.config:
-                    self.bot.config.board_first_x = x
-                    self.bot.config.board_first_y = y
-                
-                # Save to panel file
-                if self.panel_settings:
-                    try:
-                        self.panel_settings._save_settings()
-                        debug_log(f"[Calibration] Saved origin to panel file")
-                    except Exception as e:
-                        debug_log(f"[Calibration] Error saving panel file: {e}")
-                
-                # Update UI widgets
-                def update_ui(dt):
-                    # Update Panel tab inputs
-                    if x_input := self.root.ids.get('board_x_input'):
-                        x_input.text = f"{x:.2f}"
-                    if y_input := self.root.ids.get('board_y_input'):
-                        y_input.text = f"{y:.2f}"
-                    # Update calibration dialog label
-                    self._cal_update_origin_label()
-                Clock.schedule_once(update_ui, 0)
-                
-                debug_log(f"[Calibration] Board origin set to X={x:.2f}, Y={y:.2f}")
-                
-            except Exception as e:
-                debug_log(f"[Calibration] Set origin error: {e}")
-        
-        asyncio.ensure_future(do_set_origin())
+        self.calibration_controller.set_board_origin()
     
     def cal_capture_probe_offset(self):
         """Capture probe-to-board offset from current Z position vs probe position."""
-        import asyncio
-        
-        async def do_capture():
-            try:
-                if self.cal_probe_z is None:
-                    debug_log("[Calibration] Must probe first!")
-                    return
-                
-                # Get current Z position
-                pos = await self.bot.motion.get_position()
-                current_z = pos['z']
-                
-                # Offset = distance traveled from probe height to board surface
-                # probe_z is negative (below zero), current_z is also negative (further down)
-                # offset = probe_z - current_z (should be positive)
-                offset = self.cal_probe_z - current_z
-                
-                debug_log(f"[Calibration] Probe Z: {self.cal_probe_z:.3f}, Current Z: {current_z:.3f}, Offset: {offset:.3f}")
-                
-                # Update settings
-                settings = get_settings()
-                settings.set('probe_plane_to_board', offset)
-                
-                # Update panel settings object
-                if self.panel_settings:
-                    self.panel_settings.probe_plane_to_board = offset
-                
-                # Update bot config
-                if self.bot and self.bot.config:
-                    self.bot.config.probe_plane_to_board = offset
-                
-                # Save to panel file
-                if self.panel_settings:
-                    try:
-                        self.panel_settings._save_settings()
-                        debug_log(f"[Calibration] Saved probe offset to panel file")
-                    except Exception as e:
-                        debug_log(f"[Calibration] Error saving panel file: {e}")
-                
-                # Update UI widgets
-                def update_ui(dt):
-                    # Update Panel tab input
-                    if probe_input := self.root.ids.get('probe_plane_input'):
-                        probe_input.text = f"{offset:.2f}"
-                    # Update calibration dialog label
-                    self._cal_update_probe_offset_label()
-                Clock.schedule_once(update_ui, 0)
-                
-                debug_log(f"[Calibration] Probe-to-board offset set to {offset:.2f} mm")
-                
-            except Exception as e:
-                debug_log(f"[Calibration] Capture offset error: {e}")
-        
-        asyncio.ensure_future(do_capture())
+        self.calibration_controller.capture_probe_offset()
     
     def cal_close(self):
         """Close calibration dialog, moving to safe Z first if needed."""
-        import asyncio
-        
-        async def do_close():
-            debug_log("[Calibration] Closing dialog...")
-            try:
-                # Check current Z position and move to safe height if needed
-                pos = await self.bot.motion.get_position()
-                if pos['z'] < -0.5:  # If Z is more than 0.5mm below safe height
-                    debug_log(f"[Calibration] Z at {pos['z']:.2f}, moving to safe Z before closing...")
-                    await self.bot.motion.rapid_z_abs(0.0)
-                    await self.bot.motion.send_gcode_wait_ok("M400")
-                    debug_log("[Calibration] Safe Z reached")
-            except Exception as e:
-                debug_log(f"[Calibration] Error checking/moving Z: {e}")
-            
-            # Dismiss dialog
-            def dismiss(dt):
-                if self.calibration_popup:
-                    self.calibration_popup.dismiss()
-            Clock.schedule_once(dismiss, 0)
-            debug_log("[Calibration] Dialog closed")
-        
-        asyncio.ensure_future(do_close())
+        self.calibration_controller.close()
     
     # ==================== End Calibration Dialog ====================
 
@@ -2032,78 +1286,9 @@ class AsyncApp(App):
         except Exception as e:
             print(f"[ErrorPopup] Failed to skip board: {e}")
 
-    def open_panel_file_chooser(self):
-        """Open file chooser to load a different panel settings file."""
-        if not self.file_chooser_popup:
-            self.file_chooser_popup = Factory.PanelFileChooser()
-        
-        try:
-            # Populate with .panel files from working directory
-            panel_files = find_panel_files()
-            items = []
-            for fullpath in panel_files:
-                items.append({
-                    'filename': os.path.basename(fullpath),
-                    'fullpath': fullpath,
-                    'selected': False
-                })
-            
-            self.panel_file_data = items
-            file_list = self.file_chooser_popup.ids.file_list
-            file_list.data = self.panel_file_data
-            self.selected_panel_path = None
-            
-            self.file_chooser_popup.open()
-        except Exception as e:
-            print(f"[PanelChooser] Error opening file chooser: {e}")
-    
-    def on_file_row_pressed(self, fullpath):
-        """Called when a file row is pressed."""
-        print(f"[PanelChooser] Row pressed - fullpath: {fullpath}")
-        try:
-            # Select file and update all items
-            for item in self.panel_file_data:
-                item['selected'] = (item['fullpath'] == fullpath)
-            self.selected_panel_path = fullpath
-            # Force full refresh of RecycleView
-            file_list = self.file_chooser_popup.ids.file_list
-            file_list.data = []
-            Clock.schedule_once(lambda dt: setattr(file_list, 'data', self.panel_file_data), 0.01)
-            print(f"[PanelChooser] Selected: {self.selected_panel_path}")
-        except Exception as e:
-            print(f"[PanelChooser] Error on press: {e}")
-            import traceback
-            traceback.print_exc()
-    
-    def on_panel_row_click(self, row_widget):
-        """Called when a panel file row is clicked - no longer used."""
-        pass
-    
-    def on_custom_panel_file_selected(self):
-        """Called when Load button is pressed in custom file chooser."""
-        if hasattr(self, 'selected_panel_path') and self.selected_panel_path:
-            self.on_panel_file_selected(self.selected_panel_path)
-
-    def on_panel_file_selected(self, path):
-        """Called when a panel file is selected from the file chooser."""
-        if not path or not self.panel_settings:
-            return
-        
-        try:
-            self.panel_settings.load_file(path)
-            self.settings_data = self.panel_settings.get_all()
-            # Update the panel file label
-            import os
-            panel_name = os.path.basename(path)
-            if self.panel_file_label:
-                self.panel_file_label.text = panel_name
-            # Re-apply settings to widgets
-            Clock.schedule_once(lambda dt: self._apply_settings_to_widgets_now())
-            # Rebuild bot config with new settings
-            Clock.schedule_once(lambda dt: self._reload_bot_config())
-            print(f"[PanelChooser] Loaded panel: {path}")
-        except Exception as e:
-            print(f"[PanelChooser] Error loading panel: {e}")
+    # Panel file management (open_panel_file_chooser, on_panel_file_selected, 
+    # open_save_panel_dialog, on_save_panel_confirmed, etc.) 
+    # are provided by PanelFileManagerMixin
 
     def show_serial_port_chooser(self, device_type, available_ports, callback):
         """Show the serial port chooser dialog.
@@ -2131,122 +1316,9 @@ class AsyncApp(App):
         """
         self.serial_port_selector.on_select_pressed()
 
-    def _apply_settings_to_widgets_now(self):
-        """Re-apply current settings to all widgets."""
-        if not hasattr(self, 'root') or not self.root:
-            return
-        self._apply_settings_to_widgets(self.root, self.settings_data)
-
-    def _reload_bot_config(self):
-        """Rebuild bot configuration and grid after loading a new panel."""
-        if not self.bot:
-            return
-        
-        try:
-            # Rebuild config from settings
-            new_config = self._config_from_settings()
-            
-            # Update bot config
-            self.bot.config = new_config
-            
-            # Rebuild the grid with new dimensions
-            rows = new_config.board_num_rows
-            cols = new_config.board_num_cols
-            self.populate_grid(rows, cols)
-            
-            # Reinitialize panel in bot
-            self.bot.init_panel()
-            
-            print(f"[AsyncApp] Reloaded bot config: {rows}x{cols} grid")
-        except Exception as e:
-            print(f"[AsyncApp] Error reloading bot config: {e}")
-
-    def open_save_panel_dialog(self):
-        """Open dialog to save current panel with a new name."""
-        if not self.save_panel_dialog:
-            self.save_panel_dialog = Factory.SavePanelDialog()
-        
-        try:
-            # Pre-populate with current filename (without .panel extension)
-            if hasattr(self.save_panel_dialog, 'ids') and 'panel_name_input' in self.save_panel_dialog.ids:
-                panel_input = self.save_panel_dialog.ids.panel_name_input
-                if self.panel_settings:
-                    import os
-                    current_file = os.path.basename(self.panel_settings.panel_file)
-                    # Remove .panel extension if present
-                    if current_file.endswith('.panel'):
-                        current_file = current_file[:-6]
-                    panel_input.text = current_file
-            
-            self.save_panel_dialog.open()
-            
-            # Focus and show keyboard after dialog opens
-            Clock.schedule_once(lambda dt: self._focus_panel_input(), 0.1)
-        except Exception as e:
-            print(f"[SavePanel] Error opening save dialog: {e}")
-
-    def _focus_panel_input(self):
-        """Focus the panel name input and trigger keyboard."""
-        try:
-            if hasattr(self.save_panel_dialog, 'ids') and 'panel_name_input' in self.save_panel_dialog.ids:
-                panel_input = self.save_panel_dialog.ids.panel_name_input
-                panel_input.focus = True
-                from kivy.core.window import Window
-                # Reset to default QWERTY layout for text input
-                self.set_keyboard_layout('qwerty.json')
-                Window.show_keyboard()
-        except Exception as e:
-            print(f"[SavePanel] Error focusing input: {e}")
-    
-    def set_keyboard_layout(self, layout):
-        """Switch the virtual keyboard layout."""
-        switch_keyboard_layout(layout)
-
-    def on_save_panel_confirmed(self, filename: str):
-        """Called when user confirms saving panel with new name."""
-        if not filename or not self.panel_settings:
-            print("[SavePanel] No filename provided")
-            return
-        
-        try:
-            import os
-            # Clean up the filename
-            filename = filename.strip()
-            
-            # Remove any existing .panel extension if user added it
-            if filename.endswith('.panel'):
-                filename = filename[:-6]
-            
-            # Remove any other extension or dots
-            filename = os.path.splitext(filename)[0]
-            
-            # Validate filename (basic check)
-            if not filename or all(c in '._-' for c in filename):
-                print("[SavePanel] Invalid filename")
-                return
-            
-            # Add .panel extension
-            filename = filename + '.panel'
-            
-            # Build full path in current directory
-            filepath = os.path.join(os.getcwd(), filename)
-            
-            # Save current settings to new file
-            self.panel_settings.panel_file = filepath
-            self.panel_settings._save_settings()
-            
-            # Update the display
-            if self.panel_file_label:
-                self.panel_file_label.text = filename
-            
-            # Remember this file
-            from settings import get_settings
-            app_settings = get_settings()
-            app_settings.set('last_panel_file', filepath)
-            
-            print(f"[SavePanel] Saved panel to: {filepath}")
-        except Exception as e:
-            print(f"[SavePanel] Error saving panel: {e}")
+    # _apply_settings_to_widgets_now, _reload_bot_config, open_save_panel_dialog,
+    # _focus_panel_input, set_keyboard_layout, on_save_panel_confirmed
+    # are provided by PanelFileManagerMixin
 
     def update_port_labels(self):
         """Update the Config tab port labels with current device information."""
