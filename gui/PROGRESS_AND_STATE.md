@@ -551,6 +551,173 @@ This architecture was established in previous session and remains unchanged.
 
 ---
 
+## Testing & Deployment Guide
+
+### Environment Overview
+
+| Location | Path | Purpose |
+|----------|------|---------|
+| Development (Ubuntu) | `/home/steve/ProgBot/gui/` | Edit and version control |
+| Production (Raspberry Pi) | `~/progbot/` | Runtime execution with hardware |
+
+The development machine (Ubuntu) is used for code editing and git operations. The Raspberry Pi runs the actual ProgBot application with connected hardware (CNC motion, programmer head, camera).
+
+### SSH Access
+
+```bash
+# Connect to the Pi
+ssh 192.168.0.62
+
+# Or with explicit user
+ssh steve@192.168.0.62
+```
+
+The Pi is on the local network at `192.168.0.62`. SSH keys are configured for passwordless login.
+
+### Deploying Code Changes
+
+After editing files on the development machine, deploy to the Pi using `scp`:
+
+```bash
+# Deploy a single file
+scp /home/steve/ProgBot/gui/sequence.py 192.168.0.62:~/progbot/
+
+# Deploy multiple files
+scp sequence.py kvui.py progbot.kv 192.168.0.62:~/progbot/
+
+# Deploy from the gui directory (shorter paths)
+cd /home/steve/ProgBot/gui
+scp sequence.py 192.168.0.62:~/progbot/
+```
+
+**Important**: The Pi's `~/progbot/` directory is a flat structure (no subdirectories). All Python files, `.kv` files, and `.panel` files live in the same directory.
+
+### Running the Application
+
+On the Pi:
+
+```bash
+cd ~/progbot
+./progbot.py
+```
+
+The application runs fullscreen on the Pi's connected display. Use a VNC connection or physical monitor to see the GUI.
+
+### Debug Logging System
+
+ProgBot uses a file-based debug logging system that writes to `/tmp/debug.txt` on the Pi. This is separate from stdout/stderr and captures detailed timing and state information.
+
+#### How It Works
+
+The `debug_log()` function is defined in `sequence.py` and `vision_controller.py`:
+
+```python
+def debug_log(msg):
+    """Write debug message to /tmp/debug.txt"""
+    try:
+        with open('/tmp/debug.txt', 'a') as f:
+            import datetime
+            timestamp = datetime.datetime.now().strftime('%H:%M:%S.%f')[:-3]
+            f.write(f"[{timestamp}] {msg}\n")
+            f.flush()
+    except Exception:
+        pass  # Silently fail if logging doesn't work
+```
+
+Each line is timestamped with millisecond precision: `[14:32:05.123] [_run_board] Starting probe...`
+
+#### Viewing Debug Output
+
+```bash
+# Watch debug log in real-time (from dev machine)
+ssh 192.168.0.62 "tail -f /tmp/debug.txt"
+
+# View last 50 lines
+ssh 192.168.0.62 "tail -50 /tmp/debug.txt"
+
+# Clear the debug log before a test run
+ssh 192.168.0.62 "echo '' > /tmp/debug.txt"
+
+# Save debug log locally for analysis
+scp 192.168.0.62:/tmp/debug.txt ./debug_$(date +%Y%m%d_%H%M%S).txt
+```
+
+#### What Gets Logged
+
+Debug logging captures:
+- Hardware initialization steps and errors
+- Board processing flow (`[_run_board]` prefix)
+- Motion commands and probe results
+- Vision/QR scan operations (`[VisionController]` prefix)
+- Camera subprocess lifecycle
+- Cycle start/stop/cancel events
+- Error conditions with stack context
+
+#### Adding Debug Statements
+
+When debugging, add `debug_log()` calls to trace execution:
+
+```python
+from sequence import debug_log  # If in another file
+
+debug_log(f"[MyFunction] Variable state: x={x}, y={y}")
+debug_log(f"[MyFunction] Entering loop, count={len(items)}")
+```
+
+Use a `[FunctionName]` prefix for easy grep filtering:
+
+```bash
+# Filter to just _run_board messages
+ssh 192.168.0.62 "grep '_run_board' /tmp/debug.txt"
+
+# Filter to vision-related messages
+ssh 192.168.0.62 "grep -i vision /tmp/debug.txt"
+```
+
+### Testing Workflow
+
+1. **Edit code** on development machine (`/home/steve/ProgBot/gui/`)
+
+2. **Deploy to Pi**:
+   ```bash
+   scp modified_file.py 192.168.0.62:~/progbot/
+   ```
+
+3. **Clear debug log** (optional but recommended):
+   ```bash
+   ssh 192.168.0.62 "echo '' > /tmp/debug.txt"
+   ```
+
+4. **Start watching debug output** in a separate terminal:
+   ```bash
+   ssh 192.168.0.62 "tail -f /tmp/debug.txt"
+   ```
+
+5. **Restart the application** on the Pi (kill existing instance, run `./progbot.py`)
+
+6. **Perform test operations** via the GUI
+
+7. **Review debug output** to verify behavior
+
+### Common Testing Scenarios
+
+**Testing cycle interruption:**
+- Start a cycle with multiple boards
+- Press Stop mid-cycle
+- Verify correct board states (orange for interrupted, red for skipped)
+
+**Testing QR scan failures:**
+- Include a board position without a QR code
+- Run cycle, verify it's marked with dark red background
+- Verify all 4 status fields show "Skipped"
+
+**Testing settings sync:**
+- Change a value in Panel tab
+- Open calibration dialog, verify same value
+- Run cycle, verify runtime uses correct value
+
+---
+
 ## Quick Reference
 
 ### File Locations

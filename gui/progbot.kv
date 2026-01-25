@@ -224,34 +224,46 @@
             size_hint_y: 0.1
             on_press: root.dismiss()
 
+<StatsPopup@Popup>:
+    id: stats_popup
+    title: 'Cycle Statistics'
+    size_hint: 0.6, 0.6
+    
+    BoxLayout:
+        orientation: 'vertical'
+        padding: 10
+        spacing: 10
+        
+        Label:
+            id: stats_label
+            text: 'Ready'
+            size_hint_y: 0.85
+            font_size: '14sp'
+            halign: 'left'
+            valign: 'top'
+            text_size: self.size
+            padding: 8, 8
+        
+        Button:
+            text: 'Close'
+            size_hint_y: 0.15
+            on_press: root.dismiss()
+
 # CalibrationPopup has been moved to calibration.kv and is loaded by CalibrationController
 
-<StatsScreen@Screen>:
-    name: 'stats'
+<IdleScreen@Screen>:
+    name: 'idle'
     
     BoxLayout:
         orientation: 'vertical'
         
         Label:
-            text: 'Cycle Statistics'
-            size_hint_y: None
-            height: 20
+            text: 'Camera Preview Area'
             font_size: '12sp'
-            bold: True
-            color: 0.7, 0.7, 0.7, 1
+            color: 0.4, 0.4, 0.4, 1
             halign: 'center'
-            valign: 'center'
+            valign: 'middle'
             text_size: self.size
-        
-        Label:
-            id: cycle_stats_label
-            text: 'Ready'
-            size_hint_y: 1
-            font_size: '11sp'
-            halign: 'left'
-            valign: 'top'
-            text_size: self.size
-            padding: 4, 4
 
 <CameraScreen@Screen>:
     name: 'camera'
@@ -566,7 +578,7 @@
                                 font_size: '16sp'
                                 on_press: app.enable_all_boards(self)
                         
-                        # Cycle statistics / Camera preview swappable pane
+                        # Camera preview pane (shows during QR scanning)
                         ScreenManager:
                             id: stats_camera_manager
                             size_hint_y: None
@@ -579,8 +591,8 @@
                                     pos: self.pos
                                     size: self.size
                             
-                            StatsScreen:
-                                id: stats_screen
+                            IdleScreen:
+                                id: idle_screen
                             
                             CameraScreen:
                                 id: camera_screen
@@ -588,12 +600,21 @@
                         Widget:
                             size_hint_y: 1
 
-                        Button:
-                            id: log_btn
-                            text: 'View Log'
+                        BoxLayout:
+                            orientation: 'horizontal'
                             size_hint_y: None
                             height: 40
-                            on_press: app.toggle_log_popup()
+                            spacing: 5
+                            
+                            Button:
+                                id: log_btn
+                                text: 'Log'
+                                on_press: app.toggle_log_popup()
+                            
+                            Button:
+                                id: stats_btn
+                                text: 'Stats'
+                                on_press: app.toggle_stats_popup()
                 
                 TabbedPanelItem:
                     text: 'Panel'
@@ -1196,7 +1217,7 @@
         Label:
             id: phase_label
             text: "Idle"
-            size_hint_x: 0.85
+            size_hint_x: 0.7
             size_hint_y: None
             height: 40
             font_size: '30sp'
@@ -1205,6 +1226,19 @@
             valign: 'center'
             text_size: self.size
             color: 1, 1, 1, 1
+
+        Label:
+            id: cycle_timer_label
+            text: ""
+            size_hint_x: 0.15
+            size_hint_y: None
+            height: 40
+            font_size: '24sp'
+            bold: True
+            halign: 'center'
+            valign: 'center'
+            text_size: self.size
+            color: 1, 1, 0.5, 1
 
         Label:
             id: panel_file_label

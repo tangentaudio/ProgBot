@@ -313,6 +313,8 @@ class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, App):
     bot = None  # Bot instance
     panel_settings = None
     calibration_controller = None  # Calibration dialog controller
+    cycle_timer_event = None  # Clock event for cycle timer updates
+    cycle_start_time = None  # Start time of current cycle
     
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -340,6 +342,59 @@ class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, App):
             print(f"Error toggling log popup: {e}")
             import traceback
             traceback.print_exc()
+    
+    def toggle_stats_popup(self):
+        """Toggle the statistics popup."""
+        try:
+            if not hasattr(self, 'stats_popup') or not self.stats_popup:
+                # Create popup if it doesn't exist
+                self.stats_popup = Factory.StatsPopup()
+            
+            # Check if popup is open using the internal _is_open attribute
+            if hasattr(self.stats_popup, '_is_open') and self.stats_popup._is_open:
+                self.stats_popup.dismiss()
+            else:
+                # Populate with last stats text before opening
+                if hasattr(self, '_last_stats_text'):
+                    stats_label = self.stats_popup.ids.get('stats_label')
+                    if stats_label:
+                        stats_label.text = self._last_stats_text
+                self.stats_popup.open()
+        except Exception as e:
+            print(f"Error toggling stats popup: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    def _start_cycle_timer(self):
+        """Start the cycle timer display."""
+        import time
+        self.cycle_start_time = time.time()
+        # Update immediately, then every second
+        self._update_cycle_timer(0)
+        self.cycle_timer_event = Clock.schedule_interval(self._update_cycle_timer, 1.0)
+    
+    def _stop_cycle_timer(self):
+        """Stop the cycle timer display."""
+        if self.cycle_timer_event:
+            self.cycle_timer_event.cancel()
+            self.cycle_timer_event = None
+        self.cycle_start_time = None
+        # Hide the timer label
+        timer_label = self.root.ids.get('cycle_timer_label')
+        if timer_label:
+            timer_label.text = ""
+    
+    def _update_cycle_timer(self, dt):
+        """Update the cycle timer label."""
+        import time
+        if self.cycle_start_time is None:
+            return
+        elapsed = time.time() - self.cycle_start_time
+        minutes = int(elapsed // 60)
+        seconds = int(elapsed % 60)
+        timer_label = self.root.ids.get('cycle_timer_label')
+        if timer_label:
+            timer_label.text = f"{minutes}:{seconds:02d}"
     
     def _setup_popup_output_redirection(self):
         """Redirect stdout/stderr to the popup's LogViewer once it's ready."""
@@ -1005,9 +1060,12 @@ class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, App):
             
             # Reset phase label and stats display
             self._set_widget('phase_label', text="Ready")
-            stats_label = self.root.ids.get('cycle_stats_label')
-            if stats_label:
-                stats_label.text = 'Ready'
+            # Reset stats in popup if it exists
+            self._last_stats_text = 'Ready'
+            if hasattr(self, 'stats_popup') and self.stats_popup:
+                stats_label = self.stats_popup.ids.get('stats_label')
+                if stats_label:
+                    stats_label.text = 'Ready'
             
             # Clear board statuses and stats in bot
             if self.bot:
@@ -1080,10 +1138,10 @@ class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, App):
                 except Exception as e:
                     debug_log(f"[Stop] Error stopping camera preview: {e}")
         
-        # Switch back to stats view if camera was showing
+        # Switch back to idle view if camera was showing
         manager = self.root.ids.get('stats_camera_manager')
         if manager and manager.current == 'camera':
-            manager.current = 'stats'
+            manager.current = 'idle'
         
         # Cancel the running task
         if (bot := getattr(self, 'bot_task', None)):
@@ -1180,6 +1238,8 @@ class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, App):
             self.bot_task = asyncio.create_task(b.full_cycle())
             # Add callback to re-enable config widgets when task completes
             self.bot_task.add_done_callback(self._on_task_complete)
+            # Start the cycle timer
+            self._start_cycle_timer()
             print(f"[Start] Bot task created")
         else:
             print(f"[Start] Error: Bot not available to create task")
@@ -1196,6 +1256,8 @@ class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, App):
         # Re-enable start button and config widgets
         Clock.schedule_once(lambda dt: self._set_widget('start_button', disabled=False))
         Clock.schedule_once(lambda dt: self._set_widget('stop_button', disabled=True))
+        # Stop the cycle timer
+        Clock.schedule_once(lambda dt: self._stop_cycle_timer())
         # Re-enable HOME and grid manipulation buttons
         Clock.schedule_once(lambda dt: self._set_widget('home_btn', disabled=False))
         Clock.schedule_once(lambda dt: self._set_widget('reset_grid_btn', disabled=False))
@@ -1254,12 +1316,13 @@ class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, App):
     async def on_stats_updated(self, stats_text):
         """Update the cycle statistics display."""
         def do_update(dt):
-            # Stats label is now inside the StatsScreen
-            stats_screen = self.root.ids.get('stats_screen')
-            if stats_screen:
-                stats_label = stats_screen.ids.get('cycle_stats_label')
+            # Update stats in the popup if it exists
+            if hasattr(self, 'stats_popup') and self.stats_popup:
+                stats_label = self.stats_popup.ids.get('stats_label')
                 if stats_label:
                     stats_label.text = stats_text
+            # Also store the latest stats text for when popup is opened
+            self._last_stats_text = stats_text
         Clock.schedule_once(do_update)
     
     @listener
@@ -1274,12 +1337,12 @@ class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, App):
     
     @listener
     async def on_qr_scan_ended(self):
-        """Switch back to stats display when QR scanning ends."""
+        """Switch back to idle display when QR scanning ends."""
         def do_hide(dt):
             manager = self.root.ids.get('stats_camera_manager')
             if manager:
-                manager.current = 'stats'
-                print("[QRScan] Switched back to stats display")
+                manager.current = 'idle'
+                print("[QRScan] Switched back to idle display")
         Clock.schedule_once(do_hide)
     def on_error_abort(self):
         if self.error_popup:
