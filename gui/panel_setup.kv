@@ -927,22 +927,34 @@
                         
                         # Action buttons
                         BoxLayout:
-                            orientation: 'vertical'
-                            spacing: 4
+                            orientation: 'horizontal'
+                            size_hint_y: None
+                            height: 40
+                            spacing: 8
                             
                             Button:
                                 id: vision_reset_qr_offset_btn
                                 text: 'Reset QR Offset'
-                                font_size: '14sp'
+                                font_size: '13sp'
                                 background_color: 0.5, 0.4, 0.3, 1
                                 on_press: app.ps_vision_reset_qr_offset()
                             
                             Button:
                                 id: vision_set_qr_offset_btn
                                 text: 'Set QR Offset'
-                                font_size: '14sp'
+                                font_size: '13sp'
                                 background_color: 0.2, 0.6, 0.3, 1
                                 on_press: app.ps_vision_set_qr_offset()
+                        
+                        # Instruction text anchored to bottom right
+                        Label:
+                            text: 'Align the crosshair with the center of the ID Code'
+                            font_size: '12sp'
+                            italic: True
+                            color: 0.6, 0.8, 0.9, 1
+                            halign: 'right'
+                            valign: 'bottom'
+                            text_size: self.size
             
             TabbedPanelItem:
                 id: programming_tab

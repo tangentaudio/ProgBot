@@ -1,0 +1,709 @@
+# Config Settings Dialog Layout
+# This file defines the ConfigSettingsPopup widget for global machine configuration:
+# - Serial Ports tab: Motion controller, Head controller, Target device ports
+# - Camera tab: Camera offset, QR scan settings, rotation, live preview
+# - Probing tab: Contact adjust step and other probing parameters
+
+<ConfigSettingsPopup@Popup>:
+    id: config_settings_popup
+    title: ''
+    size_hint: 1, 1
+    auto_dismiss: False
+    separator_height: 0
+    
+    BoxLayout:
+        orientation: 'vertical'
+        spacing: 2
+        padding: 2
+        
+        # Custom title bar
+        BoxLayout:
+            orientation: 'horizontal'
+            size_hint_y: None
+            height: 40
+            padding: [10, 5]
+            spacing: 10
+            canvas.before:
+                Color:
+                    rgba: 0.15, 0.15, 0.2, 1
+                Rectangle:
+                    pos: self.pos
+                    size: self.size
+            
+            Label:
+                text: 'Config Settings'
+                size_hint_x: None
+                width: 150
+                font_size: '18sp'
+                bold: True
+                halign: 'left'
+                valign: 'center'
+                text_size: self.size
+            
+            Widget:
+                # Spacer
+            
+            Button:
+                id: cs_save_btn
+                text: 'Save'
+                size_hint_x: None
+                width: 70
+                background_color: 0.2, 0.5, 0.3, 1
+                disabled: True
+                on_press: app.cs_save_settings()
+            
+            Button:
+                text: 'Close'
+                size_hint_x: None
+                width: 70
+                on_press: app.cs_close()
+        
+        TabbedPanel:
+            id: cs_tabs
+            do_default_tab: False
+            tab_width: 150
+            tab_height: 40
+            
+            # =====================================================================
+            # Serial Ports Tab
+            # =====================================================================
+            TabbedPanelItem:
+                id: cs_serial_tab
+                text: 'Serial Ports'
+                
+                BoxLayout:
+                    orientation: 'vertical'
+                    padding: 20
+                    
+                    Widget:
+                        # Top spacer for vertical centering
+                    
+                    # Three columns for the three port types
+                    GridLayout:
+                        cols: 3
+                        spacing: 30
+                        size_hint_y: None
+                        height: 180
+                        
+                        # Motion Controller column
+                        BoxLayout:
+                            orientation: 'vertical'
+                            spacing: 10
+                            
+                            Label:
+                                text: 'Motion Controller'
+                                size_hint_y: None
+                                height: 25
+                                font_size: '16sp'
+                                bold: True
+                                halign: 'center'
+                                valign: 'center'
+                                text_size: self.size
+                            
+                            Label:
+                                text: '(Smoothie)'
+                                size_hint_y: None
+                                height: 18
+                                font_size: '12sp'
+                                color: 0.6, 0.6, 0.6, 1
+                                halign: 'center'
+                                valign: 'center'
+                                text_size: self.size
+                            
+                            Label:
+                                id: cs_motion_port_label
+                                text: 'Not configured'
+                                size_hint_y: None
+                                height: 40
+                                font_size: '13sp'
+                                color: 0.7, 0.7, 0.7, 1
+                                halign: 'center'
+                                valign: 'center'
+                                text_size: self.size
+                            
+                            Button:
+                                text: 'Change Port'
+                                size_hint_y: None
+                                height: 45
+                                background_color: 0.3, 0.4, 0.6, 1
+                                font_size: '14sp'
+                                on_press: app.cs_reconfigure_motion_port()
+                        
+                        # Head Controller column
+                        BoxLayout:
+                            orientation: 'vertical'
+                            spacing: 10
+                            
+                            Label:
+                                text: 'Head Controller'
+                                size_hint_y: None
+                                height: 25
+                                font_size: '16sp'
+                                bold: True
+                                halign: 'center'
+                                valign: 'center'
+                                text_size: self.size
+                            
+                            Label:
+                                text: '(Arduino)'
+                                size_hint_y: None
+                                height: 18
+                                font_size: '12sp'
+                                color: 0.6, 0.6, 0.6, 1
+                                halign: 'center'
+                                valign: 'center'
+                                text_size: self.size
+                            
+                            Label:
+                                id: cs_head_port_label
+                                text: 'Not configured'
+                                size_hint_y: None
+                                height: 40
+                                font_size: '13sp'
+                                color: 0.7, 0.7, 0.7, 1
+                                halign: 'center'
+                                valign: 'center'
+                                text_size: self.size
+                            
+                            Button:
+                                text: 'Change Port'
+                                size_hint_y: None
+                                height: 45
+                                background_color: 0.3, 0.4, 0.6, 1
+                                font_size: '14sp'
+                                on_press: app.cs_reconfigure_head_port()
+                        
+                        # Target Device column
+                        BoxLayout:
+                            orientation: 'vertical'
+                            spacing: 10
+                            
+                            Label:
+                                text: 'Target Device'
+                                size_hint_y: None
+                                height: 25
+                                font_size: '16sp'
+                                bold: True
+                                halign: 'center'
+                                valign: 'center'
+                                text_size: self.size
+                            
+                            Label:
+                                text: '(J-Link/Programmer)'
+                                size_hint_y: None
+                                height: 18
+                                font_size: '12sp'
+                                color: 0.6, 0.6, 0.6, 1
+                                halign: 'center'
+                                valign: 'center'
+                                text_size: self.size
+                            
+                            Label:
+                                id: cs_target_port_label
+                                text: 'Not configured'
+                                size_hint_y: None
+                                height: 40
+                                font_size: '13sp'
+                                color: 0.7, 0.7, 0.7, 1
+                                halign: 'center'
+                                valign: 'center'
+                                text_size: self.size
+                            
+                            Button:
+                                text: 'Change Port'
+                                size_hint_y: None
+                                height: 45
+                                background_color: 0.3, 0.4, 0.6, 1
+                                font_size: '14sp'
+                                on_press: app.cs_reconfigure_target_port()
+                    
+                    Widget:
+                        # Bottom spacer for vertical centering
+            
+            # =====================================================================
+            # Camera Tab
+            # =====================================================================
+            TabbedPanelItem:
+                id: cs_camera_tab
+                text: 'Camera'
+                on_state: app.cs_camera_tab_changed(self.state)
+                
+                BoxLayout:
+                    orientation: 'horizontal'
+                    spacing: 4
+                    padding: 4
+                    
+                    # Left side: Camera preview and status
+                    BoxLayout:
+                        orientation: 'vertical'
+                        size_hint_x: 0.45
+                        spacing: 4
+                        
+                        Label:
+                            id: cs_camera_status_label
+                            text: 'Camera Preview'
+                            size_hint_y: None
+                            height: 30
+                            font_size: '14sp'
+                            halign: 'center'
+                            color: 0.5, 0.5, 0.5, 1
+                        
+                        Image:
+                            id: cs_camera_preview_image
+                            size_hint: 1, 1
+                            allow_stretch: True
+                            keep_ratio: True
+                            color: 0, 0, 0, 1
+                        
+                        # QR Detection result display
+                        BoxLayout:
+                            orientation: 'horizontal'
+                            size_hint_y: None
+                            height: 35
+                            spacing: 4
+                            
+                            Label:
+                                id: cs_camera_qr_type_label
+                                text: 'No code detected'
+                                size_hint_x: 1.0
+                                font_size: '13sp'
+                                halign: 'center'
+                                valign: 'center'
+                                text_size: self.size
+                                color: 0.5, 0.5, 0.5, 1
+                            
+                            Label:
+                                id: cs_camera_qr_data_label
+                                text: ''
+                                size_hint_x: 0
+                                font_size: '16sp'
+                                bold: True
+                                halign: 'left'
+                                valign: 'center'
+                                text_size: self.size
+                                color: 0.5, 0.5, 0.5, 1
+                        
+                        # Position display
+                        BoxLayout:
+                            orientation: 'horizontal'
+                            size_hint_y: None
+                            height: 25
+                            spacing: 6
+                            
+                            Label:
+                                id: cs_jog_pos_x
+                                text: 'X: ---'
+                                font_size: '14sp'
+                                halign: 'center'
+                                valign: 'center'
+                                text_size: self.size
+                                bold: True
+                            
+                            Label:
+                                id: cs_jog_pos_y
+                                text: 'Y: ---'
+                                font_size: '14sp'
+                                halign: 'center'
+                                valign: 'center'
+                                text_size: self.size
+                                bold: True
+                        
+                        # Rotation controls
+                        BoxLayout:
+                            orientation: 'horizontal'
+                            size_hint_y: None
+                            height: 30
+                            spacing: 4
+                            
+                            Label:
+                                text: 'Rotate:'
+                                size_hint_x: 0.2
+                                font_size: '12sp'
+                                halign: 'right'
+                                valign: 'center'
+                                text_size: self.size
+                            
+                            ToggleButton:
+                                id: cs_rot_0
+                                text: '0°'
+                                group: 'cs_rotation'
+                                size_hint_x: 0.2
+                                font_size: '12sp'
+                                state: 'down'
+                                on_state: app.cs_set_rotation(0) if self.state == 'down' else None
+                            
+                            ToggleButton:
+                                id: cs_rot_90
+                                text: '90°'
+                                group: 'cs_rotation'
+                                size_hint_x: 0.2
+                                font_size: '12sp'
+                                on_state: app.cs_set_rotation(90) if self.state == 'down' else None
+                            
+                            ToggleButton:
+                                id: cs_rot_180
+                                text: '180°'
+                                group: 'cs_rotation'
+                                size_hint_x: 0.2
+                                font_size: '12sp'
+                                on_state: app.cs_set_rotation(180) if self.state == 'down' else None
+                            
+                            ToggleButton:
+                                id: cs_rot_270
+                                text: '270°'
+                                group: 'cs_rotation'
+                                size_hint_x: 0.2
+                                font_size: '12sp'
+                                on_state: app.cs_set_rotation(270) if self.state == 'down' else None
+                    
+                    # Right side: Offset settings and jog controls
+                    BoxLayout:
+                        orientation: 'vertical'
+                        size_hint_x: 0.55
+                        spacing: 4
+                        
+                        # Offset inputs and jog controls in horizontal layout
+                        BoxLayout:
+                            orientation: 'horizontal'
+                            size_hint_y: None
+                            height: 200
+                            spacing: 4
+                            
+                            # Offset inputs section
+                            BoxLayout:
+                                orientation: 'vertical'
+                                size_hint_x: None
+                                width: 160
+                                spacing: 4
+                                
+                                Label:
+                                    text: 'Camera Offset'
+                                    size_hint_y: None
+                                    height: 22
+                                    font_size: '13sp'
+                                    bold: True
+                                    halign: 'center'
+                                    color: 0.8, 0.8, 0.8, 1
+                                
+                                # Offset X
+                                BoxLayout:
+                                    orientation: 'horizontal'
+                                    size_hint_y: None
+                                    height: 32
+                                    spacing: 4
+                                    
+                                    Label:
+                                        text: 'X:'
+                                        size_hint_x: 0.25
+                                        font_size: '13sp'
+                                        halign: 'right'
+                                        valign: 'center'
+                                        text_size: self.size
+                                    
+                                    TextInput:
+                                        id: cs_camera_offset_x_input
+                                        text: '50.0'
+                                        size_hint_x: 0.75
+                                        multiline: False
+                                        input_filter: 'float'
+                                        font_size: '13sp'
+                                        on_focus: app.set_keyboard_layout('numpad') if self.focus else app.cs_on_camera_offset_x_change(self.text)
+                                        on_text_validate: app.cs_on_camera_offset_x_change(self.text)
+                                
+                                # Offset Y
+                                BoxLayout:
+                                    orientation: 'horizontal'
+                                    size_hint_y: None
+                                    height: 32
+                                    spacing: 4
+                                    
+                                    Label:
+                                        text: 'Y:'
+                                        size_hint_x: 0.25
+                                        font_size: '13sp'
+                                        halign: 'right'
+                                        valign: 'center'
+                                        text_size: self.size
+                                    
+                                    TextInput:
+                                        id: cs_camera_offset_y_input
+                                        text: '50.0'
+                                        size_hint_x: 0.75
+                                        multiline: False
+                                        input_filter: 'float'
+                                        font_size: '13sp'
+                                        on_focus: app.set_keyboard_layout('numpad') if self.focus else app.cs_on_camera_offset_y_change(self.text)
+                                        on_text_validate: app.cs_on_camera_offset_y_change(self.text)
+                                
+                                # Reset button
+                                Button:
+                                    id: cs_reset_offset_btn
+                                    text: 'Reset Offset'
+                                    size_hint_y: None
+                                    height: 38
+                                    font_size: '13sp'
+                                    background_color: 0.5, 0.4, 0.3, 1
+                                    on_press: app.cs_reset_camera_offset()
+                                
+                                # Capture button
+                                Button:
+                                    id: cs_capture_offset_btn
+                                    text: 'Capture Offset'
+                                    size_hint_y: None
+                                    height: 38
+                                    font_size: '13sp'
+                                    background_color: 0.2, 0.6, 0.3, 1
+                                    on_press: app.cs_capture_camera_offset()
+                                
+                                Widget:
+                                    # Spacer
+                            
+                            # Spacer to push jog controls right
+                            Widget:
+                            
+                            # XY Step selector
+                            BoxLayout:
+                                orientation: 'vertical'
+                                size_hint_x: None
+                                width: 50
+                                spacing: 2
+                                
+                                ToggleButton:
+                                    id: cs_xy_step_20
+                                    text: '20'
+                                    group: 'cs_xy_step'
+                                    font_size: '13sp'
+                                    on_state: app.cs_set_jog_xy_step(20) if self.state == 'down' else None
+                                
+                                ToggleButton:
+                                    id: cs_xy_step_10
+                                    text: '10'
+                                    group: 'cs_xy_step'
+                                    font_size: '13sp'
+                                    on_state: app.cs_set_jog_xy_step(10) if self.state == 'down' else None
+                                
+                                ToggleButton:
+                                    id: cs_xy_step_5
+                                    text: '5'
+                                    group: 'cs_xy_step'
+                                    font_size: '13sp'
+                                    state: 'down'
+                                    on_state: app.cs_set_jog_xy_step(5) if self.state == 'down' else None
+                                
+                                ToggleButton:
+                                    id: cs_xy_step_1
+                                    text: '1'
+                                    group: 'cs_xy_step'
+                                    font_size: '13sp'
+                                    on_state: app.cs_set_jog_xy_step(1) if self.state == 'down' else None
+                                
+                                ToggleButton:
+                                    id: cs_xy_step_05
+                                    text: '.5'
+                                    group: 'cs_xy_step'
+                                    font_size: '13sp'
+                                    on_state: app.cs_set_jog_xy_step(0.5) if self.state == 'down' else None
+                                
+                                ToggleButton:
+                                    id: cs_xy_step_02
+                                    text: '.2'
+                                    group: 'cs_xy_step'
+                                    font_size: '13sp'
+                                    on_state: app.cs_set_jog_xy_step(0.2) if self.state == 'down' else None
+                                
+                                ToggleButton:
+                                    id: cs_xy_step_01
+                                    text: '.1'
+                                    group: 'cs_xy_step'
+                                    font_size: '13sp'
+                                    on_state: app.cs_set_jog_xy_step(0.1) if self.state == 'down' else None
+                            
+                            # XY Arrow Pad (3x3 grid)
+                            GridLayout:
+                                cols: 3
+                                rows: 3
+                                size_hint_x: None
+                                width: 180
+                                spacing: 3
+                                
+                                Widget:
+                                Button:
+                                    id: cs_y_plus
+                                    text: 'Y+'
+                                    font_size: '18sp'
+                                    on_press: app.cs_jog_xy('y', 1)
+                                Widget:
+                                
+                                Button:
+                                    id: cs_x_minus
+                                    text: 'X-'
+                                    font_size: '18sp'
+                                    on_press: app.cs_jog_xy('x', -1)
+                                Widget:
+                                Button:
+                                    id: cs_x_plus
+                                    text: 'X+'
+                                    font_size: '18sp'
+                                    on_press: app.cs_jog_xy('x', 1)
+                                
+                                Widget:
+                                Button:
+                                    id: cs_y_minus
+                                    text: 'Y-'
+                                    font_size: '18sp'
+                                    on_press: app.cs_jog_xy('y', -1)
+                                Widget:
+                        
+                        # QR Code Scanning settings
+                        BoxLayout:
+                            orientation: 'vertical'
+                            spacing: 4
+                            
+                            Label:
+                                text: 'QR Code Scanning'
+                                size_hint_y: None
+                                height: 25
+                                font_size: '14sp'
+                                bold: True
+                                halign: 'left'
+                                valign: 'center'
+                                text_size: self.size
+                            
+                            GridLayout:
+                                cols: 4
+                                spacing: 8
+                                size_hint_y: None
+                                height: 35
+                                
+                                Label:
+                                    text: 'Scan Timeout (s):'
+                                    font_size: '13sp'
+                                    halign: 'right'
+                                    valign: 'center'
+                                    text_size: self.size
+                                
+                                TextInput:
+                                    id: cs_qr_scan_timeout_input
+                                    text: '5.0'
+                                    size_hint_x: 0.5
+                                    multiline: False
+                                    input_filter: 'float'
+                                    font_size: '13sp'
+                                    on_focus: app.set_keyboard_layout('numpad') if self.focus else app.cs_on_qr_scan_timeout_change(self.text)
+                                    on_text_validate: app.cs_on_qr_scan_timeout_change(self.text)
+                                
+                                Label:
+                                    text: 'Search Offset (mm):'
+                                    font_size: '13sp'
+                                    halign: 'right'
+                                    valign: 'center'
+                                    text_size: self.size
+                                
+                                TextInput:
+                                    id: cs_qr_search_offset_input
+                                    text: '2.0'
+                                    size_hint_x: 0.5
+                                    multiline: False
+                                    input_filter: 'float'
+                                    font_size: '13sp'
+                                    on_focus: app.set_keyboard_layout('numpad') if self.focus else app.cs_on_qr_search_offset_change(self.text)
+                                    on_text_validate: app.cs_on_qr_search_offset_change(self.text)
+                        
+                        # Instruction text anchored to bottom right
+                        Label:
+                            text: 'Align the crosshair with the board origin (Pin 1 of the connector)'
+                            font_size: '12sp'
+                            italic: True
+                            color: 0.6, 0.8, 0.9, 1
+                            halign: 'right'
+                            valign: 'bottom'
+                            text_size: self.size
+            
+            # =====================================================================
+            # Probing Tab
+            # =====================================================================
+            TabbedPanelItem:
+                id: cs_probing_tab
+                text: 'Probing'
+                
+                BoxLayout:
+                    orientation: 'horizontal'
+                    spacing: 20
+                    padding: 20
+                    
+                    # Left side: Settings
+                    BoxLayout:
+                        orientation: 'vertical'
+                        size_hint_x: 0.5
+                        spacing: 15
+                        
+                        Label:
+                            text: 'Probing Configuration'
+                            size_hint_y: None
+                            height: 35
+                            font_size: '18sp'
+                            bold: True
+                            halign: 'left'
+                            valign: 'center'
+                            text_size: self.size
+                        
+                        Widget:
+                            size_hint_y: None
+                            height: 10
+                        
+                        BoxLayout:
+                            orientation: 'horizontal'
+                            size_hint_y: None
+                            height: 40
+                            spacing: 10
+                            
+                            Label:
+                                text: 'Contact Adjust Step (mm):'
+                                size_hint_x: 0.6
+                                font_size: '14sp'
+                                halign: 'right'
+                                valign: 'center'
+                                text_size: self.size
+                            
+                            TextInput:
+                                id: cs_contact_adjust_step_input
+                                text: '0.1'
+                                size_hint_x: 0.25
+                                multiline: False
+                                input_filter: 'float'
+                                font_size: '14sp'
+                                on_focus: app.set_keyboard_layout('numpad') if self.focus else app.cs_on_contact_adjust_step_change(self.text)
+                                on_text_validate: app.cs_on_contact_adjust_step_change(self.text)
+                            
+                            Label:
+                                text: '(0.01 - 1.0)'
+                                size_hint_x: 0.15
+                                font_size: '11sp'
+                                color: 0.6, 0.6, 0.6, 1
+                                halign: 'left'
+                                valign: 'center'
+                                text_size: self.size
+                        
+                        Widget:
+                            # Spacer
+                    
+                    # Right side: Help text
+                    BoxLayout:
+                        orientation: 'vertical'
+                        size_hint_x: 0.5
+                        padding: [20, 0, 0, 0]
+                        
+                        Widget:
+                            size_hint_y: None
+                            height: 45
+                        
+                        Label:
+                            text: 'The contact adjust step determines how much\\nthe probe position adjusts when contact\\ndetection fails.\\n\\nSmaller values give finer adjustment but\\nmay require more retries.'
+                            font_size: '13sp'
+                            color: 0.6, 0.6, 0.6, 1
+                            halign: 'left'
+                            valign: 'top'
+                            text_size: self.size
+                        
+                        Widget:
+                            # Spacer

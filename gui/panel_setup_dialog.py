@@ -12,6 +12,8 @@ from kivy.factory import Factory
 from kivy.lang import Builder
 from kivy.graphics.texture import Texture
 
+from camera_preview_base import CameraPreviewMixin
+
 # Load the panel setup KV file
 Builder.load_file('panel_setup.kv')
 
@@ -28,11 +30,13 @@ def debug_log(msg):
         pass
 
 
-class PanelSetupController:
+class PanelSetupController(CameraPreviewMixin):
     """Controller for the panel setup dialog.
     
     This class manages the panel setup popup and all related operations including
     jogging, homing, probing, and setting panel configuration values.
+    
+    Inherits from CameraPreviewMixin for camera preview and crosshair functionality.
     
     Attributes:
         app: Reference to the main Kivy App instance
@@ -68,6 +72,18 @@ class PanelSetupController:
         self._edit_buffer = {}
         self._original_values = {}
         self._is_dirty = False
+        
+        # Initialize crosshair state from mixin
+        self._crosshair_enabled = False
+    
+    def _get_camera_preview_widget_ids(self):
+        """Return widget ID mappings for camera preview (mixin override)."""
+        return {
+            'image': 'vision_preview_image',
+            'status': 'vision_status_label',
+            'qr_type': 'vision_qr_type_label',
+            'qr_data': 'vision_qr_detected_label',
+        }
     
     @property
     def bot(self):
@@ -1347,9 +1363,13 @@ class PanelSetupController:
         """Handle Vision tab state changes."""
         debug_log(f"[PanelSetup] Vision tab state: {state}")
         if state == 'down':
+            # Enable crosshair for QR offset calibration
+            self._crosshair_enabled = True
             # Tab selected - start camera preview
             self._start_vision_preview()
         else:
+            # Disable crosshair when leaving tab
+            self._crosshair_enabled = False
             # Tab deselected - stop camera preview
             self._stop_vision_preview()
     
@@ -1587,6 +1607,10 @@ class PanelSetupController:
                             # Convert grayscale to RGB for Kivy
                             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_GRAY2RGB)
                             h, w = frame_rgb.shape[:2]
+                            
+                            # Draw crosshair if enabled (from mixin)
+                            if self._crosshair_enabled:
+                                self._draw_crosshair(frame_rgb, w, h)
                             
                             # Reset color filter for normal display
                             image_widget.color = (1, 1, 1, 1)

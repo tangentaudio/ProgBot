@@ -270,18 +270,21 @@
     
     BoxLayout:
         orientation: 'vertical'
+        padding: 0
         
         Label:
             id: camera_status_label
             text: 'QR Scanning...'
             size_hint_y: None
-            height: 20
-            font_size: '12sp'
+            height: 24
+            font_size: '11sp'
             bold: True
             color: 0.9, 0.9, 0.5, 1
             halign: 'center'
             valign: 'center'
-            text_size: self.size
+            text_size: self.width, None
+            shorten: True
+            shorten_from: 'right'
         
         Image:
             id: camera_preview_image
@@ -487,514 +490,231 @@
                     pos: self.pos
                     size: self.size
 
-            TabbedPanel:
-                id: right_tabs
-                size_hint_y: 1
-                do_default_tab: False
-                tab_pos: 'top_left'
-                tab_height: 50
-                tab_width: 80
-                background_color: 0, 0, 0, 0
+            # Top bar with panel name and hamburger menu
+            BoxLayout:
+                orientation: 'horizontal'
+                size_hint_y: None
+                height: 40
+                spacing: 4
+                
+                Label:
+                    id: panel_file_label
+                    text: "default.panel"
+                    font_size: '16sp'
+                    halign: 'left'
+                    valign: 'center'
+                    text_size: self.size
+                    color: 0.8, 0.8, 0.8, 1
+                
+                Button:
+                    id: menu_btn
+                    text: 'Menu'
+                    size_hint_x: None
+                    width: 70
+                    font_size: '18sp'
+                    background_color: 0.3, 0.35, 0.4, 1
+                    on_release: app.show_main_menu()
+            
+            # Main controls (formerly Run tab content)
+            BoxLayout:
+                orientation: 'horizontal'
+                size_hint_y: None
+                height: 80
+                spacing: 4
+
+                Button:
+                    id: home_btn
+                    text: 'HOME'
+                    size_hint_x: 0.25
+                    size_hint_y: None
+                    height: 80
+                    font_size: '18sp'
+                    on_press: app.home_machine(self)
+
+                Button:
+                    id: stop_btn
+                    text: 'STOP'
+                    disabled: True
+                    background_color: 1, 0.4, 0, 1
+                    size_hint_x: 0.375
+                    size_hint_y: None
+                    height: 80
+                    font_size: '24sp'
+                    on_press: app.stop(self)
+
+                Button:
+                    id: start_btn
+                    text: 'START'
+                    background_color: 0, 0.8, 0.2, 1
+                    size_hint_x: 0.375
+                    size_hint_y: None
+                    height: 80
+                    font_size: '24sp'
+                    on_press: app.start(self)
+            
+            BoxLayout:
+                orientation: 'horizontal'
+                size_hint_y: None
+                height: 50
+                spacing: 5
+                
+                Button:
+                    id: reset_grid_btn
+                    text: 'Reset Grid'
+                    background_color: 0.4, 0.4, 0.6, 1
+                    font_size: '16sp'
+                    on_press: app.reset_grid(self)
+                
+                Button:
+                    id: skip_all_btn
+                    text: 'Skip All'
+                    background_color: 0.4, 0.4, 0.6, 1
+                    font_size: '16sp'
+                    on_press: app.skip_all_boards(self)
+                
+                Button:
+                    id: enable_all_btn
+                    text: 'Enable All'
+                    background_color: 0.4, 0.4, 0.6, 1
+                    font_size: '16sp'
+                    on_press: app.enable_all_boards(self)
+            
+            # Camera preview pane (shows during QR scanning)
+            ScreenManager:
+                id: stats_camera_manager
+                size_hint_y: None
+                height: 165
                 
                 canvas.before:
                     Color:
-                        rgba: 0.2, 0.2, 0.2, 1
+                        rgba: 0.1, 0.1, 0.15, 1
                     Rectangle:
-                        pos: self.x, self.y
-                        size: self.width, self.height
+                        pos: self.pos
+                        size: self.size
                 
-                TabbedPanelItem:
-                    text: 'Run'
-                    background_normal: ''
-                    background_down: ''
-                    background_color: (0.15, 0.15, 0.25, 1) if self.state == 'down' else (0, 0, 0, 0)
-                    color: (1, 1, 1, 1) if self.state == 'down' else (0.7, 0.7, 0.7, 1)
-                    
-                    BoxLayout:
-                        orientation: 'vertical'
-                        spacing: 4
-                        padding: 4
-                        
-                        BoxLayout:
-                            orientation: 'horizontal'
-                            size_hint_y: None
-                            height: 80
-                            spacing: 4
-
-                            Button:
-                                id: home_btn
-                                text: 'HOME'
-                                size_hint_x: 0.25
-                                size_hint_y: None
-                                height: 80
-                                font_size: '18sp'
-                                on_press: app.home_machine(self)
-
-                            Button:
-                                id: stop_btn
-                                text: 'STOP'
-                                disabled: True
-                                background_color: 1, 0.4, 0, 1
-                                size_hint_x: 0.375
-                                size_hint_y: None
-                                height: 80
-                                font_size: '24sp'
-                                on_press: app.stop(self)
-
-                            Button:
-                                id: start_btn
-                                text: 'START'
-                                background_color: 0, 0.8, 0.2, 1
-                                size_hint_x: 0.375
-                                size_hint_y: None
-                                height: 80
-                                font_size: '24sp'
-                                on_press: app.start(self)
-                        
-                        BoxLayout:
-                            orientation: 'horizontal'
-                            size_hint_y: None
-                            height: 50
-                            spacing: 5
-                            
-                            Button:
-                                id: reset_grid_btn
-                                text: 'Reset Grid'
-                                background_color: 0.4, 0.4, 0.6, 1
-                                font_size: '16sp'
-                                on_press: app.reset_grid(self)
-                            
-                            Button:
-                                id: skip_all_btn
-                                text: 'Skip All'
-                                background_color: 0.4, 0.4, 0.6, 1
-                                font_size: '16sp'
-                                on_press: app.skip_all_boards(self)
-                            
-                            Button:
-                                id: enable_all_btn
-                                text: 'Enable All'
-                                background_color: 0.4, 0.4, 0.6, 1
-                                font_size: '16sp'
-                                on_press: app.enable_all_boards(self)
-                        
-                        # Camera preview pane (shows during QR scanning)
-                        ScreenManager:
-                            id: stats_camera_manager
-                            size_hint_y: None
-                            height: 165
-                            
-                            canvas.before:
-                                Color:
-                                    rgba: 0.1, 0.1, 0.15, 1
-                                Rectangle:
-                                    pos: self.pos
-                                    size: self.size
-                            
-                            IdleScreen:
-                                id: idle_screen
-                            
-                            CameraScreen:
-                                id: camera_screen
-                        
-                        Widget:
-                            size_hint_y: 1
-
-                        BoxLayout:
-                            orientation: 'horizontal'
-                            size_hint_y: None
-                            height: 40
-                            spacing: 5
-                            
-                            Button:
-                                id: log_btn
-                                text: 'Log'
-                                on_press: app.toggle_log_popup()
-                            
-                            Button:
-                                id: stats_btn
-                                text: 'Stats'
-                                on_press: app.toggle_stats_popup()
+                IdleScreen:
+                    id: idle_screen
                 
-                TabbedPanelItem:
-                    text: 'Panel'
-                    background_normal: ''
-                    background_down: ''
-                    background_color: (0.15, 0.15, 0.25, 1) if self.state == 'down' else (0, 0, 0, 0)
-                    color: (1, 1, 1, 1) if self.state == 'down' else (0.7, 0.7, 0.7, 1)
-                    
-                    ScrollView:
-                        size_hint_y: 1
-                        do_scroll_x: False
-                        
-                        GridLayout:
-                            cols: 2
-                            size_hint_y: None
-                            height: self.minimum_height
-                            spacing: 4
-                            padding: 4
+                CameraScreen:
+                    id: camera_screen
+            
+            Widget:
+                size_hint_y: 1
 
-                            Button:
-                                text: 'Load Panel'
-                                size_hint_y: None
-                                height: 40
-                                background_color: 0.5, 0.55, 0.6, 1
-                                on_press: app.open_panel_file_chooser()
-
-                            Button:
-                                id: panel_setup_btn
-                                text: 'Panel Setup'
-                                size_hint_y: None
-                                height: 40
-                                background_color: 0.6, 0.4, 0.5, 1
-                                on_press: app.open_panel_setup_dialog()
-
-                            Widget:
-                                size_hint_y: None
-                                height: 40
+            BoxLayout:
+                orientation: 'horizontal'
+                size_hint_y: None
+                height: 40
+                spacing: 5
                 
-                TabbedPanelItem:
-                    text: 'Config'
-                    background_normal: ''
-                    background_down: ''
-                    background_color: (0.15, 0.15, 0.25, 1) if self.state == 'down' else (0, 0, 0, 0)
-                    color: (1, 1, 1, 1) if self.state == 'down' else (0.7, 0.7, 0.7, 1)
-                    
-                    ScrollView:
-                        id: config_tab_content
-                        size_hint_y: 1
-                        do_scroll_x: False
-                        
-                        GridLayout:
-                            cols: 1
-                            size_hint_y: None
-                            height: self.minimum_height
-                            spacing: 8
-                            padding: 8
+                Button:
+                    id: log_btn
+                    text: 'Log'
+                    on_press: app.toggle_log_popup()
+                
+                Button:
+                    id: stats_btn
+                    text: 'Stats'
+                    on_press: app.toggle_stats_popup()
 
-                            Label:
-                                text: "Camera Configuration"
-                                size_hint_y: None
-                                height: 40
-                                font_size: '16sp'
-                                bold: True
-                                halign: 'center'
-                                valign: 'center'
-                                text_size: self.size
-                            
-                            Widget:
-                                size_hint_y: None
-                                height: 10
-                            
-                            GridLayout:
-                                cols: 2
-                                size_hint_y: None
-                                height: self.minimum_height
-                                spacing: 4
-                                
-                                Label:
-                                    text: "Camera Offset X (mm):"
-                                    size_hint_y: None
-                                    height: 30
-                                    halign: 'right'
-                                    valign: 'center'
-                                    text_size: self.size
+            # Status bar at bottom
+            BoxLayout:
+                orientation: 'horizontal'
+                size_hint_y: None
+                height: 40
+                padding: 4
+                spacing: 4
 
-                                TextInput:
-                                    id: camera_offset_x_input
-                                    text: "50.0"
-                                    size_hint_y: None
-                                    height: 30
-                                    multiline: False
-                                    input_filter: 'float'
-                                    on_focus: app.set_keyboard_layout('numpad') if self.focus else None
-                                    on_text_validate: app.on_camera_offset_x_change(self.text)
+                canvas.before:
+                    Color:
+                        rgba: 0, 0.2, .8, 1
+                    Rectangle:
+                        pos: self.pos
+                        size: self.size
 
-                                Label:
-                                    text: "Camera Offset Y (mm):"
-                                    size_hint_y: None
-                                    height: 30
-                                    halign: 'right'
-                                    valign: 'center'
-                                    text_size: self.size
+                Label:
+                    id: phase_label
+                    text: "Idle"
+                    size_hint_x: 0.8
+                    size_hint_y: None
+                    height: 40
+                    font_size: '16sp'
+                    bold: True
+                    halign: 'left'
+                    valign: 'center'
+                    text_size: self.size
+                    color: 1, 1, 1, 1
 
-                                TextInput:
-                                    id: camera_offset_y_input
-                                    text: "50.0"
-                                    size_hint_y: None
-                                    height: 30
-                                    multiline: False
-                                    input_filter: 'float'
-                                    on_focus: app.set_keyboard_layout('numpad') if self.focus else None
-                                    on_text_validate: app.on_camera_offset_y_change(self.text)
+                Label:
+                    id: cycle_timer_label
+                    text: ""
+                    size_hint_x: 0.2
+                    size_hint_y: None
+                    height: 40
+                    font_size: '16sp'
+                    bold: True
+                    halign: 'right'
+                    valign: 'center'
+                    text_size: self.size
+                    color: 1, 1, 0.5, 1
 
-                                Label:
-                                    text: "Preview Rotation:"
-                                    size_hint_y: None
-                                    height: 30
-                                    halign: 'right'
-                                    valign: 'center'
-                                    text_size: self.size
+# ==================== Widget Definitions ====================
 
-                                Spinner:
-                                    id: camera_rotation_spinner
-                                    text: "0°"
-                                    values: ["0°", "90°", "180°", "270°"]
-                                    size_hint_y: None
-                                    height: 30
-                                    on_text: app.on_camera_rotation_change(self.text)
-
-                                Label:
-                                    text: "QR Scan Timeout (s):"
-                                    size_hint_y: None
-                                    height: 30
-                                    halign: 'right'
-                                    valign: 'center'
-                                    text_size: self.size
-
-                                TextInput:
-                                    id: qr_scan_timeout_input
-                                    text: "5.0"
-                                    size_hint_y: None
-                                    height: 30
-                                    multiline: False
-                                    input_filter: 'float'
-                                    on_focus: app.set_keyboard_layout('numpad') if self.focus else None
-                                    on_text_validate: app.on_qr_scan_timeout_change(self.text)
-
-                                Label:
-                                    text: "QR Search Offset (mm):"
-                                    size_hint_y: None
-                                    height: 30
-                                    halign: 'right'
-                                    valign: 'center'
-                                    text_size: self.size
-
-                                TextInput:
-                                    id: qr_search_offset_input
-                                    text: "2.0"
-                                    size_hint_y: None
-                                    height: 30
-                                    multiline: False
-                                    input_filter: 'float'
-                                    on_focus: app.set_keyboard_layout('numpad') if self.focus else None
-                                    on_text_validate: app.on_qr_search_offset_change(self.text)
-                            
-                            Widget:
-                                size_hint_y: None
-                                height: 20
-
-                            Label:
-                                text: "Probing"
-                                size_hint_y: None
-                                height: 40
-                                font_size: '16sp'
-                                bold: True
-                                halign: 'center'
-                                valign: 'center'
-                                text_size: self.size
-                            
-                            Widget:
-                                size_hint_y: None
-                                height: 10
-
-                            GridLayout:
-                                cols: 2
-                                size_hint_y: None
-                                height: self.minimum_height
-                                spacing: 4
-
-                                Label:
-                                    text: "Contact Adjust Step (mm):"
-                                    size_hint_y: None
-                                    height: 30
-                                    halign: 'right'
-                                    valign: 'center'
-                                    text_size: self.size
-
-                                TextInput:
-                                    id: contact_adjust_step_input
-                                    text: "0.1"
-                                    size_hint_y: None
-                                    height: 30
-                                    multiline: False
-                                    input_filter: 'float'
-                                    on_focus: app.set_keyboard_layout('numpad') if self.focus else None
-                                    on_text_validate: app.on_contact_adjust_step_change(self.text)
-
-                            Widget:
-                                size_hint_y: None
-                                height: 20
-
-                            Label:
-                                text: "Serial Port Configuration"
-                                size_hint_y: None
-                                height: 40
-                                font_size: '16sp'
-                                bold: True
-                                halign: 'center'
-                                valign: 'center'
-                                text_size: self.size
-                            
-                            Widget:
-                                size_hint_y: None
-                                height: 10
-                            
-                            BoxLayout:
-                                orientation: 'vertical'
-                                size_hint_y: None
-                                height: 100
-                                spacing: 4
-                                
-                                Label:
-                                    text: "Motion Controller:"
-                                    size_hint_y: None
-                                    height: 30
-                                    halign: 'left'
-                                    valign: 'center'
-                                    text_size: self.size
-                                    bold: True
-                                
-                                Label:
-                                    id: motion_port_label
-                                    text: "Not configured"
-                                    size_hint_y: None
-                                    height: 25
-                                    halign: 'left'
-                                    valign: 'center'
-                                    text_size: self.size
-                                    color: 0.7, 0.7, 0.7, 1
-                                
-                                Button:
-                                    text: 'Change Motion Controller Port'
-                                    size_hint_y: None
-                                    height: 40
-                                    background_color: 0.3, 0.4, 0.6, 1
-                                    on_press: app.reconfigure_motion_port()
-                            
-                            Widget:
-                                size_hint_y: None
-                                height: 10
-                            
-                            BoxLayout:
-                                orientation: 'vertical'
-                                size_hint_y: None
-                                height: 100
-                                spacing: 4
-                                
-                                Label:
-                                    text: "Head Controller:"
-                                    size_hint_y: None
-                                    height: 30
-                                    halign: 'left'
-                                    valign: 'center'
-                                    text_size: self.size
-                                    bold: True
-                                
-                                Label:
-                                    id: head_port_label
-                                    text: "Not configured"
-                                    size_hint_y: None
-                                    height: 25
-                                    halign: 'left'
-                                    valign: 'center'
-                                    text_size: self.size
-                                    color: 0.7, 0.7, 0.7, 1
-                                
-                                Button:
-                                    text: 'Change Head Controller Port'
-                                    size_hint_y: None
-                                    height: 40
-                                    background_color: 0.3, 0.4, 0.6, 1
-                                    on_press: app.reconfigure_head_port()
-                            
-                            Widget:
-                                size_hint_y: None
-                                height: 10
-                            
-                            BoxLayout:
-                                orientation: 'vertical'
-                                size_hint_y: None
-                                height: 100
-                                spacing: 4
-                                
-                                Label:
-                                    text: "Target Device:"
-                                    size_hint_y: None
-                                    height: 30
-                                    halign: 'left'
-                                    valign: 'center'
-                                    text_size: self.size
-                                    bold: True
-                                
-                                Label:
-                                    id: target_port_label
-                                    text: "Not configured"
-                                    size_hint_y: None
-                                    height: 25
-                                    halign: 'left'
-                                    valign: 'center'
-                                    text_size: self.size
-                                    color: 0.7, 0.7, 0.7, 1
-                                
-                                Button:
-                                    text: 'Change Target Device Port'
-                                    size_hint_y: None
-                                    height: 40
-                                    background_color: 0.3, 0.4, 0.6, 1
-                                    on_press: app.reconfigure_target_port()
-
+<MainMenuDropDown@DropDown>:
+    auto_width: False
+    width: 180
+    
     BoxLayout:
-        orientation: 'horizontal'
+        orientation: 'vertical'
         size_hint_y: None
-        height: 40
-        padding: 4
-        spacing: 4
-
+        height: self.minimum_height
+        spacing: 1
+        padding: 2
+        
         canvas.before:
             Color:
-                rgba: 0, 0.2, .8, 1
+                rgba: 0.2, 0.2, 0.25, 1
             Rectangle:
                 pos: self.pos
                 size: self.size
-
-        Label:
-            id: phase_label
-            text: "Idle"
-            size_hint_x: 0.7
+            Color:
+                rgba: 0.4, 0.4, 0.45, 1
+            Line:
+                rectangle: self.x, self.y, self.width, self.height
+                width: 1
+        
+        Button:
+            text: 'Load Panel'
             size_hint_y: None
-            height: 40
-            font_size: '30sp'
-            bold: True
-            halign: 'left'
-            valign: 'center'
-            text_size: self.size
-            color: 1, 1, 1, 1
-
-        Label:
-            id: cycle_timer_label
-            text: ""
-            size_hint_x: 0.15
-            size_hint_y: None
-            height: 40
-            font_size: '24sp'
-            bold: True
-            halign: 'center'
-            valign: 'center'
-            text_size: self.size
-            color: 1, 1, 0.5, 1
-
-        Label:
-            id: panel_file_label
-            text: "default.panel"
-            size_hint_x: 0.15
-            size_hint_y: None
-            height: 40
+            height: 44
             font_size: '16sp'
-            halign: 'right'
-            valign: 'center'
-            text_size: self.size
-            color: 1, 1, 1, 1
+            background_normal: ''
+            background_down: ''
+            background_color: 0.25, 0.25, 0.3, 1
+            color: 0.9, 0.9, 0.9, 1
+            on_release: app.menu_load_panel()
+        
+        Button:
+            text: 'Panel Setup'
+            size_hint_y: None
+            height: 44
+            font_size: '16sp'
+            background_normal: ''
+            background_down: ''
+            background_color: 0.25, 0.25, 0.3, 1
+            color: 0.9, 0.9, 0.9, 1
+            on_release: app.menu_panel_setup()
+        
+        Button:
+            text: 'Config Settings'
+            size_hint_y: None
+            height: 44
+            font_size: '16sp'
+            background_normal: ''
+            background_down: ''
+            background_color: 0.25, 0.25, 0.3, 1
+            color: 0.9, 0.9, 0.9, 1
+            on_release: app.menu_config_settings()
 
 <SerialPortRow@Button>:
     port_device: ''

@@ -52,6 +52,7 @@ import sequence
 from panel_settings import get_panel_settings, find_panel_files
 from numpad_keyboard import switch_keyboard_layout
 from panel_setup_dialog import PanelSetupController
+from config_settings_dialog import ConfigSettingsController
 from settings_handlers import SettingsHandlersMixin
 from panel_file_manager import PanelFileManagerMixin
 
@@ -313,6 +314,8 @@ class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, App):
     bot = None  # Bot instance
     panel_settings = None
     panel_setup_controller = None  # Panel setup dialog controller
+    config_settings_controller = None  # Config settings dialog controller
+    main_menu_dropdown = None  # Main hamburger menu dropdown
     cycle_timer_event = None  # Clock event for cycle timer updates
     cycle_start_time = None  # Start time of current cycle
     
@@ -323,6 +326,43 @@ class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, App):
         Builder.load_file(kv_file)
         # Initialize panel setup controller
         self.panel_setup_controller = PanelSetupController(self)
+        # Initialize config settings controller
+        self.config_settings_controller = ConfigSettingsController(self)
+    
+    # ==================== Main Menu ====================
+    
+    def show_main_menu(self):
+        """Show the main dropdown menu."""
+        if not self.main_menu_dropdown:
+            self.main_menu_dropdown = Factory.MainMenuDropDown()
+        
+        # Open dropdown attached to menu button
+        if self.root:
+            menu_btn = self.root.ids.get('menu_btn')
+            if menu_btn:
+                self.main_menu_dropdown.open(menu_btn)
+    
+    def _close_main_menu(self):
+        """Close the main menu dropdown if open."""
+        if self.main_menu_dropdown:
+            self.main_menu_dropdown.dismiss()
+    
+    def menu_load_panel(self):
+        """Menu action: Load Panel."""
+        self._close_main_menu()
+        self.open_panel_file_chooser()
+    
+    def menu_panel_setup(self):
+        """Menu action: Panel Setup."""
+        self._close_main_menu()
+        self.open_panel_setup_dialog()
+    
+    def menu_config_settings(self):
+        """Menu action: Config Settings."""
+        self._close_main_menu()
+        self.open_config_settings_dialog()
+    
+    # ==================== End Main Menu ====================
     
     def toggle_log_popup(self):
         """Toggle the log viewer popup."""
@@ -1054,6 +1094,101 @@ class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, App):
             self.panel_setup_controller.save_panel()
     
     # ==================== End Panel Setup Dialog ====================
+    
+    # ==================== Config Settings Dialog ====================
+    # Thin wrapper methods that delegate to ConfigSettingsController
+    # These methods are called from the KV file (app.cs_*)
+    
+    def open_config_settings_dialog(self):
+        """Open the config settings dialog for global machine configuration."""
+        self.config_settings_controller.open()
+    
+    @property
+    def config_settings_popup(self):
+        """Access the config settings popup from the controller."""
+        return self.config_settings_controller.popup if self.config_settings_controller else None
+    
+    def cs_save_settings(self):
+        """Save settings from Config Settings dialog."""
+        if self.config_settings_controller:
+            self.config_settings_controller.save_settings()
+    
+    def cs_close(self):
+        """Close Config Settings dialog."""
+        if self.config_settings_controller:
+            self.config_settings_controller.close()
+    
+    def cs_camera_tab_changed(self, state):
+        """Handle Camera tab state changes."""
+        if self.config_settings_controller:
+            self.config_settings_controller.camera_tab_changed(state)
+    
+    def cs_on_camera_offset_x_change(self, text):
+        """Handle camera offset X change."""
+        if self.config_settings_controller:
+            self.config_settings_controller.on_camera_offset_x_change(text)
+    
+    def cs_on_camera_offset_y_change(self, text):
+        """Handle camera offset Y change."""
+        if self.config_settings_controller:
+            self.config_settings_controller.on_camera_offset_y_change(text)
+    
+    def cs_on_qr_scan_timeout_change(self, text):
+        """Handle QR scan timeout change."""
+        if self.config_settings_controller:
+            self.config_settings_controller.on_qr_scan_timeout_change(text)
+    
+    def cs_on_qr_search_offset_change(self, text):
+        """Handle QR search offset change."""
+        if self.config_settings_controller:
+            self.config_settings_controller.on_qr_search_offset_change(text)
+    
+    def cs_set_rotation(self, rotation):
+        """Set camera rotation."""
+        if self.config_settings_controller:
+            self.config_settings_controller.set_rotation(rotation)
+    
+    def cs_on_contact_adjust_step_change(self, text):
+        """Handle contact adjust step change."""
+        if self.config_settings_controller:
+            self.config_settings_controller.on_contact_adjust_step_change(text)
+    
+    def cs_reconfigure_motion_port(self):
+        """Open serial port selector for motion controller."""
+        if self.config_settings_controller:
+            self.config_settings_controller.reconfigure_motion_port()
+    
+    def cs_reconfigure_head_port(self):
+        """Open serial port selector for head controller."""
+        if self.config_settings_controller:
+            self.config_settings_controller.reconfigure_head_port()
+    
+    def cs_reconfigure_target_port(self):
+        """Open serial port selector for target device."""
+        if self.config_settings_controller:
+            self.config_settings_controller.reconfigure_target_port()
+    
+    def cs_jog_xy(self, axis, direction):
+        """Jog XY in the camera tab."""
+        if self.config_settings_controller:
+            self.config_settings_controller.jog_xy(axis, direction)
+    
+    def cs_set_jog_xy_step(self, step):
+        """Set XY jog step size."""
+        if self.config_settings_controller:
+            self.config_settings_controller.set_jog_xy_step(step)
+    
+    def cs_capture_camera_offset(self):
+        """Capture current position as camera offset."""
+        if self.config_settings_controller:
+            self.config_settings_controller.capture_camera_offset()
+    
+    def cs_reset_camera_offset(self):
+        """Reset camera offset to values from when tab was entered."""
+        if self.config_settings_controller:
+            self.config_settings_controller.reset_camera_offset()
+    
+    # ==================== End Config Settings Dialog ====================
 
     def reset_grid(self, instance):
         """Reset all grid cells to their default state as if panel was just loaded."""
