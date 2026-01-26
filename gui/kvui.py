@@ -19,9 +19,25 @@ from kivy.config import Config
 #Config.set('graphics', 'resizable', 0)
 Config.set('graphics', 'fullscreen', 'auto')
 Config.set('graphics', 'maxfps', 10)  # Very low FPS (10 updates/sec) to minimize overhead
-Config.set('graphics', 'multisamples', 0)  # Disable antialiasing
+Config.set('graphics', 'multisamples', 0)  # Disable graphics antialiasing (for shapes)
 Config.set('graphics', 'vsync', 0)  # Disable vsync to reduce frame timing overhead
 Config.set('kivy', 'keyboard_mode', 'systemanddock') 
+
+# Enable font anti-aliasing application-wide by patching CoreLabel
+from kivy.core.text import Label as CoreLabel
+_original_label_init = CoreLabel.__init__
+def _patched_label_init(self, *args, **kwargs):
+    kwargs.setdefault('font_blended', True)
+    kwargs.setdefault('font_hinting', 'normal')
+    _original_label_init(self, *args, **kwargs)
+CoreLabel.__init__ = _patched_label_init
+
+# Register Noto Sans font for Unicode support (similar aesthetic to Roboto)
+from kivy.core.text import LabelBase
+NOTO_SANS_FONT = '/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf'
+if os.path.exists(NOTO_SANS_FONT):
+    LabelBase.register(name='NotoSans', fn_regular=NOTO_SANS_FONT)
+    # Don't override default - keep Roboto for everything except specific Unicode widgets 
 
 import sys
 import asyncio
@@ -108,6 +124,13 @@ class GridCell(ButtonBehavior, BoxLayout):
     status_line3 = StringProperty("")  # Third line of status (provision status)
     status_line4 = StringProperty("")  # Fourth line of status (test status)
     serial_number = StringProperty("")  # Scanned serial number from QR code
+    
+    # Phase enabled flags - controls dimming of labels when phase is disabled
+    vision_enabled = BooleanProperty(True)
+    probe_enabled = BooleanProperty(True)  # Probe follows vision
+    program_enabled = BooleanProperty(True)
+    provision_enabled = BooleanProperty(True)
+    test_enabled = BooleanProperty(True)
     
     def __init__(self, cell_label="", cell_checked=True, bg_color=None, on_toggle_callback=None, **kwargs):
         super().__init__(**kwargs)
@@ -362,6 +385,13 @@ class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, App):
         self._close_main_menu()
         self.open_config_settings_dialog()
     
+    def menu_exit(self):
+        """Menu action: Clean up and exit the application."""
+        self._close_main_menu()
+        # Use Kivy App's stop method to cleanly exit
+        from kivy.app import App
+        App.get_running_app().stop()
+    
     # ==================== End Main Menu ====================
     
     def toggle_log_popup(self):
@@ -544,6 +574,9 @@ class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, App):
             grid.add_widget(cell)            
             # Store cell reference by ID
             self.grid_cells[cell_index] = cell
+        
+        # Update grid cells with current phase enabled states
+        self.update_grid_phase_states()
     
     def get_skip_board_pos(self):
         """Get list of unchecked board positions in [col, row] format.
@@ -733,6 +766,9 @@ class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, App):
         def _get(key, cast, fallback):
             try:
                 value = settings_data.get(key, fallback)
+                # Handle boolean strings properly (bool('False') == True is wrong!)
+                if cast is bool and isinstance(value, str):
+                    return value.lower() in ('true', '1', 'yes')
                 return cast(value)
             except Exception as e:
                 sequence.debug_log(f"[_config_from_settings] Cast failed for {key}: {e}")
@@ -774,6 +810,11 @@ class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, App):
             target_baud=defaults.target_baud,
             network_core_firmware=settings_data.get('network_core_firmware', defaults.network_core_firmware),
             main_core_firmware=settings_data.get('main_core_firmware', defaults.main_core_firmware),
+            # Phase enable flags
+            vision_enabled=_get('vision_enabled', bool, defaults.vision_enabled),
+            programming_enabled=_get('programming_enabled', bool, defaults.programming_enabled),
+            provision_enabled=_get('provision_enabled', bool, defaults.provision_enabled),
+            test_enabled=_get('test_enabled', bool, defaults.test_enabled),
             # Camera settings
             use_camera=_get('use_camera', bool, defaults.use_camera),
             use_picamera=_get('use_picamera', bool, defaults.use_picamera),
@@ -786,6 +827,10 @@ class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, App):
             qr_scan_timeout=qr_scan_timeout,
             qr_search_offset=qr_search_offset,
         )
+    
+    def _debug_phase_flags(self, config):
+        """Log phase flags for debugging."""
+        print(f"[Config] Phase flags: vision={config.vision_enabled}, programming={config.programming_enabled}, provision={config.provision_enabled}, test={config.test_enabled}")
     
     def _apply_settings_to_widgets(self, root, settings_data):
         """Apply loaded settings to UI widgets."""
@@ -895,6 +940,39 @@ class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, App):
                 cell.disabled = not enabled
             except Exception as e:
                 print(f"[Grid] Error setting cell enabled state: {e}")
+    
+    def update_grid_phase_states(self):
+        """Update all grid cells with current phase enabled states from panel settings."""
+        if not self.panel_settings:
+            return
+        
+        # Get phase enabled states from panel settings
+        vision_enabled = self.panel_settings.get('vision_enabled', True)
+        program_enabled = self.panel_settings.get('programming_enabled', True)
+        provision_enabled = self.panel_settings.get('provision_enabled', False)
+        test_enabled = self.panel_settings.get('test_enabled', False)
+        
+        # Probe follows vision
+        probe_enabled = vision_enabled
+        
+        # Update all grid cells
+        for cell in self.grid_cells.values():
+            try:
+                cell.vision_enabled = vision_enabled
+                cell.probe_enabled = probe_enabled
+                cell.program_enabled = program_enabled
+                cell.provision_enabled = provision_enabled
+                cell.test_enabled = test_enabled
+            except Exception as e:
+                print(f"[Grid] Error updating cell phase states: {e}")
+
+    def update_grid_from_settings(self):
+        """Update grid display from current panel settings.
+        
+        Called after panel settings are saved to refresh the grid display
+        with new phase enabled states and other settings.
+        """
+        self.update_grid_phase_states()
 
     def home_machine(self, instance):
         """Force machine homing."""
@@ -1087,6 +1165,32 @@ class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, App):
         """Handle programmer type spinner change from Panel Setup dialog."""
         if self.panel_setup_controller:
             self.panel_setup_controller.on_programmer_type_change(display_name)
+    
+    def ps_vision_enabled_changed(self, state):
+        """Handle vision enabled toggle change from Panel Setup dialog."""
+        if self.panel_setup_controller:
+            enabled = (state == 'down')
+            self.panel_setup_controller._set_buffer_value('vision_enabled', enabled)
+            # Also update camera checkbox state for backwards compatibility
+            self.ps_on_use_camera_change(enabled)
+    
+    def ps_programming_enabled_changed(self, state):
+        """Handle programming enabled toggle change from Panel Setup dialog."""
+        if self.panel_setup_controller:
+            enabled = (state == 'down')
+            self.panel_setup_controller._set_buffer_value('programming_enabled', enabled)
+    
+    def ps_provision_enabled_changed(self, state):
+        """Handle provision enabled toggle change from Panel Setup dialog."""
+        if self.panel_setup_controller:
+            enabled = (state == 'down')
+            self.panel_setup_controller._set_buffer_value('provision_enabled', enabled)
+    
+    def ps_test_enabled_changed(self, state):
+        """Handle test enabled toggle change from Panel Setup dialog."""
+        if self.panel_setup_controller:
+            enabled = (state == 'down')
+            self.panel_setup_controller._set_buffer_value('test_enabled', enabled)
     
     def ps_save_panel(self):
         """Save panel from Panel Setup dialog."""
@@ -1391,6 +1495,7 @@ class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, App):
         if (b := getattr(self, 'bot', None)):
             # Reload the entire config from current settings
             new_config = self._config_from_settings()
+            self._debug_phase_flags(new_config)  # Log phase flags for debugging
             b.config = new_config
             b.set_skip_board_pos(skip_pos)
         else:
@@ -1691,6 +1796,10 @@ class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, App):
 
     def app_func(self):
         async def run_wrapper():
+            # Ensure panel_settings is loaded (build() may not have run yet)
+            if not hasattr(self, 'panel_settings') or self.panel_settings is None:
+                self.panel_settings = get_panel_settings()
+            
             config = self._config_from_settings()
             
             self.bot = sequence.ProgBot(

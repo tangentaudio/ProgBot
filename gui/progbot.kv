@@ -88,7 +88,7 @@
             Label:
                 text: 'Probe:'
                 bold: True
-                color: [0.7, 0.7, 0.7, 1] if root.status_line1 else [0.7, 0.7, 0.7, 0.5]
+                color: [0.7, 0.7, 0.7, 1] if root.probe_enabled and root.status_line1 else [0.3, 0.3, 0.3, 1] if not root.probe_enabled else [0.7, 0.7, 0.7, 0.5]
                 font_size: '12sp'
                 size_hint_x: None
                 width: 65
@@ -97,9 +97,9 @@
                 text_size: self.size
             
             Label:
-                text: root.status_line1 if root.status_line1 else 'not probed'
+                text: 'disabled' if not root.probe_enabled else (root.status_line1 if root.status_line1 else 'not probed')
                 bold: True
-                color: [1, 1, 1, 1] if root.status_line1 else [1, 1, 1, 0.5]
+                color: [0.3, 0.3, 0.3, 1] if not root.probe_enabled else ([1, 1, 1, 1] if root.status_line1 else [1, 1, 1, 0.5])
                 font_size: '12sp'
                 halign: 'left'
                 valign: 'middle'
@@ -114,7 +114,7 @@
             Label:
                 text: 'Program:'
                 bold: True
-                color: [0.7, 0.7, 0.7, 1] if root.status_line2 else [0.7, 0.7, 0.7, 0.5]
+                color: [0.7, 0.7, 0.7, 1] if root.program_enabled and root.status_line2 else [0.3, 0.3, 0.3, 1] if not root.program_enabled else [0.7, 0.7, 0.7, 0.5]
                 font_size: '12sp'
                 size_hint_x: None
                 width: 65
@@ -123,9 +123,9 @@
                 text_size: self.size
             
             Label:
-                text: root.status_line2 if root.status_line2 else 'not programmed'
+                text: 'disabled' if not root.program_enabled else (root.status_line2 if root.status_line2 else 'not programmed')
                 bold: True
-                color: [1, 1, 1, 1] if root.status_line2 else [1, 1, 1, 0.5]
+                color: [0.3, 0.3, 0.3, 1] if not root.program_enabled else ([1, 1, 1, 1] if root.status_line2 else [1, 1, 1, 0.5])
                 font_size: '12sp'
                 halign: 'left'
                 valign: 'middle'
@@ -140,7 +140,7 @@
             Label:
                 text: 'Provision:'
                 bold: True
-                color: [0.7, 0.7, 0.7, 1] if root.status_line3 else [0.7, 0.7, 0.7, 0.5]
+                color: [0.7, 0.7, 0.7, 1] if root.provision_enabled and root.status_line3 else [0.3, 0.3, 0.3, 1] if not root.provision_enabled else [0.7, 0.7, 0.7, 0.5]
                 font_size: '12sp'
                 size_hint_x: None
                 width: 65
@@ -149,9 +149,9 @@
                 text_size: self.size
             
             Label:
-                text: root.status_line3 if root.status_line3 else 'not provisioned'
+                text: 'disabled' if not root.provision_enabled else (root.status_line3 if root.status_line3 else 'not provisioned')
                 bold: True
-                color: [1, 1, 1, 1] if root.status_line3 else [1, 1, 1, 0.5]
+                color: [0.3, 0.3, 0.3, 1] if not root.provision_enabled else ([1, 1, 1, 1] if root.status_line3 else [1, 1, 1, 0.5])
                 font_size: '12sp'
                 halign: 'left'
                 valign: 'middle'
@@ -166,7 +166,7 @@
             Label:
                 text: 'Test:'
                 bold: True
-                color: [0.7, 0.7, 0.7, 1] if root.status_line4 else [0.7, 0.7, 0.7, 0.5]
+                color: [0.7, 0.7, 0.7, 1] if root.test_enabled and root.status_line4 else [0.3, 0.3, 0.3, 1] if not root.test_enabled else [0.7, 0.7, 0.7, 0.5]
                 font_size: '12sp'
                 size_hint_x: None
                 width: 65
@@ -175,9 +175,9 @@
                 text_size: self.size
             
             Label:
-                text: root.status_line4 if root.status_line4 else 'not tested'
+                text: 'disabled' if not root.test_enabled else (root.status_line4 if root.status_line4 else 'not tested')
                 bold: True
-                color: [1, 1, 1, 1] if root.status_line4 else [1, 1, 1, 0.5]
+                color: [0.3, 0.3, 0.3, 1] if not root.test_enabled else ([1, 1, 1, 1] if root.status_line4 else [1, 1, 1, 0.5])
                 font_size: '12sp'
                 halign: 'left'
                 valign: 'middle'
@@ -715,6 +715,21 @@
             background_color: 0.25, 0.25, 0.3, 1
             color: 0.9, 0.9, 0.9, 1
             on_release: app.menu_config_settings()
+        
+        Widget:
+            size_hint_y: None
+            height: 8
+        
+        Button:
+            text: 'Exit'
+            size_hint_y: None
+            height: 44
+            font_size: '16sp'
+            background_normal: ''
+            background_down: ''
+            background_color: 0.4, 0.25, 0.25, 1
+            color: 0.9, 0.9, 0.9, 1
+            on_release: app.menu_exit()
 
 <SerialPortRow@Button>:
     port_device: ''

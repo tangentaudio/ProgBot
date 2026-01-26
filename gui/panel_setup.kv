@@ -67,7 +67,7 @@
         TabbedPanel:
             id: ps_tabs
             do_default_tab: False
-            tab_width: 150
+            tab_width: 120
             tab_height: 40
             
             TabbedPanelItem:
@@ -540,9 +540,11 @@
                             valign: 'center'
                             text_size: self.size
             
-            TabbedPanelItem:
+            EnableableTabbedPanelItem:
                 id: vision_tab
-                text: 'Vision'
+                phase_name: 'Vision'
+                settings_key: 'vision_enabled'
+                phase_enabled: True if app.panel_settings and app.panel_settings.get('vision_enabled', True) else False
                 on_state: app.ps_vision_tab_changed(self.state)
                 
                 BoxLayout:
@@ -556,36 +558,13 @@
                         size_hint_x: 0.45
                         spacing: 4
                         
-                        # QR Code Scan enable/disable at top of left column
-                        BoxLayout:
-                            orientation: 'horizontal'
-                            size_hint_y: None
-                            height: 35
-                            spacing: 4
-                            
-                            Label:
-                                text: 'QR Code Scan:'
-                                size_hint_x: 0.6
-                                font_size: '14sp'
-                                halign: 'right'
-                                valign: 'center'
-                                text_size: self.size
-                            
-                            ToggleButton:
-                                id: ps_use_camera_checkbox
-                                text: 'Enabled' if self.state == 'down' else 'Disabled'
-                                state: 'down'
-                                size_hint_x: 0.4
-                                font_size: '13sp'
-                                on_state: app.ps_on_use_camera_change(self.state == 'down')
-                        
-                        # Left side content (disabled when QR scan is off)
+                        # Left side content (disabled when vision is off)
                         BoxLayout:
                             id: vision_left_content
                             orientation: 'vertical'
                             spacing: 4
-                            disabled: ps_use_camera_checkbox.state != 'down'
-                            opacity: 1.0 if ps_use_camera_checkbox.state == 'down' else 0.4
+                            disabled: not vision_tab.phase_enabled
+                            opacity: 1.0 if vision_tab.phase_enabled else 0.4
                             
                             # Camera preview area
                             BoxLayout:
@@ -762,14 +741,14 @@
                                     font_size: '12sp'
                                     on_state: app.ps_vision_set_rotation(270) if self.state == 'down' else None
                     
-                    # Right side: XY jog controls and action buttons (disabled when QR scan is off)
+                    # Right side: XY jog controls and action buttons (disabled when vision is off)
                     BoxLayout:
                         id: vision_right_content
                         orientation: 'vertical'
                         size_hint_x: 0.55
                         spacing: 4
-                        disabled: ps_use_camera_checkbox.state != 'down'
-                        opacity: 1.0 if ps_use_camera_checkbox.state == 'down' else 0.4
+                        disabled: not vision_tab.phase_enabled
+                        opacity: 1.0 if vision_tab.phase_enabled else 0.4
                         
                         # Board selector and XY Jog controls
                         BoxLayout:
@@ -956,15 +935,19 @@
                             valign: 'bottom'
                             text_size: self.size
             
-            TabbedPanelItem:
+            EnableableTabbedPanelItem:
                 id: programming_tab
-                text: 'Programming'
+                phase_name: 'Program'
+                settings_key: 'programming_enabled'
+                phase_enabled: True if app.panel_settings and app.panel_settings.get('programming_enabled', True) else False
                 on_state: app.ps_programming_tab_changed(self.state)
                 
                 BoxLayout:
                     orientation: 'vertical'
                     spacing: 10
                     padding: 20
+                    disabled: not programming_tab.phase_enabled
+                    opacity: 1.0 if programming_tab.phase_enabled else 0.4
                     
                     # Programmer Type selector
                     BoxLayout:
@@ -1043,3 +1026,79 @@
                             
                             Widget:
                                 # Spacer
+
+            EnableableTabbedPanelItem:
+                id: provision_tab
+                phase_name: 'Provision'
+                settings_key: 'provision_enabled'
+                phase_enabled: True if app.panel_settings and app.panel_settings.get('provision_enabled', False) else False
+                
+                BoxLayout:
+                    orientation: 'vertical'
+                    spacing: 10
+                    padding: 20
+                    disabled: not provision_tab.phase_enabled
+                    opacity: 1.0 if provision_tab.phase_enabled else 0.4
+                    
+                    # Description
+                    Label:
+                        text: 'Provisioning assigns unique identifiers and configuration\\nto each board during the programming cycle.'
+                        size_hint_y: None
+                        height: 60
+                        font_size: '14sp'
+                        color: 0.7, 0.7, 0.7, 1
+                        halign: 'center'
+                        valign: 'top'
+                        text_size: self.size
+                    
+                    # Placeholder for future provisioning options
+                    Label:
+                        text: '(Provisioning options will appear here)'
+                        size_hint_y: None
+                        height: 40
+                        font_size: '12sp'
+                        color: 0.5, 0.5, 0.5, 1
+                        halign: 'center'
+                        valign: 'center'
+                        text_size: self.size
+                    
+                    Widget:
+                        # Spacer
+
+            EnableableTabbedPanelItem:
+                id: test_tab
+                phase_name: 'Test'
+                settings_key: 'test_enabled'
+                phase_enabled: True if app.panel_settings and app.panel_settings.get('test_enabled', False) else False
+                
+                BoxLayout:
+                    orientation: 'vertical'
+                    spacing: 10
+                    padding: 20
+                    disabled: not test_tab.phase_enabled
+                    opacity: 1.0 if test_tab.phase_enabled else 0.4
+                    
+                    # Description
+                    Label:
+                        text: 'Testing validates board functionality after programming\\nby running automated test sequences.'
+                        size_hint_y: None
+                        height: 60
+                        font_size: '14sp'
+                        color: 0.7, 0.7, 0.7, 1
+                        halign: 'center'
+                        valign: 'top'
+                        text_size: self.size
+                    
+                    # Placeholder for future test options
+                    Label:
+                        text: '(Test configuration will appear here)'
+                        size_hint_y: None
+                        height: 40
+                        font_size: '12sp'
+                        color: 0.5, 0.5, 0.5, 1
+                        halign: 'center'
+                        valign: 'center'
+                        text_size: self.size
+                    
+                    Widget:
+                        # Spacer

@@ -11,8 +11,222 @@ from kivy.clock import Clock
 from kivy.factory import Factory
 from kivy.lang import Builder
 from kivy.graphics.texture import Texture
+from kivy.uix.tabbedpanel import TabbedPanelItem
+from kivy.properties import BooleanProperty, StringProperty
 
 from camera_preview_base import CameraPreviewMixin
+from kivy.animation import Animation
+from kivy.uix.label import Label as KivyLabel
+
+
+# Track if hint has been shown this session (shared across all EnableableTabbedPanelItem instances)
+_hint_shown_this_session = False
+
+
+class EnableableTabbedPanelItem(TabbedPanelItem):
+    """A TabbedPanelItem that can be enabled/disabled via long-press.
+    
+    Long-pressing the tab header toggles the phase_enabled state.
+    The tab title is dimmed when disabled.
+    """
+    
+    phase_enabled = BooleanProperty(True)
+    phase_name = StringProperty('')
+    settings_key = StringProperty('')  # Key in panel_settings, e.g., 'vision_enabled'
+    
+    _long_press_time = 0.5  # seconds
+    _touch_uid = None
+    _touch_start = None
+    _long_press_event = None
+    
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        # Use DejaVu Sans directly by path for Unicode symbol support
+        # (DejaVu has better Unicode coverage than Noto Sans Regular)
+        self.font_name = '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'
+        # Enable font anti-aliasing
+        self.font_blended = True
+        self.font_hinting = 'normal'  # Options: 'normal', 'light', 'mono', 'none'
+        self.bind(phase_enabled=self._update_visual)
+        self.bind(phase_name=self._update_visual)
+        self.bind(state=self._on_tab_state_change)
+    
+    def _on_tab_state_change(self, instance, state):
+        """Show hint when tab is first selected."""
+        global _hint_shown_this_session
+        debug_log(f"_on_tab_state_change: {self.phase_name} state={state}, hint_shown={_hint_shown_this_session}")
+        if state == 'down' and not _hint_shown_this_session:
+            _hint_shown_this_session = True
+            try:
+                self._show_hint()
+            except Exception as e:
+                debug_log(f"_show_hint failed: {e}")
+    
+    def _show_hint(self):
+        """Show an ephemeral hint about long-press to toggle."""
+        debug_log("_show_hint called")
+        from kivy.uix.boxlayout import BoxLayout
+        from kivy.graphics import Color, RoundedRectangle
+        from kivy.uix.popup import Popup
+        from kivy.uix.floatlayout import FloatLayout
+        from kivy.uix.widget import Widget
+        
+        # Find the root popup
+        popup = self.parent
+        while popup and not isinstance(popup, Popup):
+            popup = popup.parent
+        if not popup:
+            debug_log("_show_hint: no popup found")
+            return
+        
+        debug_log(f"_show_hint: found popup {popup}")
+        
+        # Get the popup's content (the main BoxLayout)
+        content = popup.content
+        if not content:
+            debug_log("_show_hint: no content found")
+            return
+        
+        # Create a floating widget to hold the hint
+        hint_container = Widget(
+            size_hint=(None, None),
+            size=(280, 32),
+        )
+        
+        # Add rounded background
+        with hint_container.canvas:
+            Color(0.15, 0.25, 0.3, 0.95)
+            hint_container._bg_rect = RoundedRectangle(
+                pos=(0, 0),
+                size=hint_container.size,
+                radius=[8]
+            )
+        
+        hint_label = KivyLabel(
+            text='Long-press tab to enable/disable',
+            font_size='11sp',
+            color=(0.4, 0.9, 1.0, 1),
+            size_hint=(None, None),
+            size=(280, 32),
+            halign='center',
+            valign='center',
+            pos=(0, 0),
+        )
+        hint_label.text_size = (260, 32)
+        hint_container.add_widget(hint_label)
+        
+        # Position centered below the tabs (lower Y value in Kivy = lower on screen)
+        # The content BoxLayout starts at bottom, so we need to calculate from tab position
+        hint_container.pos = (
+            (popup.width - hint_container.width) / 2,
+            popup.height - 140  # Below title bar (~40) + tabs (~40) + padding
+        )
+        hint_container._bg_rect.pos = hint_container.pos
+        hint_label.pos = hint_container.pos
+        
+        debug_log(f"_show_hint: adding hint at {hint_container.pos}")
+        
+        # Add to popup's content
+        content.add_widget(hint_container)
+        
+        # Fade out after 5 seconds
+        def remove_hint(*args):
+            try:
+                content.remove_widget(hint_container)
+            except Exception:
+                pass
+        
+        anim = Animation(opacity=1, duration=4.5) + Animation(opacity=0, duration=0.5)
+        anim.bind(on_complete=remove_hint)
+        anim.start(hint_container)
+        anim.start(hint_label)
+        debug_log("_show_hint: animation started")
+    
+    def _update_visual(self, *args):
+        """Update tab visual to show enabled/disabled state via opacity."""
+        debug_log(f"_update_visual called: phase_name={self.phase_name}, phase_enabled={self.phase_enabled}")
+        if self.phase_name:
+            # Use filled/empty circle to indicate enabled/disabled (Unicode)
+            # ● (U+25CF) = filled circle, ○ (U+25CB) = empty circle
+            indicator = '● ' if self.phase_enabled else '○ '
+            self.text = indicator + self.phase_name
+            # Cyan color for toggleable tabs, dimmed when disabled
+            self.color = (0.4, 0.9, 1.0, 1) if self.phase_enabled else (0.2, 0.45, 0.5, 1)
+    
+    def on_touch_down(self, touch):
+        """Start long-press detection if touch is on our tab header."""
+        # TabbedPanelItem extends TabbedPanelHeader, so 'self' IS the tab header
+        if self.collide_point(*touch.pos):
+            self._touch_uid = touch.uid
+            self._touch_start = touch.pos
+            # Schedule long-press callback
+            self._long_press_event = Clock.schedule_once(
+                self._on_long_press, self._long_press_time
+            )
+        # Always call super to allow normal tab switching
+        return super().on_touch_down(touch)
+    
+    def on_touch_up(self, touch):
+        """Cancel long-press if touch released before threshold."""
+        if touch.uid == self._touch_uid:
+            if self._long_press_event:
+                self._long_press_event.cancel()
+                self._long_press_event = None
+            self._touch_uid = None
+            self._touch_start = None
+        return super().on_touch_up(touch)
+    
+    def on_touch_move(self, touch):
+        """Cancel long-press if finger moves too far."""
+        if touch.uid == self._touch_uid and self._touch_start:
+            # Cancel if moved more than 20 pixels
+            dx = abs(touch.pos[0] - self._touch_start[0])
+            dy = abs(touch.pos[1] - self._touch_start[1])
+            if dx > 20 or dy > 20:
+                if self._long_press_event:
+                    self._long_press_event.cancel()
+                    self._long_press_event = None
+        return super().on_touch_move(touch)
+    
+    def _on_long_press(self, dt):
+        """Toggle enabled state on long-press."""
+        debug_log(f"_on_long_press called for {self.phase_name}, settings_key={self.settings_key}")
+        self._long_press_event = None
+        
+        # Toggle first for instant visual feedback on tab header
+        self.phase_enabled = not self.phase_enabled
+        debug_log(f"phase_enabled toggled to {self.phase_enabled}")
+        
+        # Then switch to this tab so the user sees the content
+        widget = self.parent
+        while widget:
+            if hasattr(widget, 'switch_to'):
+                debug_log(f"Found TabbedPanel, calling switch_to")
+                widget.switch_to(self)
+                break
+            widget = widget.parent
+        
+        # Notify the app to save the setting
+        from kivy.app import App
+        app = App.get_running_app()
+        debug_log(f"app={app}, settings_key={self.settings_key}")
+        if app and self.settings_key:
+            # Call the appropriate changed handler
+            handler_name = f'ps_{self.settings_key}_changed'
+            debug_log(f"Looking for handler: {handler_name}")
+            if hasattr(app, handler_name):
+                # Convert bool to state string for compatibility
+                state = 'down' if self.phase_enabled else 'normal'
+                debug_log(f"Calling {handler_name}('{state}')")
+                try:
+                    getattr(app, handler_name)(state)
+                    debug_log(f"Handler completed successfully")
+                except Exception as e:
+                    debug_log(f"Handler raised exception: {e}")
+
+
+# Register the custom widget with Factory so it can be used in KV files
+Factory.register('EnableableTabbedPanelItem', cls=EnableableTabbedPanelItem)
 
 # Load the panel setup KV file
 Builder.load_file('panel_setup.kv')
@@ -160,6 +374,12 @@ class PanelSetupController(CameraPreviewMixin):
             self._edit_buffer = copy.deepcopy(ps.get_all())
         else:
             self._edit_buffer = {}
+        
+        # Ensure programmer config exists with defaults
+        if 'programmer' not in self._edit_buffer or not self._edit_buffer['programmer']:
+            from programmers import get_default_programmer_config
+            self._edit_buffer['programmer'] = get_default_programmer_config('nordic_nrf')
+            debug_log("[PanelSetup] Initialized default programmer config in buffer")
         
         # Keep a copy of original values for dirty detection
         self._original_values = copy.deepcopy(self._edit_buffer)
@@ -539,7 +759,7 @@ class PanelSetupController(CameraPreviewMixin):
         except KeyError:
             steps = []
         
-        # Create toggle button for each step
+        # Create toggle button for each step AND ensure all steps are in buffer
         for step in steps:
             step_id = step['id']
             label = step['label']
@@ -548,6 +768,9 @@ class PanelSetupController(CameraPreviewMixin):
             
             # Check if enabled (from buffer or default)
             is_enabled = enabled_steps.get(step_id, default)
+            
+            # IMPORTANT: Write the state to buffer so ALL steps get saved, not just toggled ones
+            self._set_buffer_nested('programmer', 'steps', step_id, value=is_enabled)
             
             btn = ToggleButton(
                 text=label,

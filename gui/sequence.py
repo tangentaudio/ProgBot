@@ -10,7 +10,6 @@ from enum import Enum
 from dataclasses import dataclass, field
 from typing import List, Tuple, Optional, Dict
 from pynnex import with_emitters, emitter, listener
-from programmer_controller import ProgrammerController
 from head_controller import HeadController
 from target_controller import TargetController
 from motion_controller import MotionController
@@ -249,6 +248,11 @@ class Config:
     do_erase: bool = False     # Run erase step
     do_program: bool = True    # Run programming step
     do_lock: bool = False      # Set protection/lock bits
+    # Phase enable flags
+    vision_enabled: bool = True  # Enable vision/QR scanning phase
+    programming_enabled: bool = True  # Enable programming phase
+    provision_enabled: bool = False  # Enable provisioning phase
+    test_enabled: bool = False  # Enable testing phase
     # Legacy field - kept for backward compatibility
     operation_mode: OperationMode = OperationMode.PROGRAM
     skip_board_pos: List[List[int]] = field(default_factory=list)
@@ -430,27 +434,20 @@ class ProgBot:
     
     def _create_programmer(self):
         """Create programmer instance from panel settings or defaults."""
-        try:
-            from programmers import create_programmer, get_default_programmer_config
-            
-            # Get programmer config from panel settings
-            if self.panel_settings:
-                prog_config = self.panel_settings.get_programmer_config()
-            else:
-                prog_config = get_default_programmer_config('nordic_nrf')
-            
-            type_id = prog_config.get('type', 'nordic_nrf')
-            firmware_paths = prog_config.get('firmware', {})
-            
-            return create_programmer(type_id, self.update_phase, firmware_paths)
-        except Exception as e:
-            print(f"[ProgBot] Error creating programmer: {e}")
-            # Fallback to legacy ProgrammerController
-            return ProgrammerController(
-                self.update_phase,
-                network_core_firmware=self.config.network_core_firmware,
-                main_core_firmware=self.config.main_core_firmware
-            )
+        from programmers import create_programmer, get_default_programmer_config
+        
+        # Get programmer config from panel settings
+        if self.panel_settings:
+            prog_config = self.panel_settings.get_programmer_config()
+        else:
+            prog_config = get_default_programmer_config('nordic_nrf')
+        
+        type_id = prog_config.get('type', 'nordic_nrf')
+        firmware_paths = prog_config.get('firmware', {})
+        
+        programmer = create_programmer(type_id, self.update_phase, firmware_paths)
+        print(f"[ProgBot] Created programmer: {type(programmer).__name__} (type={type_id})")
+        return programmer
     
     def _get_enabled_programmer_steps(self) -> list:
         """Get list of enabled programmer step IDs from panel settings."""
@@ -458,18 +455,31 @@ class ProgBot:
             if self.panel_settings:
                 prog_config = self.panel_settings.get_programmer_config()
                 steps = prog_config.get('steps', {})
+                
                 # Return list of enabled step IDs in the order defined by the programmer
                 from programmers import get_programmer_class
                 type_id = prog_config.get('type', 'nordic_nrf')
                 programmer_class = get_programmer_class(type_id)
-                all_steps = [s['id'] for s in programmer_class.get_steps()]
-                return [s for s in all_steps if steps.get(s, False)]
+                all_step_defs = programmer_class.get_steps()
+                
+                # Use configured value if present, otherwise fall back to step default
+                enabled = []
+                for step_def in all_step_defs:
+                    step_id = step_def['id']
+                    step_default = step_def.get('default', False)
+                    is_enabled = steps.get(step_id, step_default)
+                    if is_enabled:
+                        enabled.append(step_id)
+                
+                return enabled
         except Exception as e:
             print(f"[ProgBot] Error getting enabled steps: {e}")
+            import traceback
+            traceback.print_exc()
         
         # Default: identify and program
         return ['identify', 'program']
-    
+
     async def discover_devices(self):
         """Stub for device discovery - ports are already configured."""
         pass
@@ -845,6 +855,50 @@ class ProgBot:
         print(f"Phase now: {phase_str}")
         self.phase_changed.emit(phase_str)
 
+    async def _provision_board(self, col: int, row: int, board_status, cell_id):
+        """Provision a board with unique identifiers and configuration.
+        
+        This is a stub for future provisioning functionality.
+        
+        Args:
+            col: Board column index
+            row: Board row index
+            board_status: BoardStatus object for this board
+            cell_id: Cell ID for status updates
+        """
+        debug_log(f"[_provision_board] Provisioning board [{col},{row}] (stub)")
+        self.update_phase(f"Provisioning Board [{col}, {row}]...")
+        
+        # TODO: Implement provisioning logic
+        # - Assign unique serial number
+        # - Write configuration data
+        # - Register with backend system
+        
+        await asyncio.sleep(0.1)  # Placeholder
+        debug_log(f"[_provision_board] Board [{col},{row}] provisioning complete (stub)")
+
+    async def _test_board(self, col: int, row: int, board_status, cell_id):
+        """Run automated tests on a board.
+        
+        This is a stub for future testing functionality.
+        
+        Args:
+            col: Board column index
+            row: Board row index
+            board_status: BoardStatus object for this board
+            cell_id: Cell ID for status updates
+        """
+        debug_log(f"[_test_board] Testing board [{col},{row}] (stub)")
+        self.update_phase(f"Testing Board [{col}, {row}]...")
+        
+        # TODO: Implement test logic
+        # - Run functional tests
+        # - Validate board operation
+        # - Record test results
+        
+        await asyncio.sleep(0.1)  # Placeholder
+        debug_log(f"[_test_board] Board [{col},{row}] testing complete (stub)")
+
     async def _run_board(self, col: int, row: int):
         self.current_board = (col, row)
         board_status = self.get_board_status(col, row)
@@ -982,66 +1036,79 @@ class ProgBot:
             await self.motion.rapid_z_abs(0.0)
             return
 
-        # Start programming timing
+        # Start timing for this board (covers all phases)
         program_start = time.time()
-        
-        self.update_phase("Enabling programmer head power...")
-        await self.head.set_power(True)
-        await asyncio.sleep(1)
-        self.update_phase("Enabling programmer head logic...")
-        await self.head.set_logic(True)
-        await asyncio.sleep(1)
 
-        # Get enabled programming steps from panel settings
-        enabled_steps = self._get_enabled_programmer_steps()
-        debug_log(f"[_run_board] Enabled programmer steps: {enabled_steps}")
-        
-        if not enabled_steps:
-            # No steps enabled - just mark as completed
-            self._mark_program(cell_id, board_status, ProgramStatus.COMPLETED)
-        else:
-            # Determine status based on what steps are enabled
-            if 'program' in enabled_steps:
-                self._mark_program(cell_id, board_status, ProgramStatus.PROGRAMMING)
-            elif 'identify' in enabled_steps:
-                self._mark_program(cell_id, board_status, ProgramStatus.IDENTIFYING)
-            else:
-                self._mark_program(cell_id, board_status, ProgramStatus.PROGRAMMING)
+        # Programming phase (if enabled)
+        if self.config.programming_enabled:
+            self.update_phase("Enabling programmer head power...")
+            await self.head.set_power(True)
+            await asyncio.sleep(1)
+            self.update_phase("Enabling programmer head logic...")
+            await self.head.set_logic(True)
+            await asyncio.sleep(1)
+
+            # Get enabled programming steps from panel settings
+            enabled_steps = self._get_enabled_programmer_steps()
+            debug_log(f"[_run_board] Enabled programmer steps: {enabled_steps}")
             
-            try:
-                # Execute all enabled steps through the programmer plugin
-                success = await self.programmer.execute_sequence(enabled_steps)
-                print(f"success={success}")
-                
-                # Determine final status
-                if success:
-                    if 'program' in enabled_steps:
-                        final_status = ProgramStatus.COMPLETED
-                    elif 'identify' in enabled_steps and len(enabled_steps) == 1:
-                        final_status = ProgramStatus.IDENTIFIED
-                    else:
-                        final_status = ProgramStatus.COMPLETED
+            if not enabled_steps:
+                # No steps enabled - just mark as completed
+                self._mark_program(cell_id, board_status, ProgramStatus.COMPLETED)
+            else:
+                # Determine status based on what steps are enabled
+                if 'program' in enabled_steps:
+                    self._mark_program(cell_id, board_status, ProgramStatus.PROGRAMMING)
+                elif 'identify' in enabled_steps:
+                    self._mark_program(cell_id, board_status, ProgramStatus.IDENTIFYING)
                 else:
-                    final_status = ProgramStatus.FAILED
+                    self._mark_program(cell_id, board_status, ProgramStatus.PROGRAMMING)
                 
-                self._mark_program(cell_id, board_status, final_status)
-                
-            except Exception as e:
-                print(f"Programming sequence failed: {e}")
-                board_status.failure_reason = f"Programming error: {e}"
-                self._mark_program(cell_id, board_status, ProgramStatus.FAILED)
-                self.stats.record_failure()
-                self.stats_updated.emit(self.stats.get_summary_text())
-                # SAFETY: Return to safe Z height before continuing to next board
-                await self.head.set_all(False)
-                await self.motion.rapid_z_abs(0.0)
-                self.current_board = None
-                return  # Soft-skip this board, continue cycle
+                try:
+                    # Execute all enabled steps through the programmer plugin
+                    success = await self.programmer.execute_sequence(enabled_steps)
+                    print(f"success={success}")
+                    
+                    # Determine final status
+                    if success:
+                        if 'program' in enabled_steps:
+                            final_status = ProgramStatus.COMPLETED
+                        elif 'identify' in enabled_steps and len(enabled_steps) == 1:
+                            final_status = ProgramStatus.IDENTIFIED
+                        else:
+                            final_status = ProgramStatus.COMPLETED
+                    else:
+                        final_status = ProgramStatus.FAILED
+                    
+                    self._mark_program(cell_id, board_status, final_status)
+                    
+                except Exception as e:
+                    print(f"Programming sequence failed: {e}")
+                    board_status.failure_reason = f"Programming error: {e}"
+                    self._mark_program(cell_id, board_status, ProgramStatus.FAILED)
+                    self.stats.record_failure()
+                    self.stats_updated.emit(self.stats.get_summary_text())
+                    # SAFETY: Return to safe Z height before continuing to next board
+                    await self.head.set_all(False)
+                    await self.motion.rapid_z_abs(0.0)
+                    self.current_board = None
+                    return  # Soft-skip this board, continue cycle
 
-            if success and 'program' in enabled_steps:
-                monitor_task = self.target.create_monitor_task()
-                await asyncio.sleep(5)
-                monitor_task.cancel()
+                if success and 'program' in enabled_steps:
+                    monitor_task = self.target.create_monitor_task()
+                    await asyncio.sleep(5)
+                    monitor_task.cancel()
+        else:
+            # Programming disabled - mark as skipped
+            self._mark_program(cell_id, board_status, ProgramStatus.SKIPPED)
+
+        # Provisioning phase (if enabled)
+        if self.config.provision_enabled:
+            await self._provision_board(col, row, board_status, cell_id)
+        
+        # Test phase (if enabled)
+        if self.config.test_enabled:
+            await self._test_board(col, row, board_status, cell_id)
 
         await self.head.set_all(False)
         await asyncio.sleep(1)
@@ -1238,10 +1305,12 @@ class ProgBot:
             self.update_phase("Initializing devices...")
             await self.motion.init()
             
-            # If camera is enabled, scan all boards first
-            if self.vision and self.config.use_camera:
+            # If vision phase is enabled and camera is available, scan all boards first
+            if self.config.vision_enabled and self.vision and self.config.use_camera:
                 debug_log("[full_cycle] Starting vision scan phase for all boards")
                 await self._scan_all_boards_for_qr()
+            elif not self.config.vision_enabled:
+                debug_log("[full_cycle] Vision phase disabled in panel settings")
             
             await self._run_from(0, 0)
 

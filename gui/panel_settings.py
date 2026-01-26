@@ -64,6 +64,11 @@ class PanelSettings:
             'camera_z_height': 0.0,
             'qr_offset_x': 0.0,  # X offset from board origin to QR code
             'qr_offset_y': 0.0,  # Y offset from board origin to QR code
+            # Phase enable flags
+            'vision_enabled': True,  # Enable vision/QR scanning phase
+            'programming_enabled': True,  # Enable programming phase
+            'provision_enabled': False,  # Enable provisioning phase
+            'test_enabled': False,  # Enable testing phase
             # Programmer configuration (nested)
             'programmer': _get_default_programmer_config(),
         }
