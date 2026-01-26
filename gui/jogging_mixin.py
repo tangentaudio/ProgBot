@@ -1,3 +1,6 @@
+from logger import get_logger
+log = get_logger(__name__)
+
 """Jogging controls mixin for dialogs with motion platform control.
 
 This module provides a reusable mixin class that adds XY jogging functionality
@@ -6,17 +9,6 @@ to dialog controllers. Used by Panel Setup (Vision tab) and Config Settings (Cam
 import asyncio
 from kivy.clock import Clock
 
-
-def debug_log(msg):
-    """Write debug message to /tmp/debug.txt"""
-    try:
-        with open('/tmp/debug.txt', 'a') as f:
-            import datetime
-            timestamp = datetime.datetime.now().strftime('%H:%M:%S.%f')[:-3]
-            f.write(f"[{timestamp}] {msg}\n")
-            f.flush()
-    except Exception:
-        pass
 
 
 class JoggingMixin:
@@ -63,7 +55,7 @@ class JoggingMixin:
             step: Step size in mm (0.1, 0.2, 0.5, 1, 5, 10, 20)
         """
         self._jog_xy_step = step
-        debug_log(f"[JoggingMixin] XY step set to {step} mm")
+        log.debug(f"[JoggingMixin] XY step set to {step} mm")
     
     def jog_xy(self, axis, direction):
         """Jog the machine in the specified axis and direction.
@@ -75,7 +67,7 @@ class JoggingMixin:
         async def do_jog():
             try:
                 if not self.bot or not self.bot.motion:
-                    debug_log("[JoggingMixin] No motion controller available")
+                    log.debug("[JoggingMixin] No motion controller available")
                     return
                 
                 step = self._jog_xy_step
@@ -91,7 +83,7 @@ class JoggingMixin:
                 self._refresh_jog_position()
                 
             except Exception as e:
-                debug_log(f"[JoggingMixin] Jog error: {e}")
+                log.debug(f"[JoggingMixin] Jog error: {e}")
         
         asyncio.ensure_future(do_jog())
     
@@ -105,7 +97,7 @@ class JoggingMixin:
                 pos = await self.bot.motion.get_position()
                 x, y = pos['x'], pos['y']
                 
-                debug_log(f"[JoggingMixin] Position: X={x:.2f}, Y={y:.2f}")
+                log.debug(f"[JoggingMixin] Position: X={x:.2f}, Y={y:.2f}")
                 
                 # Update position labels
                 def update_labels(dt, x=x, y=y):
@@ -120,7 +112,7 @@ class JoggingMixin:
                 Clock.schedule_once(update_labels, 0)
                 
             except Exception as e:
-                debug_log(f"[JoggingMixin] Position refresh error: {e}")
+                log.debug(f"[JoggingMixin] Position refresh error: {e}")
         
         asyncio.ensure_future(do_refresh())
     
@@ -135,16 +127,16 @@ class JoggingMixin:
         async def do_capture():
             try:
                 if not self.bot or not self.bot.motion:
-                    debug_log("[JoggingMixin] No motion controller for capture")
+                    log.debug("[JoggingMixin] No motion controller for capture")
                     return None
                 
                 pos = await self.bot.motion.get_position()
                 x, y = pos['x'], pos['y']
-                debug_log(f"[JoggingMixin] Captured position: X={x:.2f}, Y={y:.2f}")
+                log.debug(f"[JoggingMixin] Captured position: X={x:.2f}, Y={y:.2f}")
                 return (x, y)
                 
             except Exception as e:
-                debug_log(f"[JoggingMixin] Capture error: {e}")
+                log.debug(f"[JoggingMixin] Capture error: {e}")
                 return None
         
         return asyncio.ensure_future(do_capture())
@@ -164,13 +156,13 @@ class JoggingMixin:
         async def do_capture():
             try:
                 if not self.bot or not self.bot.motion:
-                    debug_log("[JoggingMixin] No motion controller for offset capture")
+                    log.debug("[JoggingMixin] No motion controller for offset capture")
                     return
                 
                 pos = await self.bot.motion.get_position()
                 offset_x, offset_y = pos['x'], pos['y']
                 
-                debug_log(f"[JoggingMixin] Camera offset captured: X={offset_x:.2f}, Y={offset_y:.2f}")
+                log.debug(f"[JoggingMixin] Camera offset captured: X={offset_x:.2f}, Y={offset_y:.2f}")
                 
                 # Call the handler on main thread
                 def call_handler(dt, x=offset_x, y=offset_y):
@@ -179,7 +171,7 @@ class JoggingMixin:
                 Clock.schedule_once(call_handler, 0)
                 
             except Exception as e:
-                debug_log(f"[JoggingMixin] Offset capture error: {e}")
+                log.debug(f"[JoggingMixin] Offset capture error: {e}")
         
         asyncio.ensure_future(do_capture())
     
@@ -192,4 +184,4 @@ class JoggingMixin:
             offset_x: Camera X offset in mm
             offset_y: Camera Y offset in mm
         """
-        debug_log(f"[JoggingMixin] _on_camera_offset_captured not implemented: ({offset_x}, {offset_y})")
+        log.debug(f"[JoggingMixin] _on_camera_offset_captured not implemented: ({offset_x}, {offset_y})")

@@ -1,3 +1,6 @@
+from logger import get_logger
+log = get_logger(__name__)
+
 """GUI Serial Port Selector for Kivy applications."""
 from typing import List, Callable, Optional
 from concurrent.futures import Future
@@ -65,9 +68,9 @@ class SerialPortSelector:
             
             # Show the dialog
             self.popup.open()
-            print(f"[SerialPortSelector] Opened dialog for {device_type} with {len(available_ports)} ports")
+            log.info(f"[SerialPortSelector] Opened dialog for {device_type} with {len(available_ports)} ports")
         except Exception as e:
-            print(f"[SerialPortSelector] Error opening dialog: {e}")
+            log.info(f"[SerialPortSelector] Error opening dialog: {e}")
             import traceback
             traceback.print_exc()
             # Fall back to returning None
@@ -80,7 +83,7 @@ class SerialPortSelector:
         Args:
             port_index: Index of the selected port
         """
-        print(f"[SerialPortSelector] Row pressed - index: {port_index}")
+        log.info(f"[SerialPortSelector] Row pressed - index: {port_index}")
         try:
             # Select port and update all items
             for item in self.port_data:
@@ -91,16 +94,16 @@ class SerialPortSelector:
             port_list = self.popup.ids.port_list
             port_list.data = []
             Clock.schedule_once(lambda dt: setattr(port_list, 'data', self.port_data), 0.01)
-            print(f"[SerialPortSelector] Selected port index: {self.selected_index}")
+            log.info(f"[SerialPortSelector] Selected port index: {self.selected_index}")
         except Exception as e:
-            print(f"[SerialPortSelector] Error on press: {e}")
+            log.info(f"[SerialPortSelector] Error on press: {e}")
             import traceback
             traceback.print_exc()
     
     def on_select_pressed(self):
         """Called when the Select button is pressed."""
         if self.pending_selection is None:
-            print("[SerialPortSelector] on_select_pressed: No pending selection")
+            log.info("[SerialPortSelector] on_select_pressed: No pending selection")
             return
         
         device_type, callback, available_ports = self.pending_selection
@@ -114,16 +117,16 @@ class SerialPortSelector:
                 if self.selected_index is not None:
                     if 0 <= self.selected_index < len(available_ports):
                         selected_port = available_ports[self.selected_index]
-                        print(f"[SerialPortSelector] Selected: {selected_port.device} for {device_type}")
+                        log.info(f"[SerialPortSelector] Selected: {selected_port.device} for {device_type}")
                         callback(selected_port)
                     else:
-                        print(f"[SerialPortSelector] Invalid index: {self.selected_index}")
+                        log.info(f"[SerialPortSelector] Invalid index: {self.selected_index}")
                         callback(None)
                 else:
-                    print(f"[SerialPortSelector] No port selected")
+                    log.info(f"[SerialPortSelector] No port selected")
                     callback(None)
             except Exception as e:
-                print(f"[SerialPortSelector] Error in callback: {e}")
+                log.info(f"[SerialPortSelector] Error in callback: {e}")
                 import traceback
                 traceback.print_exc()
                 callback(None)

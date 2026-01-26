@@ -1,3 +1,6 @@
+from logger import get_logger
+log = get_logger(__name__)
+
 """Camera Preview Base Class for reusable camera preview functionality.
 
 This module provides a base class for camera preview widgets that can be used
@@ -9,17 +12,6 @@ import numpy as np
 from kivy.clock import Clock
 from kivy.graphics.texture import Texture
 
-
-def debug_log(msg):
-    """Write debug message to /tmp/debug.txt"""
-    try:
-        with open('/tmp/debug.txt', 'a') as f:
-            import datetime
-            timestamp = datetime.datetime.now().strftime('%H:%M:%S.%f')[:-3]
-            f.write(f"[{timestamp}] {msg}\n")
-            f.flush()
-    except Exception:
-        pass
 
 
 class CameraPreviewMixin:
@@ -61,7 +53,7 @@ class CameraPreviewMixin:
             enabled: True to show crosshair, False to hide
         """
         self._crosshair_enabled = enabled
-        debug_log(f"[CameraPreview] Crosshair enabled: {enabled}")
+        log.debug(f"[CameraPreview] Crosshair enabled: {enabled}")
     
     def _should_draw_crosshair(self):
         """Check if crosshair should be drawn. Override to customize.
@@ -165,7 +157,7 @@ class CameraPreviewMixin:
         if self.camera_preview_active:
             return
         
-        debug_log("[CameraPreview] Starting camera preview")
+        log.debug("[CameraPreview] Starting camera preview")
         self.camera_preview_active = True
         
         ids = self._get_camera_preview_widget_ids()
@@ -182,11 +174,11 @@ class CameraPreviewMixin:
                 # Ensure camera is connected via bot.vision
                 if self.bot and self.bot.vision:
                     await self.bot.vision.connect()
-                    debug_log("[CameraPreview] Camera connected")
+                    log.debug("[CameraPreview] Camera connected")
                     
                     # Move to position if requested
                     if move_to_position and target_x is not None and target_y is not None:
-                        debug_log(f"[CameraPreview] Moving to ({target_x:.2f}, {target_y:.2f})")
+                        log.debug(f"[CameraPreview] Moving to ({target_x:.2f}, {target_y:.2f})")
                         
                         # Move to safe Z first
                         await self.bot.motion.rapid_z_abs(0.0)
@@ -196,7 +188,7 @@ class CameraPreviewMixin:
                         await self.bot.motion.rapid_xy_abs(target_x, target_y)
                         await self.bot.motion.send_gcode_wait_ok("M400")
                         
-                        debug_log("[CameraPreview] Position reached")
+                        log.debug("[CameraPreview] Position reached")
                     
                     # Start preview updates at 2 FPS
                     def schedule_preview(dt):
@@ -214,7 +206,7 @@ class CameraPreviewMixin:
                                 status_label.color = (0, 1, 0, 1)  # Green
                     Clock.schedule_once(update_status, 0)
                 else:
-                    debug_log("[CameraPreview] No vision controller available")
+                    log.debug("[CameraPreview] No vision controller available")
                     def show_error(dt):
                         if self.popup:
                             if status_label := self.popup.ids.get(ids['status']):
@@ -223,7 +215,7 @@ class CameraPreviewMixin:
                     Clock.schedule_once(show_error, 0)
                     
             except Exception as e:
-                debug_log(f"[CameraPreview] Camera connect error: {e}")
+                log.debug(f"[CameraPreview] Camera connect error: {e}")
                 def show_error(dt, err=str(e)):
                     if self.popup:
                         if status_label := self.popup.ids.get(ids['status']):
@@ -238,7 +230,7 @@ class CameraPreviewMixin:
         if not self.camera_preview_active:
             return
         
-        debug_log("[CameraPreview] Stopping camera preview")
+        log.debug("[CameraPreview] Stopping camera preview")
         self.camera_preview_active = False
         
         # Cancel preview updates
@@ -330,12 +322,12 @@ class CameraPreviewMixin:
                     Clock.schedule_once(update_ui, 0)
                     
                 except Exception as e:
-                    debug_log(f"[CameraPreview] Preview frame error: {e}")
+                    log.debug(f"[CameraPreview] Preview frame error: {e}")
             
             asyncio.ensure_future(capture_and_display())
             
         except Exception as e:
-            debug_log(f"[CameraPreview] Vision preview error: {e}")
+            log.debug(f"[CameraPreview] Vision preview error: {e}")
     
     async def _detect_qr_codes(self, frame_gray):
         """Detect QR codes in frame. Override for custom behavior.
@@ -358,7 +350,7 @@ class CameraPreviewMixin:
             if qr_data:
                 qr_type = 'Standard QR'
         except Exception as e:
-            debug_log(f"[CameraPreview] Standard QR detection error: {e}")
+            log.debug(f"[CameraPreview] Standard QR detection error: {e}")
         
         # If no standard QR found, try zxing detection (handles Micro QR)
         if not qr_data:
@@ -370,7 +362,7 @@ class CameraPreviewMixin:
                 if result:
                     qr_data, qr_type = result
             except Exception as e:
-                debug_log(f"[CameraPreview] Micro QR detection error: {e}")
+                log.debug(f"[CameraPreview] Micro QR detection error: {e}")
         
         return qr_data, qr_type
     

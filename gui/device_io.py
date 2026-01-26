@@ -2,18 +2,9 @@
 import asyncio
 import serial_asyncio
 import time
+from logger import get_logger
 
-
-def debug_log(msg):
-    """Write debug message to /tmp/debug.txt"""
-    try:
-        with open('/tmp/debug.txt', 'a') as f:
-            import datetime
-            timestamp = datetime.datetime.now().strftime('%H:%M:%S.%f')[:-3]
-            f.write(f"[{timestamp}] {msg}\n")
-            f.flush()
-    except Exception:
-        pass
+log = get_logger(__name__)
 
 
 class AsyncSerialDevice:
@@ -32,7 +23,7 @@ class AsyncSerialDevice:
         """Initializes connection and background reader."""
         # If already connected, don't create duplicate reader task
         if self.reader is not None and self._reader_task is not None:
-            debug_log(f"[{self.port}] Already connected, skipping duplicate connect()")
+            log.debug(f"[{self.port}] Already connected, skipping duplicate connect()")
             return
         
         self.reader, self.writer = await serial_asyncio.open_serial_connection(
@@ -46,44 +37,44 @@ class AsyncSerialDevice:
             rtscts=False,
             dsrdtr=False
         )
-        debug_log(f"Connected: {self.port} ({self.baudrate} baud, 8N1)")
+        log.debug(f"Connected: {self.port} ({self.baudrate} baud, 8N1)")
         # Run the reader task forever and store reference
         self._reader_task = asyncio.create_task(self._run_reader())
 
     async def disconnect_async(self):
         """Properly disconnect and wait for reader task to complete."""
-        debug_log(f"[{self.port}] disconnect_async called")
+        log.debug(f"[{self.port}] disconnect_async called")
         
         # Force close transport to immediately release the serial port
         if self.writer:
-            debug_log(f"[{self.port}] Force closing transport...")
+            log.debug(f"[{self.port}] Force closing transport...")
             try:
                 if hasattr(self.writer, 'transport') and self.writer.transport:
                     self.writer.transport.abort()
-                    debug_log(f"[{self.port}] Transport aborted")
+                    log.debug(f"[{self.port}] Transport aborted")
                 else:
                     self.writer.close()
-                    debug_log(f"[{self.port}] Writer closed")
+                    log.debug(f"[{self.port}] Writer closed")
             except Exception as e:
-                debug_log(f"[{self.port}] Error closing: {e}")
+                log.debug(f"[{self.port}] Error closing: {e}")
         
         # Now wait for reader task to actually finish
         if self._reader_task and not self._reader_task.done():
-            debug_log(f"[{self.port}] Waiting for reader task to complete...")
+            log.debug(f"[{self.port}] Waiting for reader task to complete...")
             try:
                 await asyncio.wait_for(self._reader_task, timeout=1.0)
-                debug_log(f"[{self.port}] Reader task completed")
+                log.debug(f"[{self.port}] Reader task completed")
             except (asyncio.CancelledError, asyncio.TimeoutError, Exception) as e:
-                debug_log(f"[{self.port}] Reader task ended: {type(e).__name__}")
+                log.debug(f"[{self.port}] Reader task ended: {type(e).__name__}")
         
         self.reader = None
         self.writer = None
         self._reader_task = None
-        debug_log(f"[{self.port}] disconnect_async complete")
+        log.debug(f"[{self.port}] disconnect_async complete")
 
     async def _run_reader(self):
         """Constantly reads from serial and splits by newline."""
-        debug_log(f"[{self.port}] Reader task started")
+        log.debug(f"[{self.port}] Reader task started")
         while True:
             try:
                 # readline() specifically waits for the \n delimiter
@@ -95,15 +86,15 @@ class AsyncSerialDevice:
                     decoded_line = line.decode('latin1').strip()
                     # Only log slow reads (> 1 second) to reduce log spam
                     if read_time > 1.0:
-                        debug_log(f"[{self.port}] Slow read: {repr(decoded_line)} (took {read_time:.3f}s)")
+                        log.debug(f"[{self.port}] Slow read: {repr(decoded_line)} (took {read_time:.3f}s)")
                     await self.line_queue.put(decoded_line)
                 else:
-                    debug_log(f"[{self.port}] readline() returned empty - connection may be closed")
+                    log.debug(f"[{self.port}] readline() returned empty - connection may be closed")
                     break
             except Exception as e:
-                debug_log(f"[{self.port}] Error reading: {e}")
+                log.debug(f"[{self.port}] Error reading: {e}")
                 break
-        debug_log(f"[{self.port}] Reader task exited")
+        log.debug(f"[{self.port}] Reader task exited")
 
     async def send_command(self, command, timeout=5.0, newline=True, retries=1):
         """
@@ -131,7 +122,7 @@ class AsyncSerialDevice:
                 # Clear any old data in the queue so we don't get a stale response
                 queue_size = self.line_queue.qsize()
                 if queue_size > 0:
-                    debug_log(f"[{self.port}] WARNING: Queue had {queue_size} items, clearing")
+                    log.debug(f"[{self.port}] WARNING: Queue had {queue_size} items, clearing")
                 while not self.line_queue.empty():
                     self.line_queue.get_nowait()
 
@@ -147,10 +138,10 @@ class AsyncSerialDevice:
             except asyncio.TimeoutError as e:
                 last_error = e
                 if attempt < retries - 1:
-                    debug_log(f"[{self.port}] Timeout on attempt {attempt+1}/{retries}, retrying...")
+                    log.debug(f"[{self.port}] Timeout on attempt {attempt+1}/{retries}, retrying...")
                     await asyncio.sleep(0.1)  # Brief delay before retry
                 else:
-                    debug_log(f"[{self.port}] All {retries} attempts failed")
+                    log.debug(f"[{self.port}] All {retries} attempts failed")
         
         # All retries exhausted
         raise TimeoutError(f"Device {self.port} failed to respond after {retries} attempts (timeout={timeout}s)")

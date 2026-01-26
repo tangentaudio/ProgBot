@@ -5,7 +5,6 @@ import asyncio
 import traceback
 import os
 import cv2
-import gc
 from enum import Enum
 from dataclasses import dataclass, field
 from typing import List, Tuple, Optional, Dict
@@ -15,17 +14,9 @@ from target_controller import TargetController
 from motion_controller import MotionController
 from vision_controller import VisionController
 from device_discovery import DevicePortManager
+from logger import get_logger
 
-def debug_log(msg):
-    """Write debug message to /tmp/debug.txt"""
-    try:
-        with open('/tmp/debug.txt', 'a') as f:
-            import datetime
-            timestamp = datetime.datetime.now().strftime('%H:%M:%S.%f')[:-3]
-            f.write(f"[{timestamp}] {msg}\n")
-            f.flush()
-    except Exception:
-        pass  # Silently fail if logging doesn't work
+log = get_logger(__name__)
 
 
 class CycleStats:
@@ -407,12 +398,13 @@ class ProgBot:
        
 
     def __init__(self, config: Optional[Config] = None, programmer=None, head=None, target=None, motion=None, vision=None, panel_settings=None, gui_port_picker=None):
-        print("new progbot")
+        log.info("ProgBot initialized")
         self.config = config or Config()
         self.board_statuses = {}
         self.stats = CycleStats()  # Timing statistics
         self.panel_settings = panel_settings  # Store reference for later use
         self.gui_port_picker = gui_port_picker  # Function to show GUI port picker
+        self._cycle_active = False  # Flag to prevent signal emissions after cycle ends
         
         # Initialize programmer from plugin system
         self.programmer = programmer or self._create_programmer()
@@ -426,8 +418,8 @@ class ProgBot:
             use_picamera=self.config.use_picamera,
             camera_index=self.config.camera_index
         ) if self.config.use_camera else None)
-        debug_log(f"[ProgBot.__init__] Vision initialized: vision={self.vision}, use_camera={self.config.use_camera}")
-        print(f"[ProgBot] Vision initialized: vision={self.vision}, use_camera={self.config.use_camera}")
+        log.debug(f"[ProgBot.__init__] Vision initialized: vision={self.vision}, use_camera={self.config.use_camera}")
+        log.info(f"[ProgBot] Vision initialized: vision={self.vision}, use_camera={self.config.use_camera}")
         self.current_board: Optional[Tuple[int, int]] = None
         self._ports_configured = False
         self._selected_port_devices = []  # Track already-selected port device paths
@@ -446,7 +438,7 @@ class ProgBot:
         firmware_paths = prog_config.get('firmware', {})
         
         programmer = create_programmer(type_id, self.update_phase, firmware_paths)
-        print(f"[ProgBot] Created programmer: {type(programmer).__name__} (type={type_id})")
+        log.info(f"[ProgBot] Created programmer: {type(programmer).__name__} (type={type_id})")
         return programmer
     
     def _get_enabled_programmer_steps(self) -> list:
@@ -473,7 +465,7 @@ class ProgBot:
                 
                 return enabled
         except Exception as e:
-            print(f"[ProgBot] Error getting enabled steps: {e}")
+            log.error(f"[ProgBot] Error getting enabled steps: {e}")
             import traceback
             traceback.print_exc()
         
@@ -493,7 +485,7 @@ class ProgBot:
             return
         
         try:
-            print("[ProgBot] Configuring serial ports...")
+            log.info("[ProgBot] Configuring serial ports...")
             
             # Resolve port IDs to actual device paths (async friendly)
             motion_port = await self._resolve_port_async(self.config.motion_port_id, 'Motion Controller', '/dev/ttyACM0')
@@ -509,9 +501,9 @@ class ProgBot:
                 self.motion = MotionController(self.update_phase, motion_port, self.config.motion_baud)
             
             self._ports_configured = True
-            print("[ProgBot] Serial ports configured successfully")
+            log.info("[ProgBot] Serial ports configured successfully")
         except Exception as e:
-            print(f"[ProgBot] Error configuring ports: {e}")
+            log.error(f"[ProgBot] Error configuring ports: {e}")
             raise
 
     async def initialize_hardware(self):
@@ -521,49 +513,49 @@ class ProgBot:
         for the lifetime of the application.
         """
         if hasattr(self, '_hardware_initialized') and self._hardware_initialized:
-            debug_log("[initialize_hardware] Hardware already initialized")
+            log.debug("[initialize_hardware] Hardware already initialized")
             return
         
-        debug_log("[initialize_hardware] Starting hardware initialization...")
+        log.debug("[initialize_hardware] Starting hardware initialization...")
         
         # Connect to all serial devices
         try:
-            debug_log("[initialize_hardware] Connecting to motion controller...")
+            log.debug("[initialize_hardware] Connecting to motion controller...")
             await self.motion.connect()
-            debug_log("[initialize_hardware] Motion controller connected")
+            log.debug("[initialize_hardware] Motion controller connected")
         except Exception as e:
-            debug_log(f"[initialize_hardware] Motion connect failed: {e}")
+            log.debug(f"[initialize_hardware] Motion connect failed: {e}")
             raise
         
         try:
-            debug_log("[initialize_hardware] Connecting to head controller...")
+            log.debug("[initialize_hardware] Connecting to head controller...")
             await self.head.connect()
-            debug_log("[initialize_hardware] Head controller connected")
+            log.debug("[initialize_hardware] Head controller connected")
         except Exception as e:
-            debug_log(f"[initialize_hardware] Head connect failed: {e}")
+            log.debug(f"[initialize_hardware] Head connect failed: {e}")
             raise
         
         try:
-            debug_log("[initialize_hardware] Connecting to target controller...")
+            log.debug("[initialize_hardware] Connecting to target controller...")
             await self.target.connect()
-            debug_log("[initialize_hardware] Target controller connected")
+            log.debug("[initialize_hardware] Target controller connected")
         except Exception as e:
-            debug_log(f"[initialize_hardware] Target connect failed: {e}")
+            log.debug(f"[initialize_hardware] Target connect failed: {e}")
             raise
         
         # Initialize camera if enabled
         if self.vision and self.config.use_camera:
             try:
-                debug_log("[initialize_hardware] Connecting to camera...")
+                log.debug("[initialize_hardware] Connecting to camera...")
                 await asyncio.wait_for(self.vision.connect(), timeout=10.0)
-                debug_log("[initialize_hardware] Camera connected")
+                log.debug("[initialize_hardware] Camera connected")
             except Exception as e:
-                debug_log(f"[initialize_hardware] Camera connect failed: {e}")
-                print(f"Warning: Camera initialization failed: {e}")
+                log.debug(f"[initialize_hardware] Camera connect failed: {e}")
+                log.warning(f"Warning: Camera initialization failed: {e}")
                 self.vision = None
         
         self._hardware_initialized = True
-        debug_log("[initialize_hardware] Hardware initialization complete")
+        log.debug("[initialize_hardware] Hardware initialization complete")
     
     async def discover_devices(self):
         """Stub for device discovery - no longer needed with persistent connections."""
@@ -595,7 +587,7 @@ class ProgBot:
             skip_positions: List of [col, row] coordinates to skip
         """
         self.config.skip_board_pos = skip_positions
-        print(f"Updated skip_board_pos: {self.config.skip_board_pos}")
+        log.debug(f"Updated skip_board_pos: {self.config.skip_board_pos}")
         
         # Update enabled field for all existing board statuses
         for position, board_status in self.board_statuses.items():
@@ -622,21 +614,21 @@ class ProgBot:
         
         # If reconfiguring, skip the ID lookup and go straight to prompt
         if is_reconfigure:
-            print(f"[ProgBot] Reconfiguring {device_type}")
+            log.info(f"[ProgBot] Reconfiguring {device_type}")
             return await self._prompt_for_port_async(device_type, None, is_reconfigure=True)
         
         # If no port ID configured, prompt user to select
         if not port_id:
-            print(f"[ProgBot] No port ID configured for {device_type}")
+            log.info(f"[ProgBot] No port ID configured for {device_type}")
             return await self._prompt_for_port_async(device_type, None)
         
         # Try to find the port by its unique ID
         device_path = DevicePortManager.find_port_by_unique_id(port_id)
         if device_path:
-            print(f"[ProgBot] Found {device_type} at {device_path} (ID: {port_id})")
+            log.info(f"[ProgBot] Found {device_type} at {device_path} (ID: {port_id})")
             return device_path
         else:
-            print(f"[ProgBot] Configured port ID '{port_id}' not found for {device_type}")
+            log.info(f"[ProgBot] Configured port ID '{port_id}' not found for {device_type}")
             return await self._prompt_for_port_async(device_type, None)
     
     async def _prompt_for_port_async(self, device_type, default_device, is_reconfigure=False):
@@ -653,9 +645,9 @@ class ProgBot:
         import asyncio
         from concurrent.futures import Future
         
-        print(f"\n{'='*60}")
-        print(f"Port selection required for: {device_type}")
-        print(f"{'='*60}")
+        log.info(f"{'='*60}")
+        log.info(f"Port selection required for: {device_type}")
+        log.info(f"{'='*60}")
         
         try:
             # If GUI picker is available, use it
@@ -677,7 +669,7 @@ class ProgBot:
                     ports = [p for p in all_ports if p.device not in self._selected_port_devices]
                 
                 if not ports:
-                    print(f"[ProgBot] No available ports remaining for {device_type}")
+                    log.info(f"[ProgBot] No available ports remaining for {device_type}")
                     raise RuntimeError(f"No available ports for {device_type}")
                 
                 # Show GUI picker (this returns immediately)
@@ -704,12 +696,12 @@ class ProgBot:
                 # Track this device as selected (unless reconfiguring - no need to track again)
                 if not is_reconfigure and selected_port.device not in self._selected_port_devices:
                     self._selected_port_devices.append(selected_port.device)
-                print(f"[ProgBot] Selected {selected_port.device} for {device_type}")
+                log.info(f"[ProgBot] Selected {selected_port.device} for {device_type}")
                 return selected_port.device
             else:
                 raise RuntimeError(f"No port selected for {device_type}. Cannot continue.")
         except Exception as e:
-            print(f"[ProgBot] ERROR in port selection for {device_type}: {e}")
+            log.info(f"[ProgBot] ERROR in port selection for {device_type}: {e}")
             import traceback
             traceback.print_exc()
             raise
@@ -728,16 +720,16 @@ class ProgBot:
         """
         # If no port ID configured, prompt user to select
         if not port_id:
-            print(f"[ProgBot] No port ID configured for {device_type}")
+            log.info(f"[ProgBot] No port ID configured for {device_type}")
             return self._prompt_for_port(device_type, None)
         
         # Try to find the port by its unique ID
         device_path = DevicePortManager.find_port_by_unique_id(port_id)
         if device_path:
-            print(f"[ProgBot] Found {device_type} at {device_path} (ID: {port_id})")
+            log.info(f"[ProgBot] Found {device_type} at {device_path} (ID: {port_id})")
             return device_path
         else:
-            print(f"[ProgBot] Configured port ID '{port_id}' not found for {device_type}")
+            log.info(f"[ProgBot] Configured port ID '{port_id}' not found for {device_type}")
             return self._prompt_for_port(device_type, None)
     
     def _prompt_for_port(self, device_type, default_device):
@@ -750,9 +742,9 @@ class ProgBot:
         Returns:
             Device path string
         """
-        print(f"\n{'='*60}")
-        print(f"Port selection required for: {device_type}")
-        print(f"{'='*60}")
+        log.info(f"{'='*60}")
+        log.info(f"Port selection required for: {device_type}")
+        log.info(f"{'='*60}")
         
         # If GUI picker is available, use it synchronously
         if self.gui_port_picker:
@@ -786,7 +778,7 @@ class ProgBot:
                 
                 selected_port = result_future.result()
             except Exception as e:
-                print(f"[ProgBot] Port selection timeout or error: {e}")
+                log.info(f"[ProgBot] Port selection timeout or error: {e}")
                 raise RuntimeError(f"Port selection failed for {device_type}")
         else:
             # Console mode
@@ -820,10 +812,12 @@ class ProgBot:
             self.config.target_port_id = unique_id
             settings.set('target_port_id', unique_id)
         
-        print(f"[ProgBot] Saved port ID for {device_type}: {unique_id}")
+        log.info(f"[ProgBot] Saved port ID for {device_type}: {unique_id}")
 
     def _emit_status(self, cell_id, board_status):
-        self.board_status_changed.emit(cell_id, board_status)
+        """Emit board status change only if cycle is active."""
+        if self._cycle_active:
+            self.board_status_changed.emit(cell_id, board_status)
 
     def _mark_probe(self, cell_id, board_status, status):
         board_status.probe_status = status
@@ -852,8 +846,19 @@ class ProgBot:
         return True
     
     def update_phase(self, phase_str):
-        print(f"Phase now: {phase_str}")
-        self.phase_changed.emit(phase_str)
+        """Update phase display - only emit if cycle is active."""
+        log.info(f"Phase now: {phase_str}")
+        if self._cycle_active:
+            self.phase_changed.emit(phase_str)
+
+    def _safe_emit_stats(self):
+        """Emit stats_updated only if cycle is still active.
+        
+        This prevents orphaned asyncio tasks when the cycle has ended but
+        emissions are still queued up.
+        """
+        if self._cycle_active:
+            self.stats_updated.emit(self.stats.get_summary_text())
 
     async def _provision_board(self, col: int, row: int, board_status, cell_id):
         """Provision a board with unique identifiers and configuration.
@@ -866,7 +871,7 @@ class ProgBot:
             board_status: BoardStatus object for this board
             cell_id: Cell ID for status updates
         """
-        debug_log(f"[_provision_board] Provisioning board [{col},{row}] (stub)")
+        log.debug(f"[_provision_board] Provisioning board [{col},{row}] (stub)")
         self.update_phase(f"Provisioning Board [{col}, {row}]...")
         
         # TODO: Implement provisioning logic
@@ -875,7 +880,7 @@ class ProgBot:
         # - Register with backend system
         
         await asyncio.sleep(0.1)  # Placeholder
-        debug_log(f"[_provision_board] Board [{col},{row}] provisioning complete (stub)")
+        log.debug(f"[_provision_board] Board [{col},{row}] provisioning complete (stub)")
 
     async def _test_board(self, col: int, row: int, board_status, cell_id):
         """Run automated tests on a board.
@@ -888,7 +893,7 @@ class ProgBot:
             board_status: BoardStatus object for this board
             cell_id: Cell ID for status updates
         """
-        debug_log(f"[_test_board] Testing board [{col},{row}] (stub)")
+        log.debug(f"[_test_board] Testing board [{col},{row}] (stub)")
         self.update_phase(f"Testing Board [{col}, {row}]...")
         
         # TODO: Implement test logic
@@ -897,7 +902,7 @@ class ProgBot:
         # - Record test results
         
         await asyncio.sleep(0.1)  # Placeholder
-        debug_log(f"[_test_board] Board [{col},{row}] testing complete (stub)")
+        log.debug(f"[_test_board] Board [{col},{row}] testing complete (stub)")
 
     async def _run_board(self, col: int, row: int):
         self.current_board = (col, row)
@@ -905,7 +910,7 @@ class ProgBot:
         cell_id = col * self.config.board_num_rows + row
 
         if [col, row] in self.config.skip_board_pos:
-            print(f"SKIPPING col={col} row={row}")
+            log.info(f"SKIPPING col={col} row={row}")
             self._mark_probe(cell_id, board_status, ProbeStatus.SKIPPED)
             self._mark_program(cell_id, board_status, ProgramStatus.SKIPPED)
             self.current_board = None
@@ -913,8 +918,8 @@ class ProgBot:
         
         # If board was already marked as skipped during QR scan phase, skip it
         if board_status.probe_status == ProbeStatus.SKIPPED:
-            debug_log(f"[_run_board] Board [{col},{row}] already skipped (no QR code)")
-            print(f"[Board {col},{row}] Skipped (no QR code)")
+            log.debug(f"[_run_board] Board [{col},{row}] already skipped (no QR code)")
+            log.info(f"[Board {col},{row}] Skipped (no QR code)")
             self.current_board = None
             return
 
@@ -927,35 +932,35 @@ class ProgBot:
         
         # Now proceed with normal probing sequence - track timing
         probe_start = time.time()
-        debug_log(f"[_run_board] Starting probe sequence for board [{col},{row}]")
+        log.debug(f"[_run_board] Starting probe sequence for board [{col},{row}]")
         self._mark_probe(cell_id, board_status, ProbeStatus.PROBING)
 
-        debug_log(f"[_run_board] Moving to board position ({board_x}, {board_y})")
+        log.debug(f"[_run_board] Moving to board position ({board_x}, {board_y})")
         self.update_phase(f"Move to Board at [{col}, {row}]...")
         await self.motion.rapid_xy_abs(board_x, board_y)
-        debug_log(f"[_run_board] Arrived at board position")
+        log.debug(f"[_run_board] Arrived at board position")
 
-        debug_log(f"[_run_board] Starting probe operation")
+        log.debug(f"[_run_board] Starting probe operation")
         self.update_phase("Probing for board height...")
         try:
             dist_to_probe = await self.motion.do_probe()
-            debug_log(f"[_run_board] Probe complete: dist_to_probe={dist_to_probe}")
+            log.debug(f"[_run_board] Probe complete: dist_to_probe={dist_to_probe}")
             dist_to_board = dist_to_probe + self.config.probe_plane_to_board
             self._mark_probe(cell_id, board_status, ProbeStatus.COMPLETED)
             
             # Record probe time (movement + probe operation)
             probe_time = time.time() - probe_start
             self.stats.record_board_time(col, row, 'probe', probe_time)
-            self.stats_updated.emit(self.stats.get_summary_text())
-            debug_log(f"[_run_board] Board [{col},{row}] probe time: {probe_time:.2f}s")
+            self._safe_emit_stats()
+            log.debug(f"[_run_board] Board [{col},{row}] probe time: {probe_time:.2f}s")
         except Exception as e:
-            print(f"Probe failed: {e}")
-            debug_log(f"[_run_board] Probe failed: {e}")
+            log.error(f"Probe failed: {e}")
+            log.debug(f"[_run_board] Probe failed: {e}")
             board_status.failure_reason = f"Probe error: {e}"
             self._mark_probe(cell_id, board_status, ProbeStatus.FAILED)
             self._mark_program(cell_id, board_status, ProgramStatus.SKIPPED)
             self.stats.record_failure()
-            self.stats_updated.emit(self.stats.get_summary_text())
+            self._safe_emit_stats()
             # SAFETY: Return to safe Z height before continuing to next board
             try:
                 await self.motion.rapid_z_abs(0.0)
@@ -964,38 +969,38 @@ class ProgBot:
             self.current_board = None
             return  # Soft-skip this board, continue cycle
 
-        debug_log(f"[_run_board] Moving to safe height: {-1.0 * dist_to_probe}")
+        log.debug(f"[_run_board] Moving to safe height: {-1.0 * dist_to_probe}")
         self.update_phase("Move to safe height above board...")
         await self.motion.rapid_z_abs((-1.0 * dist_to_probe))
-        debug_log(f"[_run_board] At safe height")
+        log.debug(f"[_run_board] At safe height")
 
-        debug_log(f"[_run_board] Checking for NO contact")
+        log.debug(f"[_run_board] Checking for NO contact")
         self.update_phase("Check board is not contacted...")
         contact = await self.head.check_contact()
-        debug_log(f"[_run_board] Contact check result: {contact}")
+        log.debug(f"[_run_board] Contact check result: {contact}")
         if contact:
             error_msg = "Unexpected contact at safe height"
-            print(f"[Board {col},{row}] ERROR: {error_msg}")
-            debug_log(f"[_run_board] ERROR: {error_msg}")
+            log.info(f"[Board {col},{row}] ERROR: {error_msg}")
+            log.debug(f"[_run_board] ERROR: {error_msg}")
             board_status.failure_reason = error_msg
             self._mark_probe(cell_id, board_status, ProbeStatus.FAILED)
             self._mark_program(cell_id, board_status, ProgramStatus.SKIPPED)
             # SAFETY: Already at safe height, just return
             return
 
-        debug_log(f"[_run_board] Moving to board at distance: {-1.0 * dist_to_board}")
+        log.debug(f"[_run_board] Moving to board at distance: {-1.0 * dist_to_board}")
         self.update_phase("Move to board...")
         await self.motion.move_z_abs((-1.0 * dist_to_board), 200)
-        debug_log(f"[_run_board] At board position")
+        log.debug(f"[_run_board] At board position")
 
-        debug_log(f"[_run_board] Checking for contact WITH board")
+        log.debug(f"[_run_board] Checking for contact WITH board")
         self.update_phase("Check for contact with board header...")
         contact = await self.head.check_contact()
-        debug_log(f"[_run_board] Contact check result: {contact}")
+        log.debug(f"[_run_board] Contact check result: {contact}")
         
         # If no contact, try small Y adjustments to improve contact reliability
         if not contact:
-            debug_log(f"[_run_board] No contact at nominal position, trying Y adjustments...")
+            log.debug(f"[_run_board] No contact at nominal position, trying Y adjustments...")
             self.update_phase("Adjusting position for contact...")
             
             # Try small Y movements using configured step: +step, -step, +2*step, -2*step
@@ -1003,21 +1008,21 @@ class ProgBot:
             y_adjustments = [step, -step, 2*step, -2*step]
             
             for y_offset in y_adjustments:
-                debug_log(f"[_run_board] Trying Y offset: {y_offset}mm")
+                log.debug(f"[_run_board] Trying Y offset: {y_offset}mm")
                 # Move relative Y
                 await self.motion.rapid_xy_rel(0, y_offset)
                 
                 # Check contact
                 contact = await self.head.check_contact()
-                debug_log(f"[_run_board] Contact check with Y offset {y_offset}mm: {contact}")
+                log.debug(f"[_run_board] Contact check with Y offset {y_offset}mm: {contact}")
                 
                 if contact:
-                    print(f"[Board {col},{row}] Contact established with Y offset {y_offset}mm")
-                    debug_log(f"[_run_board] Contact successful with Y offset {y_offset}mm")
+                    log.info(f"[Board {col},{row}] Contact established with Y offset {y_offset}mm")
+                    log.debug(f"[_run_board] Contact successful with Y offset {y_offset}mm")
                     break
             else:
                 # All adjustments failed - restore original position and fail
-                debug_log(f"[_run_board] All Y adjustments failed, returning to nominal position")
+                log.debug(f"[_run_board] All Y adjustments failed, returning to nominal position")
                 # Calculate total offset to return to nominal
                 total_offset = sum(y_adjustments)
                 if total_offset != 0:
@@ -1025,13 +1030,13 @@ class ProgBot:
         
         if not contact:
             error_msg = "No contact with board header"
-            print(f"[Board {col},{row}] ERROR: {error_msg}")
-            debug_log(f"[_run_board] ERROR: {error_msg}")
+            log.info(f"[Board {col},{row}] ERROR: {error_msg}")
+            log.debug(f"[_run_board] ERROR: {error_msg}")
             board_status.failure_reason = error_msg
             self._mark_probe(cell_id, board_status, ProbeStatus.FAILED)
             self._mark_program(cell_id, board_status, ProgramStatus.SKIPPED)
             self.stats.record_failure()
-            self.stats_updated.emit(self.stats.get_summary_text())
+            self._safe_emit_stats()
             # SAFETY: Return to safe Z height before moving to next board
             await self.motion.rapid_z_abs(0.0)
             return
@@ -1050,7 +1055,7 @@ class ProgBot:
 
             # Get enabled programming steps from panel settings
             enabled_steps = self._get_enabled_programmer_steps()
-            debug_log(f"[_run_board] Enabled programmer steps: {enabled_steps}")
+            log.debug(f"[_run_board] Enabled programmer steps: {enabled_steps}")
             
             if not enabled_steps:
                 # No steps enabled - just mark as completed
@@ -1067,7 +1072,7 @@ class ProgBot:
                 try:
                     # Execute all enabled steps through the programmer plugin
                     success = await self.programmer.execute_sequence(enabled_steps)
-                    print(f"success={success}")
+                    log.debug(f"success={success}")
                     
                     # Determine final status
                     if success:
@@ -1083,11 +1088,11 @@ class ProgBot:
                     self._mark_program(cell_id, board_status, final_status)
                     
                 except Exception as e:
-                    print(f"Programming sequence failed: {e}")
+                    log.error(f"Programming sequence failed: {e}")
                     board_status.failure_reason = f"Programming error: {e}"
                     self._mark_program(cell_id, board_status, ProgramStatus.FAILED)
                     self.stats.record_failure()
-                    self.stats_updated.emit(self.stats.get_summary_text())
+                    self._safe_emit_stats()
                     # SAFETY: Return to safe Z height before continuing to next board
                     await self.head.set_all(False)
                     await self.motion.rapid_z_abs(0.0)
@@ -1118,8 +1123,8 @@ class ProgBot:
         # Record programming time
         program_time = time.time() - program_start
         self.stats.record_board_time(col, row, 'program', program_time)
-        self.stats_updated.emit(self.stats.get_summary_text())
-        debug_log(f"[_run_board] Board [{col},{row}] program time: {program_time:.2f}s")
+        self._safe_emit_stats()
+        log.debug(f"[_run_board] Board [{col},{row}] program time: {program_time:.2f}s")
 
         self._emit_status(cell_id, board_status)
         self.current_board = None
@@ -1132,8 +1137,8 @@ class ProgBot:
     
     async def _scan_all_boards_for_qr(self):
         """Scan all boards with camera and mark those without QR codes as skipped."""
-        debug_log("[_scan_all_boards_for_qr] Starting QR scan phase for all boards")
-        print("[ProgBot] Starting QR scanning for all boards...")
+        log.debug("[_scan_all_boards_for_qr] Starting QR scan phase for all boards")
+        log.info("[ProgBot] Starting QR scanning for all boards...")
         
         # Emit signal that QR scanning is starting
         self.qr_scan_started.emit()
@@ -1143,32 +1148,32 @@ class ProgBot:
             from kivy.clock import Clock
             Clock.schedule_once(lambda dt: self.camera_preview.start_preview(), 0)
             await asyncio.sleep(0.15)
-            debug_log("[_scan_all_boards_for_qr] Preview started for entire scan phase")
+            log.debug("[_scan_all_boards_for_qr] Preview started for entire scan phase")
         
-        debug_log(f"[_scan_all_boards_for_qr] board_num_cols={self.config.board_num_cols}, board_num_rows={self.config.board_num_rows}")
+        log.debug(f"[_scan_all_boards_for_qr] board_num_cols={self.config.board_num_cols}, board_num_rows={self.config.board_num_rows}")
         
         try:
             for col in range(self.config.board_num_cols):
                 for row in range(self.config.board_num_rows):
-                    debug_log(f"[_scan_all_boards_for_qr] Processing board [{col},{row}]")
+                    log.debug(f"[_scan_all_boards_for_qr] Processing board [{col},{row}]")
                     
                     # Skip if already marked to skip
                     if [col, row] in self.config.skip_board_pos:
-                        debug_log(f"[_scan_all_boards_for_qr] Board [{col},{row}] is in skip list, skipping")
+                        log.debug(f"[_scan_all_boards_for_qr] Board [{col},{row}] is in skip list, skipping")
                         self.stats.record_skip()
                         continue
                     
                     board_status = self.get_board_status(col, row)
-                    debug_log(f"[_scan_all_boards_for_qr] Got board_status for [{col},{row}]")
+                    log.debug(f"[_scan_all_boards_for_qr] Got board_status for [{col},{row}]")
                     
                     cell_id = col * self.config.board_num_rows + row
                     
                     # Mark board as currently being scanned
-                    debug_log(f"[_scan_all_boards_for_qr] Marking vision IN_PROGRESS for [{col},{row}]")
+                    log.debug(f"[_scan_all_boards_for_qr] Marking vision IN_PROGRESS for [{col},{row}]")
                     self._mark_vision(cell_id, board_status, VisionStatus.IN_PROGRESS)
-                    debug_log(f"[_scan_all_boards_for_qr] Emitting status for [{col},{row}]")
+                    log.debug(f"[_scan_all_boards_for_qr] Emitting status for [{col},{row}]")
                     self._emit_status(cell_id, board_status)
-                    debug_log(f"[_scan_all_boards_for_qr] Status emitted for [{col},{row}]")
+                    log.debug(f"[_scan_all_boards_for_qr] Status emitted for [{col},{row}]")
                     
                     # Calculate positions
                     board_x = self.config.board_x + (col * self.config.board_col_width)
@@ -1177,7 +1182,7 @@ class ProgBot:
                     camera_x = board_x + self.config.qr_offset_x + self.config.camera_offset_x
                     camera_y = board_y + self.config.qr_offset_y + self.config.camera_offset_y
                     
-                    debug_log(f"[_scan_all_boards_for_qr] Board [{col},{row}]: board=({board_x},{board_y}), qr_offset=({self.config.qr_offset_x},{self.config.qr_offset_y}), camera_offset=({self.config.camera_offset_x},{self.config.camera_offset_y}), final_camera=({camera_x},{camera_y})")
+                    log.debug(f"[_scan_all_boards_for_qr] Board [{col},{row}]: board=({board_x},{board_y}), qr_offset=({self.config.qr_offset_x},{self.config.qr_offset_y}), camera_offset=({self.config.camera_offset_x},{self.config.camera_offset_y}), final_camera=({camera_x},{camera_y})")
                     
                     try:
                         board_scan_start = time.time()
@@ -1210,27 +1215,29 @@ class ProgBot:
                         # Record QR scan time
                         qr_scan_time = time.time() - board_scan_start
                         self.stats.record_board_time(col, row, 'qr_scan', qr_scan_time)
-                        self.stats_updated.emit(self.stats.get_summary_text())
-                        debug_log(f"[_scan_all_boards_for_qr] Board [{col},{row}] QR scan time: {qr_scan_time:.2f}s")
+                        self._safe_emit_stats()
+                        log.debug(f"[_scan_all_boards_for_qr] Board [{col},{row}] QR scan time: {qr_scan_time:.2f}s")
                         
                         if qr_data:
-                            board_status.qr_code = qr_data
+                            # qr_data is a tuple (data, type) - extract just the data
+                            qr_serial = qr_data[0] if isinstance(qr_data, tuple) else qr_data
+                            board_status.qr_code = qr_serial
                             
                             # Create and populate BoardInfo
                             import datetime
-                            board_info = BoardInfo(serial_number=qr_data)
+                            board_info = BoardInfo(serial_number=qr_serial)
                             board_info.timestamp_qr_scan = datetime.datetime.now().isoformat()
                             board_status.board_info = board_info
                             
-                            debug_log(f"[_scan_all_boards_for_qr] Board [{col},{row}] QR: {qr_data}")
-                            print(f"[Board {col},{row}] Serial Number: {qr_data}")
+                            log.debug(f"[_scan_all_boards_for_qr] Board [{col},{row}] QR: {qr_serial}")
+                            log.info(f"[Board {col},{row}] Serial Number: {qr_serial}")
                             
                             # Mark vision as passed (this emits status with qr_code and board_info)
                             self._mark_vision(cell_id, board_status, VisionStatus.PASSED)
                         else:
                             # No QR code - mark as skipped
-                            debug_log(f"[_scan_all_boards_for_qr] Board [{col},{row}] No QR - marking as skipped")
-                            print(f"[Board {col},{row}] No QR code - skipping board")
+                            log.debug(f"[_scan_all_boards_for_qr] Board [{col},{row}] No QR - marking as skipped")
+                            log.info(f"[Board {col},{row}] No QR code - skipping board")
                             board_status.failure_reason = "No QR Code"
                             board_status.vision_status = VisionStatus.FAILED
                             board_status.probe_status = ProbeStatus.SKIPPED
@@ -1241,8 +1248,8 @@ class ProgBot:
                             self._emit_status(cell_id, board_status)
                     
                     except Exception as e:
-                        debug_log(f"[_scan_all_boards_for_qr] Board [{col},{row}] Error: {e}")
-                        print(f"[Board {col},{row}] QR scan error: {e} - skipping board")
+                        log.debug(f"[_scan_all_boards_for_qr] Board [{col},{row}] Error: {e}")
+                        log.info(f"[Board {col},{row}] QR scan error: {e} - skipping board")
                         import traceback
                         traceback.print_exc()
                         board_status.failure_reason = "QR Scan Error"
@@ -1258,8 +1265,8 @@ class ProgBot:
             # Stop camera preview if it's still active
             if hasattr(self, 'camera_preview') and self.camera_preview:
                 self.camera_preview.stop_preview()
-            debug_log("[_scan_all_boards_for_qr] Cancelled during QR scan")
-            print("[ProgBot] QR scan cancelled")
+            log.debug("[_scan_all_boards_for_qr] Cancelled during QR scan")
+            log.info("[ProgBot] QR scan cancelled")
             self.qr_scan_ended.emit()
             raise
         finally:
@@ -1279,17 +1286,20 @@ class ProgBot:
         # Emit signal that QR scanning has ended
         self.qr_scan_ended.emit()
         
-        debug_log("[_scan_all_boards_for_qr] QR scan phase complete")
-        print("[ProgBot] QR scanning complete. Starting probe/program cycle...")
+        log.debug("[_scan_all_boards_for_qr] QR scan phase complete")
+        log.info("[ProgBot] QR scanning complete. Starting probe/program cycle...")
 
     async def full_cycle(self):
         """Execute the complete programming cycle."""
-        debug_log("[full_cycle] Starting full cycle")
-        print("[ProgBot] Starting full cycle...")
+        log.debug("[full_cycle] Starting full cycle")
+        log.info("[ProgBot] Starting full cycle...")
+        
+        # Mark cycle as active to enable signal emissions
+        self._cycle_active = True
         
         # Start cycle statistics
         self.stats.start_cycle()
-        self.stats_updated.emit(self.stats.get_summary_text())
+        self._safe_emit_stats()
         
         # Configure ports first (in case not done yet)
         await self.configure_ports()
@@ -1307,10 +1317,20 @@ class ProgBot:
             
             # If vision phase is enabled and camera is available, scan all boards first
             if self.config.vision_enabled and self.vision and self.config.use_camera:
-                debug_log("[full_cycle] Starting vision scan phase for all boards")
+                # Reconnect camera if it was disconnected from previous cycle
+                if self.vision.camera_process is None:
+                    log.debug("[full_cycle] Camera was disconnected, reconnecting...")
+                    try:
+                        await asyncio.wait_for(self.vision.connect(), timeout=10.0)
+                        log.debug("[full_cycle] Camera reconnected")
+                    except Exception as e:
+                        log.debug(f"[full_cycle] Camera reconnect failed: {e}")
+                        log.warning(f"Warning: Camera reconnection failed: {e}")
+                
+                log.debug("[full_cycle] Starting vision scan phase for all boards")
                 await self._scan_all_boards_for_qr()
             elif not self.config.vision_enabled:
-                debug_log("[full_cycle] Vision phase disabled in panel settings")
+                log.debug("[full_cycle] Vision phase disabled in panel settings")
             
             await self._run_from(0, 0)
 
@@ -1320,27 +1340,28 @@ class ProgBot:
             
             # Disconnect camera to release resources FIRST
             if hasattr(self, 'vision') and self.vision:
-                debug_log("[full_cycle] Disconnecting camera after successful cycle...")
+                log.debug("[full_cycle] Disconnecting camera after successful cycle...")
                 await self.vision.disconnect()
-                debug_log("[full_cycle] Camera disconnected")
+                log.debug("[full_cycle] Camera disconnected")
             
             # Then cleanup camera preview
             if hasattr(self, 'camera_preview') and self.camera_preview:
-                debug_log("[full_cycle] Stopping camera preview...")
+                log.debug("[full_cycle] Stopping camera preview...")
                 from kivy.clock import Clock
                 Clock.schedule_once(lambda dt: self.camera_preview.stop_preview(), 0)
             
-            debug_log("[full_cycle] Cycle completed successfully")
-            print("[ProgBot] Cycle complete")
+            log.debug("[full_cycle] Cycle completed successfully")
+            log.info("[ProgBot] Cycle complete")
             
-            # End cycle statistics
+            # End cycle statistics - emit final stats then disable emissions
             self.stats.end_cycle()
-            self.stats_updated.emit(self.stats.get_summary_text())
+            self._safe_emit_stats()
+            self._cycle_active = False  # Prevent further emissions
             
-            debug_log("[full_cycle] Cycle complete - cleanup done")
+            log.debug("[full_cycle] Cycle complete - cleanup done")
 
         except asyncio.CancelledError:
-            debug_log("[full_cycle] Cycle cancelled")
+            log.debug("[full_cycle] Cycle cancelled")
             
             # Mark remaining boards as interrupted or skipped
             for col in range(self.config.board_num_cols):
@@ -1397,49 +1418,51 @@ class ProgBot:
                             # Never started testing - mark as skipped
                             self._mark_test(cell_id, board_status, TestStatus.SKIPPED)
             
-            # End cycle statistics even when cancelled
+            # End cycle statistics even when cancelled - emit final stats then disable emissions
             self.stats.end_cycle()
-            self.stats_updated.emit(self.stats.get_summary_text())
+            self._safe_emit_stats()
+            self._cycle_active = False  # Prevent further emissions
             
             try:
-                debug_log("[full_cycle] Moving Z to safe height...")
+                log.debug("[full_cycle] Moving Z to safe height...")
                 await self.motion.rapid_z_abs(0.0)
-                debug_log("[full_cycle] Moving XY to home...")
+                log.debug("[full_cycle] Moving XY to home...")
                 await self.motion.rapid_xy_abs(0, 300)
-                debug_log("[full_cycle] Homing complete")
+                log.debug("[full_cycle] Homing complete")
             except Exception as e:
-                debug_log(f"[full_cycle] Error during homing: {e}")
+                log.debug(f"[full_cycle] Error during homing: {e}")
             
-            debug_log("[full_cycle] Turning off motors...")
+            log.debug("[full_cycle] Turning off motors...")
             await self.motion.motors_off()
-            debug_log("[full_cycle] Motors off")
+            log.debug("[full_cycle] Motors off")
             
             # REMOVED: No longer disconnecting devices between cycles
             # Connections stay open for application lifetime
             
             # Stop camera preview (but keep camera subprocess running)
             if hasattr(self, 'camera_preview') and self.camera_preview:
-                debug_log("[full_cycle] Stopping camera preview...")
+                log.debug("[full_cycle] Stopping camera preview...")
                 from kivy.clock import Clock
                 Clock.schedule_once(lambda dt: self.camera_preview.stop_preview(), 0)
-                debug_log("[full_cycle] Camera preview stop scheduled")
+                log.debug("[full_cycle] Camera preview stop scheduled")
             
-            # Force garbage collection to free resources
-            gc.collect()
-            debug_log("[full_cycle] Cleanup complete")
-            print("Canceled.")
+            # NOTE: Removed gc.collect() - it causes stop-the-world pause that breaks serial
+            # connections and freezes the UI. Python's automatic GC will clean up when needed.
+            log.debug("[full_cycle] Cleanup complete")
+            log.info("Cycle canceled.")
             raise
         except Exception as e:
             tb = traceback.format_exc()
-            print(f"Exception: {e}")
-            print(f"Traceback:\n{tb}")
-            debug_log(f"[full_cycle] Exception: {e}")
-            debug_log(f"[full_cycle] Traceback:\n{tb}")
+            log.error(f"Exception: {e}")
+            log.error(f"Traceback:\n{tb}")
+            log.debug(f"[full_cycle] Exception: {e}")
+            log.debug(f"[full_cycle] Traceback:\n{tb}")
             col, row = self.current_board if self.current_board else (None, None)
             
-            # End cycle statistics even when exception occurs
+            # End cycle statistics even when exception occurs - emit final stats then disable emissions
             self.stats.end_cycle()
-            self.stats_updated.emit(self.stats.get_summary_text())
+            self._safe_emit_stats()
+            self._cycle_active = False  # Prevent further emissions
             
             # Disconnect camera to release resources FIRST
             if hasattr(self, 'vision') and self.vision:
@@ -1460,7 +1483,7 @@ class ProgBot:
                 await self.motion.motors_off()
             except Exception:
                 pass
-            debug_log("[full_cycle] Exception - cleanup done")
+            log.debug("[full_cycle] Exception - cleanup done")
             raise
 
     async def retry_board(self, col: int, row: int):
@@ -1492,11 +1515,11 @@ class ProgBot:
             except Exception:
                 pass
             await self.motion.motors_off()
-            print(f"Canceled during retry.")
+            log.info("Canceled during retry.")
             raise
         except Exception as e:
             tb = traceback.format_exc()
-            print(f"Retry exception: {e}")
+            log.error(f"Retry exception: {e}")
             self.error_occurred.emit({
                 "message": str(e),
                 "traceback": tb,

@@ -3,6 +3,9 @@ from kivy.graphics.texture import Texture
 from kivy.clock import Clock
 import cv2
 import numpy as np
+from logger import get_logger
+
+log = get_logger(__name__)
 
 
 class CameraPreview:
@@ -25,7 +28,7 @@ class CameraPreview:
         
     def start_preview(self):
         """Activate preview display for showing scan results."""
-        print(f"[CameraPreview] Activating preview window")
+        log.info(f"[CameraPreview] Activating preview window")
         self.active = True
         # Clear inactive display
         self.image_widget.color = (1, 1, 1, 1)  # Reset to white for normal display
@@ -34,7 +37,7 @@ class CameraPreview:
         
     def stop_preview(self):
         """Deactivate preview display."""
-        print(f"[CameraPreview] Deactivating preview window")
+        log.info(f"[CameraPreview] Deactivating preview window")
         self.active = False
         
         # Force texture cleanup to prevent memory accumulation
@@ -50,7 +53,7 @@ class CameraPreview:
         self._set_inactive_display()
         
 
-        print(f"[CameraPreview] Preview deactivated and textures cleaned up")
+        log.info(f"[CameraPreview] Preview deactivated and textures cleaned up")
     
     def _set_inactive_display(self):
         """Set the display to show inactive state with black background and gray text."""
@@ -101,7 +104,7 @@ class CameraPreview:
             self._update_texture(frame_flipped)
                 
         except Exception as e:
-            print(f"[CameraPreview] Error showing frame: {e}")
+            log.info(f"[CameraPreview] Error showing frame: {e}")
     
     def _update_texture(self, frame):
         """Convert OpenCV frame to Kivy texture and display.

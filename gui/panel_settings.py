@@ -1,3 +1,6 @@
+from logger import get_logger
+log = get_logger(__name__)
+
 """Panel-specific settings management."""
 import json
 import os
@@ -37,12 +40,12 @@ class PanelSettings:
             try:
                 with open(self.panel_file, 'r') as f:
                     data = json.load(f)
-                    print(f"[PanelSettings] Loaded panel from {self.panel_file}")
+                    log.info(f"[PanelSettings] Loaded panel from {self.panel_file}")
                     # Migrate old format if needed
                     data = self._migrate_settings(data)
                     return data
             except Exception as e:
-                print(f"[PanelSettings] Error loading panel: {e}")
+                log.info(f"[PanelSettings] Error loading panel: {e}")
         
         # Return default settings if file doesn't exist
         return self._default_settings()
@@ -125,7 +128,7 @@ class PanelSettings:
             app_settings = get_settings()
             app_settings.set('last_panel_file', self.panel_file)
         except Exception as e:
-            print(f"[PanelSettings] Error saving panel: {e}")
+            log.info(f"[PanelSettings] Error saving panel: {e}")
     
     def get_all(self):
         """Get all panel settings."""
@@ -187,7 +190,7 @@ class PanelSettings:
             app_settings = get_settings()
             app_settings.set('last_panel_file', filepath)
         else:
-            print(f"[PanelSettings] File not found: {filepath}")
+            log.info(f"[PanelSettings] File not found: {filepath}")
 
 
 # Global panel settings instance
@@ -211,7 +214,7 @@ def find_panel_files(directory=None):
         for file in Path(directory).glob('*.panel'):
             panel_files.append(str(file))
     except Exception as e:
-        print(f"[PanelSettings] Error searching for panel files: {e}")
+        log.info(f"[PanelSettings] Error searching for panel files: {e}")
     
     return sorted(panel_files)
 

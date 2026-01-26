@@ -1,3 +1,6 @@
+from logger import get_logger
+log = get_logger(__name__)
+
 """
 Camera operations in a separate process to avoid GIL contention.
 
@@ -14,12 +17,6 @@ import traceback
 import atexit
 import signal
 
-
-def debug_log(msg):
-    """Simple logging for camera process."""
-    timestamp = time.strftime('%H:%M:%S')
-    print(f"[{timestamp}] [CameraProcess] {msg}")
-    sys.stdout.flush()
 
 
 # Global process tracker for cleanup
@@ -59,15 +56,15 @@ class CameraProcess:
     def start(self):
         """Start the camera worker process."""
         if self._started and self.process and self.process.is_alive():
-            debug_log("Process already started and running")
+            log.debug("Process already started and running")
             return
         
         # If process exists but not alive, clean up first
         if self.process and not self.process.is_alive():
-            debug_log("Found dead process, cleaning up...")
+            log.debug("Found dead process, cleaning up...")
             self.stop()
         
-        debug_log(f"Starting camera worker process (use_picamera={self.use_picamera})...")
+        log.debug(f"Starting camera worker process (use_picamera={self.use_picamera})...")
         self.process = Process(
             target=self._camera_worker,
             args=(self.command_queue, self.result_queue, self.stop_event, 
@@ -81,14 +78,14 @@ class CameraProcess:
         global _active_processes
         _active_processes.append(self.process)
         
-        debug_log(f"Camera worker process started (PID: {self.process.pid})")
+        log.debug(f"Camera worker process started (PID: {self.process.pid})")
     
     def stop(self):
         """Stop the camera worker process."""
         if not self._started:
             return
         
-        debug_log("Stopping camera worker process...")
+        log.debug("Stopping camera worker process...")
         
         # First, signal the process to stop via event
         self.stop_event.set()
@@ -98,12 +95,12 @@ class CameraProcess:
             self.process.join(timeout=0.2)
             
             if self.process.is_alive():
-                debug_log("Process didn't stop gracefully, sending SIGTERM...")
+                log.debug("Process didn't stop gracefully, sending SIGTERM...")
                 self.process.terminate()  # SIGTERM - triggers immediate exit in signal handler
                 self.process.join(timeout=0.2)
                 
                 if self.process.is_alive():
-                    debug_log("Process still alive after SIGTERM, killing...")
+                    log.debug("Process still alive after SIGTERM, killing...")
                     self.process.kill()  # SIGKILL - force kill
                     self.process.join(timeout=0.2)
         
@@ -130,7 +127,7 @@ class CameraProcess:
         
         self._started = False
         self.process = None
-        debug_log("Camera worker process stopped and cleaned up")
+        log.debug("Camera worker process stopped and cleaned up")
     
     def send_command(self, command, *args, timeout=10.0):
         """
@@ -145,7 +142,7 @@ class CameraProcess:
             Result from camera process or None on timeout/error
         """
         if not self._started:
-            debug_log(f"ERROR: Process not started, cannot execute: {command}")
+            log.debug(f"ERROR: Process not started, cannot execute: {command}")
             return None
         
         try:
@@ -157,19 +154,19 @@ class CameraProcess:
             
             # Check for error response
             if isinstance(result, dict) and result.get('error'):
-                debug_log(f"Command '{command}' returned error: {result['error']}")
+                log.debug(f"Command '{command}' returned error: {result['error']}")
                 return None
             
             return result
             
         except mp.queues.Full:
-            debug_log(f"ERROR: Command queue full for: {command}")
+            log.debug(f"ERROR: Command queue full for: {command}")
             return None
         except mp.queues.Empty:
-            debug_log(f"ERROR: Timeout waiting for result: {command}")
+            log.debug(f"ERROR: Timeout waiting for result: {command}")
             return None
         except Exception as e:
-            debug_log(f"ERROR: Exception during command '{command}': {e}")
+            log.debug(f"ERROR: Exception during command '{command}': {e}")
             return None
     
     @staticmethod
@@ -178,7 +175,7 @@ class CameraProcess:
         Camera worker process main loop.
         Runs in separate process with independent GIL.
         """
-        debug_log("Worker process starting...")
+        log.debug("Worker process starting...")
         
         # Import heavy libraries inside worker process
         import numpy as np
@@ -194,7 +191,7 @@ class CameraProcess:
         # picamera2.stop()/close() BLOCK when camera is in bad state or mid-operation
         # Just exit immediately to unblock parent process
         def signal_handler(signum, frame):
-            debug_log(f"Worker received signal {signum}, exiting immediately (no cleanup)")
+            log.debug(f"Worker received signal {signum}, exiting immediately (no cleanup)")
             import sys
             sys.exit(0)
         
@@ -204,24 +201,24 @@ class CameraProcess:
         
         try:
             # Initialize QR detectors once
-            debug_log("Initializing QR detectors...")
+            log.debug("Initializing QR detectors...")
             qr_detector = cv2.QRCodeDetector()
             
             try:
                 import zxingcpp
                 zxing_detector = True
-                debug_log("zxing-cpp available for Micro QR detection")
+                log.debug("zxing-cpp available for Micro QR detection")
             except ImportError:
-                debug_log("zxing-cpp not available, Micro QR detection disabled")
+                log.debug("zxing-cpp not available, Micro QR detection disabled")
             
             # Main command processing loop
-            debug_log("Worker ready, waiting for commands...")
+            log.debug("Worker ready, waiting for commands...")
             
             while not stop_event.is_set():
                 try:
                     # Check for commands with short timeout for responsive shutdown
                     command, args = command_queue.get(timeout=0.1)
-                    debug_log(f"Received command: {command}")
+                    log.debug(f"Received command: {command}")
                     
                     if command == 'init':
                         # Initialize camera
@@ -236,18 +233,18 @@ class CameraProcess:
                                 picamera2.configure(config)
                                 picamera2.start()
                                 
-                                debug_log("Picamera2 initialized at 640x480")
+                                log.debug("Picamera2 initialized at 640x480")
                                 result_queue.put({'success': True, 'camera_type': 'picamera2'})
                             else:
                                 camera = cv2.VideoCapture(camera_index)
                                 camera.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
                                 camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
                                 
-                                debug_log("USB camera initialized")
+                                log.debug("USB camera initialized")
                                 result_queue.put({'success': True, 'camera_type': 'usb'})
                                 
                         except Exception as e:
-                            debug_log(f"Camera init failed: {e}")
+                            log.debug(f"Camera init failed: {e}")
                             result_queue.put({'error': str(e)})
                     
                     elif command == 'capture':
@@ -279,7 +276,7 @@ class CameraProcess:
                                 result_queue.put({'error': 'Frame capture returned None'})
                                 
                         except Exception as e:
-                            debug_log(f"Capture failed: {e}")
+                            log.debug(f"Capture failed: {e}")
                             result_queue.put({'error': str(e)})
                     
                     elif command == 'scan_qr':
@@ -335,7 +332,7 @@ class CameraProcess:
                                             }
                                             break
                                     except Exception as e:
-                                        debug_log(f"zxing detection error: {e}")
+                                        log.debug(f"zxing detection error: {e}")
                             
                             if qr_result:
                                 result_queue.put(qr_result)
@@ -343,7 +340,7 @@ class CameraProcess:
                                 result_queue.put({'error': 'No QR code found'})
                                 
                         except Exception as e:
-                            debug_log(f"QR scan failed: {e}")
+                            log.debug(f"QR scan failed: {e}")
                             result_queue.put({'error': str(e)})
                     
                     elif command == 'cleanup':
@@ -353,45 +350,45 @@ class CameraProcess:
                                 picamera2.stop()
                                 picamera2.close()
                                 picamera2 = None
-                                debug_log("Picamera2 cleaned up")
+                                log.debug("Picamera2 cleaned up")
                             
                             if camera:
                                 camera.release()
                                 camera = None
-                                debug_log("USB camera cleaned up")
+                                log.debug("USB camera cleaned up")
                             
                             cv2.destroyAllWindows()
                             
                             result_queue.put({'success': True})
                             
                             # Exit the worker loop after cleanup
-                            debug_log("Worker process shutting down...")
+                            log.debug("Worker process shutting down...")
                             break
                             
                         except Exception as e:
-                            debug_log(f"Cleanup error: {e}")
+                            log.debug(f"Cleanup error: {e}")
                             result_queue.put({'error': str(e)})
                             break
                     
                     else:
-                        debug_log(f"Unknown command: {command}")
+                        log.debug(f"Unknown command: {command}")
                         result_queue.put({'error': f'Unknown command: {command}'})
                 
                 except mp.queues.Empty:
                     # Timeout waiting for command, check stop event again
                     continue
                 except Exception as e:
-                    debug_log(f"Error processing command: {e}")
+                    log.debug(f"Error processing command: {e}")
                     traceback.print_exc()
                     result_queue.put({'error': str(e)})
         
         except Exception as e:
-            debug_log(f"FATAL: Worker process error: {e}")
+            log.debug(f"FATAL: Worker process error: {e}")
             traceback.print_exc()
         
         finally:
             # Final cleanup
-            debug_log("Worker process shutting down...")
+            log.debug("Worker process shutting down...")
             try:
                 if picamera2:
                     picamera2.stop()
@@ -402,7 +399,7 @@ class CameraProcess:
             except:
                 pass
             
-            debug_log("Worker process terminated")
+            log.debug("Worker process terminated")
     
     def __del__(self):
         """Cleanup on deletion."""

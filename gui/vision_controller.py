@@ -5,6 +5,9 @@ import numpy as np
 import time
 from typing import Optional, Tuple
 import os
+from logger import get_logger
+
+log = get_logger(__name__)
 
 # Import camera process for GIL isolation
 from camera_process import CameraProcess
@@ -14,21 +17,9 @@ ZXING_AVAILABLE = False
 try:
     import zxingcpp
     ZXING_AVAILABLE = True
-    print("[VisionController] zxing-cpp available (excellent Micro QR support)")
+    log.info("zxing-cpp available (excellent Micro QR support)")
 except ImportError:
-    print("[VisionController] Note: zxing-cpp not available. Install with: pip install zxing-cpp")
-
-
-def debug_log(msg):
-    """Write debug message to /tmp/debug.txt"""
-    try:
-        with open('/tmp/debug.txt', 'a') as f:
-            import datetime
-            timestamp = datetime.datetime.now().strftime('%H:%M:%S.%f')[:-3]
-            f.write(f"[{timestamp}] {msg}\n")
-            f.flush()
-    except Exception:
-        pass
+    log.info("Note: zxing-cpp not available. Install with: pip install zxing-cpp")
 
 
 class VisionController:
@@ -59,22 +50,20 @@ class VisionController:
         """Initialize camera connection using separate process for GIL isolation."""
         # Check if already connecting or connected
         if self._connecting:
-            debug_log("[VisionController.connect] Already connecting/connected, skipping")
-            print("[VisionController.connect] Already connecting, skipping...")
+            log.debug("[VisionController.connect] Already connecting/connected, skipping")
             return
         
         self._connecting = True
         try:
             import threading, gc
-            debug_log(f"[VisionController.connect] Starting... use_picamera={self.use_picamera}")
-            debug_log(f"[VisionController.connect] Active threads: {threading.active_count()}, GC tracked objects: {len(gc.get_objects())}")
-            print(f"[VisionController] Active threads: {threading.active_count()}")
-            print(f"[VisionController.connect] Starting camera in separate process...")
+            log.debug(f"[VisionController.connect] Starting... use_picamera={self.use_picamera}")
+            log.debug(f"[VisionController.connect] Active threads: {threading.active_count()}, GC tracked objects: {len(gc.get_objects())}")
+            log.info(f"[VisionController] Active threads: {threading.active_count()}")
+            log.info(f"[VisionController.connect] Starting camera in separate process...")
             
             # If camera process exists, stop it directly (don't call disconnect() - deadlock risk)
             if self.camera_process is not None:
-                print("[VisionController.connect] Camera process already exists, stopping it...")
-                debug_log("[VisionController.connect] Camera process already exists, stopping it")
+                log.debug("[VisionController.connect] Camera process already exists, stopping it")
                 try:
                     self.camera_process.stop()
                 except:
@@ -83,7 +72,7 @@ class VisionController:
             
             # Delay before starting camera to let hardware fully release from previous process
             # Previous process was force-killed, need time for hardware to reset
-            debug_log("[VisionController.connect] Waiting for camera hardware to release...")
+            log.debug("[VisionController.connect] Waiting for camera hardware to release...")
             await asyncio.sleep(0.5)
             
             # Create and start camera process
@@ -97,8 +86,8 @@ class VisionController:
             await asyncio.sleep(0.1)
             
             # Initialize camera in the subprocess
-            debug_log("[VisionController.connect] Sending init command to camera process...")
-            print("[VisionController.connect] Initializing camera in subprocess...")
+            log.debug("[VisionController.connect] Sending init command to camera process...")
+            log.info("[VisionController.connect] Initializing camera in subprocess...")
             
             # Send init command (non-blocking)
             self.camera_process.command_queue.put(('init', ()), timeout=1.0)
@@ -120,9 +109,9 @@ class VisionController:
             
             if result and result.get('success'):
                 camera_type = result.get('camera_type', 'unknown')
-                debug_log(f"[VisionController.connect] Camera initialized: {camera_type}")
-                print(f"[VisionController] Camera initialized in subprocess ({camera_type})")
-                print("[VisionController] QR detection: Standard QR + Micro QR")
+                log.debug(f"[VisionController.connect] Camera initialized: {camera_type}")
+                log.info(f"[VisionController] Camera initialized in subprocess ({camera_type})")
+                log.info("[VisionController] QR detection: Standard QR + Micro QR")
                 self._picamera_started = True
             else:
                 error = result.get('error', 'Unknown error') if result else 'No response'
@@ -133,8 +122,7 @@ class VisionController:
                 raise RuntimeError(f"Camera initialization failed: {error}")
         except Exception as e:
             self._connecting = False
-            debug_log(f"[VisionController.connect] ERROR: {e}")
-            print(f"[VisionController.connect] ERROR: {e}")
+            log.error(f"[VisionController.connect] ERROR: {e}")
             raise
         finally:
             self._connecting = False
@@ -142,15 +130,14 @@ class VisionController:
     async def disconnect(self):
         """Disconnect and cleanup camera resources."""
         if not self._connecting and self.camera_process is None:
-            debug_log("[VisionController.disconnect] Nothing to disconnect")
+            log.debug("[VisionController.disconnect] Nothing to disconnect")
             return
         
         self._connecting = False
         try:
-            debug_log("[VisionController.disconnect] Starting cleanup...")
-            print("[VisionController.disconnect] Starting cleanup...")
+            log.debug("[VisionController.disconnect] Starting cleanup...")
             if self.camera_process:
-                debug_log("[VisionController.disconnect] Stopping camera process...")
+                log.debug("[VisionController.disconnect] Stopping camera process...")
                 
                 # Try to send cleanup command with very short timeout (expected to fail/timeout)
                 loop = asyncio.get_event_loop()
@@ -163,38 +150,47 @@ class VisionController:
                     )
                     result = await asyncio.wait_for(cleanup_task, timeout=0.5)
                     if result and result.get('success'):
-                        debug_log("[VisionController.disconnect] Camera cleanup successful")
+                        log.debug("[VisionController.disconnect] Camera cleanup successful")
                 except asyncio.TimeoutError:
-                    debug_log("[VisionController.disconnect] Cleanup command timed out (expected)")
+                    log.debug("[VisionController.disconnect] Cleanup command timed out (expected)")
                 except Exception as e:
-                    debug_log(f"[VisionController.disconnect] Cleanup error: {e}")
+                    log.debug(f"[VisionController.disconnect] Cleanup error: {e}")
                 
                 # Stop the camera process - should be fast with instant signal handler
                 try:
                     stop_task = loop.run_in_executor(None, self.camera_process.stop)
                     await asyncio.wait_for(stop_task, timeout=0.7)
-                    debug_log("[VisionController.disconnect] Camera process stopped cleanly")
+                    log.debug("[VisionController.disconnect] Camera process stopped cleanly")
                 except asyncio.TimeoutError:
-                    debug_log("[VisionController.disconnect] Stop timeout, force killing")
-                    # Force kill
+                    log.debug("[VisionController.disconnect] Stop timeout, force killing")
+                    # Force kill - wrap in executor to avoid blocking event loop
                     if self.camera_process and self.camera_process.process:
+                        async def force_kill_process():
+                            try:
+                                self.camera_process.process.kill()
+                                await loop.run_in_executor(
+                                    None,
+                                    self.camera_process.process.join,
+                                    0.3
+                                )
+                                log.debug("[VisionController.disconnect] Process force killed")
+                            except Exception as e:
+                                log.debug(f"[VisionController.disconnect] Force kill error: {e}")
+                        
                         try:
-                            self.camera_process.process.kill()
-                            self.camera_process.process.join(timeout=0.3)
-                            debug_log("[VisionController.disconnect] Process force killed")
-                        except:
-                            pass
+                            await asyncio.wait_for(force_kill_process(), timeout=0.5)
+                        except asyncio.TimeoutError:
+                            log.debug("[VisionController.disconnect] Force kill timed out, process may be zombie")
                 
                 self.camera_process = None
                 self._picamera_started = False
-                debug_log("[VisionController.disconnect] Camera process stopped")
+                log.debug("[VisionController.disconnect] Camera process stopped")
             
             # Legacy cleanup (in case old camera objects exist)
         except Exception as e:
-            debug_log(f"[VisionController.disconnect] ERROR: {e}")
-            print(f"[VisionController.disconnect] ERROR: {e}")
+            log.error(f"[VisionController.disconnect] ERROR: {e}")
             if self.picamera2:
-                debug_log("[VisionController.disconnect] Cleaning up orphaned picamera2 object...")
+                log.debug("[VisionController.disconnect] Cleaning up orphaned picamera2 object...")
                 try:
                     self.picamera2.close()
                 except:
@@ -203,7 +199,7 @@ class VisionController:
                 self._picamera_started = False
             
             if self.camera:
-                debug_log("[VisionController.disconnect] Cleaning up orphaned USB camera object...")
+                log.debug("[VisionController.disconnect] Cleaning up orphaned USB camera object...")
                 try:
                     self.camera.release()
                 except:
@@ -213,18 +209,17 @@ class VisionController:
             # Close any OpenCV windows that might be open
             try:
                 cv2.destroyAllWindows()
-                debug_log("[VisionController.disconnect] Closed any OpenCV windows")
+                log.debug("[VisionController.disconnect] Closed any OpenCV windows")
             except Exception as e:
-                debug_log(f"[VisionController.disconnect] Error closing OpenCV windows: {e}")
+                log.debug(f"[VisionController.disconnect] Error closing OpenCV windows: {e}")
             
             # Skip garbage collection - it causes stop-the-world pause that breaks serial connections!
             # gc.collect() pauses ALL threads including serial reader, making motion controller
             # think connection is dead and reconnect (causing slow first read)
             # Python's automatic GC will clean up when needed
-            debug_log("[VisionController.disconnect] Skipping gc.collect() to avoid breaking serial")
+            log.debug("[VisionController.disconnect] Skipping gc.collect() to avoid breaking serial")
             
-            debug_log("[VisionController.disconnect] Camera cleanup complete")
-            print("[VisionController.disconnect] Camera cleanup complete")
+            log.debug("[VisionController.disconnect] Camera cleanup complete")
     
     def _gc_collect(self):
         import gc
@@ -235,15 +230,15 @@ class VisionController:
         try:
             from picamera2 import Picamera2
             
-            debug_log("[VisionController] _init_picamera starting...")
-            print("[VisionController] _init_picamera starting...")
+            log.debug("[VisionController] _init_picamera starting...")
+            log.info("[VisionController] _init_picamera starting...")
             
             # Run camera initialization directly (not in executor)
             # picamera2 has its own threading and doesn't play well with executors
-            print("[VisionController] Calling Picamera2.global_camera_info()...")
+            log.info("[VisionController] Calling Picamera2.global_camera_info()...")
             cameras = Picamera2.global_camera_info()
-            debug_log(f"[VisionController] Found {len(cameras) if cameras else 0} cameras")
-            print(f"[VisionController] Found {len(cameras) if cameras else 0} cameras")
+            log.debug(f"[VisionController] Found {len(cameras) if cameras else 0} cameras")
+            log.info(f"[VisionController] Found {len(cameras) if cameras else 0} cameras")
             
             if not cameras or len(cameras) == 0:
                 raise RuntimeError("No Raspberry Pi cameras detected")
@@ -251,36 +246,36 @@ class VisionController:
             # Small delay to ensure previous instances are cleaned up
             await asyncio.sleep(0.1)
             
-            print("[VisionController] Creating Picamera2 instance...")
+            log.info("[VisionController] Creating Picamera2 instance...")
             self.picamera2 = Picamera2()
             
-            print("[VisionController] Configuring camera for still/on-demand mode...")
+            log.info("[VisionController] Configuring camera for still/on-demand mode...")
             # Reduced resolution to 640x480 to minimize GIL contention
             # Frame size: 640x480x3 = 921,600 bytes (~0.9MB vs 6MB at 1920x1080)
             config = self.picamera2.create_still_configuration(
                 main={"format": "RGB888", "size": (640, 480)}
             )
             self.picamera2.configure(config)
-            debug_log("[VisionController] Camera configured for still/on-demand capture at 640x480")
+            log.debug("[VisionController] Camera configured for still/on-demand capture at 640x480")
             
-            print("[VisionController] Starting camera in still mode...")
+            log.info("[VisionController] Starting camera in still mode...")
             self.picamera2.start()
             # Still mode: camera is ready but only captures on explicit request
             # No continuous frame generation = no background GIL contention
             
-            debug_log("[VisionController] Raspberry Pi camera initialized in still/on-demand mode")
-            print("[VisionController] Raspberry Pi camera initialized in still/on-demand mode")
+            log.debug("[VisionController] Raspberry Pi camera initialized in still/on-demand mode")
+            log.info("[VisionController] Raspberry Pi camera initialized in still/on-demand mode")
             self._picamera_started = True
             
         except ImportError:
-            print("[VisionController] picamera2 not available, falling back to USB camera")
+            log.info("[VisionController] picamera2 not available, falling back to USB camera")
             self.use_picamera = False
             await self._init_usb_camera()
         except Exception as e:
-            print(f"[VisionController] Raspberry Pi camera failed: {e}")
+            log.info(f"[VisionController] Raspberry Pi camera failed: {e}")
             import traceback
             traceback.print_exc()
-            print("[VisionController] Falling back to USB camera")
+            log.info("[VisionController] Falling back to USB camera")
             # Clean up the failed picamera2 object
             if self.picamera2:
                 try:
@@ -304,7 +299,7 @@ class VisionController:
         
         loop = asyncio.get_event_loop()
         self.camera = await loop.run_in_executor(None, open_camera)
-        print(f"[VisionController] USB camera {self.camera_index} initialized")
+        log.info(f"[VisionController] USB camera {self.camera_index} initialized")
     
     async def capture_frame(self) -> Optional[np.ndarray]:
         """Capture a single frame from the camera via camera process.
@@ -313,7 +308,7 @@ class VisionController:
             numpy array (BGR format) or None if capture failed
         """
         if not self.camera_process:
-            debug_log("[VisionController] No camera process available")
+            log.debug("[VisionController] No camera process available")
             return None
         
         try:
@@ -337,11 +332,11 @@ class VisionController:
                 return frame
             else:
                 error = result.get('error', 'Unknown error') if result else 'No response'
-                debug_log(f"[VisionController] Frame capture failed: {error}")
+                log.debug(f"[VisionController] Frame capture failed: {error}")
                 return None
             
         except Exception as e:
-            print(f"[VisionController] Error capturing frame: {e}")
+            log.info(f"[VisionController] Error capturing frame: {e}")
             import traceback
             traceback.print_exc()
             return None
@@ -388,7 +383,7 @@ class VisionController:
                     total_time = time.time() - scan_start
                     if camera_preview:
                         camera_preview.show_frame(frame_gray, "QR detected (fast)", qr_found=data)
-                    debug_log(f"[VisionController] FAST PATH: Standard QR FOUND: {data} (total: {total_time:.3f}s)")
+                    log.debug(f"[VisionController] FAST PATH: Standard QR FOUND: {data} (total: {total_time:.3f}s)")
                     return data
                 
                 # Try Micro QR detection
@@ -397,12 +392,12 @@ class VisionController:
                     total_time = time.time() - scan_start
                     if camera_preview:
                         camera_preview.show_frame(frame_gray, "QR detected (fast)", qr_found=data)
-                    debug_log(f"[VisionController] FAST PATH: Micro QR FOUND: {data} (total: {total_time:.3f}s)")
+                    log.debug(f"[VisionController] FAST PATH: Micro QR FOUND: {data} (total: {total_time:.3f}s)")
                     return data
                 
-                debug_log(f"[VisionController] Fast path failed, falling back to retry logic")
+                log.debug(f"[VisionController] Fast path failed, falling back to retry logic")
         except Exception as e:
-            debug_log(f"[VisionController] Fast path exception: {e}")
+            log.debug(f"[VisionController] Fast path exception: {e}")
         
         # === RETRY PATH: Only if fast path failed ===
         for attempt in range(retries):
@@ -412,18 +407,18 @@ class VisionController:
                     throwaway = await self.capture_frame()
                     if throwaway is not None:
                         await asyncio.sleep(0.05)  # Reduced from 0.1s
-                        debug_log(f"[VisionController] Captured throwaway frame for camera adjustment")
+                        log.debug(f"[VisionController] Captured throwaway frame for camera adjustment")
                 
                 frame = await self.capture_frame()
                 if frame is None:
-                    print(f"[VisionController] Capture failed on attempt {attempt + 1}")
+                    log.info(f"[VisionController] Capture failed on attempt {attempt + 1}")
                     if attempt < retries - 1:
                         await asyncio.sleep(delay * 0.5)  # Reduced delay
                     continue
                 
                 loop = asyncio.get_event_loop()
                 frame_gray, orig_size = await loop.run_in_executor(None, self._preprocess_frame, frame)
-                debug_log(f"[VisionController] Preprocessed frame from {orig_size[0]}x{orig_size[1]} to {frame_gray.shape[1]}x{frame_gray.shape[0]}, grayscale")
+                log.debug(f"[VisionController] Preprocessed frame from {orig_size[0]}x{orig_size[1]} to {frame_gray.shape[1]}x{frame_gray.shape[0]}, grayscale")
                 
                 if camera_preview:
                     camera_preview.show_frame(frame_gray, f"retry {attempt+1}")
@@ -436,7 +431,7 @@ class VisionController:
                     total_time = time.time() - scan_start
                     if camera_preview:
                         camera_preview.show_frame(frame_gray, "QR detected", qr_found=data)
-                    debug_log(f"[VisionController] Standard QR FOUND: {data} (strategy: {strategy_time:.3f}s, total: {total_time:.3f}s)")
+                    log.debug(f"[VisionController] Standard QR FOUND: {data} (strategy: {strategy_time:.3f}s, total: {total_time:.3f}s)")
                     return data
                 
                 # Try Micro QR detection
@@ -447,32 +442,32 @@ class VisionController:
                     total_time = time.time() - scan_start
                     if camera_preview:
                         camera_preview.show_frame(frame_gray, "QR detected", qr_found=data)
-                    debug_log(f"[VisionController] Micro QR FOUND: {data} (strategy: {strategy_time:.3f}s, total: {total_time:.3f}s)")
+                    log.debug(f"[VisionController] Micro QR FOUND: {data} (strategy: {strategy_time:.3f}s, total: {total_time:.3f}s)")
                     return data
                 
-                debug_log(f"[VisionController] Attempt {attempt + 1}/{retries} failed")
+                log.debug(f"[VisionController] Attempt {attempt + 1}/{retries} failed")
                 
                 # Save failed frame on last attempt
                 if attempt == retries - 1:
                     try:
                         save_path = f"/tmp/failed_qr_scan_{int(scan_start)}.png"
                         cv2.imwrite(save_path, frame_gray)
-                        debug_log(f"[VisionController] Saved failed scan frame to {save_path}")
+                        log.debug(f"[VisionController] Saved failed scan frame to {save_path}")
                     except Exception as e:
-                        debug_log(f"[VisionController] Could not save frame: {e}")
+                        log.debug(f"[VisionController] Could not save frame: {e}")
                 
                 if attempt < retries - 1:
                     await asyncio.sleep(delay * 0.5)  # Reduced delay
                         
             except Exception as e:
-                print(f"[VisionController] Error scanning QR code: {e}")
-                debug_log(f"[VisionController] Exception in scan_qr_code: {e}")
+                log.info(f"[VisionController] Error scanning QR code: {e}")
+                log.debug(f"[VisionController] Exception in scan_qr_code: {e}")
                 if attempt < retries - 1:
                     await asyncio.sleep(delay * 0.5)
         
         # === POSITION SEARCH: Only if all retries exhausted ===
         if motion_controller and search_offset > 0 and base_x is not None and base_y is not None:
-            debug_log(f"[VisionController] All retries failed. Trying position search with offset={search_offset}mm")
+            log.debug(f"[VisionController] All retries failed. Trying position search with offset={search_offset}mm")
             
             search_positions = [
                 (base_x - search_offset, base_y + search_offset),  # Top-left
@@ -482,7 +477,7 @@ class VisionController:
             ]
             
             for idx, (search_x, search_y) in enumerate(search_positions, 1):
-                debug_log(f"[VisionController] Position search {idx}/4: moving to ({search_x:.1f}, {search_y:.1f})") 
+                log.debug(f"[VisionController] Position search {idx}/4: moving to ({search_x:.1f}, {search_y:.1f})") 
                 try:
                     await motion_controller.rapid_xy_abs(search_x, search_y)
                     await asyncio.sleep(0.1)  # Reduced from 0.2s
@@ -492,7 +487,7 @@ class VisionController:
                     
                     frame_search = await self.capture_frame()
                     if frame_search is None:
-                        debug_log(f"[VisionController] Position search {idx}/4: capture failed")
+                        log.debug(f"[VisionController] Position search {idx}/4: capture failed")
                         continue
                     
                     loop = asyncio.get_event_loop()
@@ -504,29 +499,29 @@ class VisionController:
                     # Try both detection methods
                     data = await loop.run_in_executor(None, self._detect_qr_single, frame_gray)
                     if data:
-                        debug_log(f"[VisionController] QR FOUND at position {idx}/4: {data}")
+                        log.debug(f"[VisionController] QR FOUND at position {idx}/4: {data}")
                         return data
                     
                     data = await loop.run_in_executor(None, self._detect_micro_qr_with_rotation, frame_gray, None)
                     if data:
-                        debug_log(f"[VisionController] Micro QR FOUND at position {idx}/4: {data}")
+                        log.debug(f"[VisionController] Micro QR FOUND at position {idx}/4: {data}")
                         return data
                     
-                    debug_log(f"[VisionController] Position search {idx}/4: no QR detected")
+                    log.debug(f"[VisionController] Position search {idx}/4: no QR detected")
                     
                 except Exception as e:
-                    debug_log(f"[VisionController] Position search {idx}/4 error: {e}")
+                    log.debug(f"[VisionController] Position search {idx}/4 error: {e}")
                     continue
             
             # Return to base position
             try:
-                debug_log(f"[VisionController] Returning to base position ({base_x:.1f}, {base_y:.1f})")
+                log.debug(f"[VisionController] Returning to base position ({base_x:.1f}, {base_y:.1f})")
                 await motion_controller.rapid_xy_abs(base_x, base_y)
             except Exception as e:
-                debug_log(f"[VisionController] Error returning to base position: {e}")
+                log.debug(f"[VisionController] Error returning to base position: {e}")
         
         total_time = time.time() - scan_start
-        debug_log(f"[VisionController] QR code scan FAILED (total time: {total_time:.3f}s)")
+        log.debug(f"[VisionController] QR code scan FAILED (total time: {total_time:.3f}s)")
         return None
     
     def _preprocess_frame(self, img):
@@ -543,7 +538,7 @@ class VisionController:
         return img, (width, height)
         
         total_time = time.time() - scan_start
-        debug_log(f"[VisionController] QR code scan FAILED after all retries and position search (total time: {total_time:.3f}s)")
+        log.debug(f"[VisionController] QR code scan FAILED after all retries and position search (total time: {total_time:.3f}s)")
         return None
     
     def _detect_qr_single(self, frame: np.ndarray) -> Optional[str]:
@@ -562,12 +557,12 @@ class VisionController:
             # Try OpenCV (fast for standard QR codes)
             data, bbox, _ = self.qr_detector.detectAndDecode(frame)
             if data:
-                debug_log(f"[VisionController] Standard QR detected (OpenCV): '{data}'")
+                log.debug(f"[VisionController] Standard QR detected (OpenCV): '{data}'")
                 return data
             
             return None
         except Exception as e:
-            debug_log(f"[VisionController] QR detection error: {e}")
+            log.debug(f"[VisionController] QR detection error: {e}")
             return None
     
     def _detect_micro_qr_with_rotation(self, frame: np.ndarray, camera_preview=None) -> Optional[Tuple[str, str]]:
@@ -588,10 +583,10 @@ class VisionController:
         
         # Try zxing-cpp first if available (best Micro QR support)
         if ZXING_AVAILABLE:
-            debug_log("[VisionController] Using zxing-cpp for Micro QR detection")
+            log.debug("[VisionController] Using zxing-cpp for Micro QR detection")
             
             # Try original orientation (0°)
-            debug_log("[VisionController] Trying Micro QR at 0° orientation")
+            log.debug("[VisionController] Trying Micro QR at 0° orientation")
             
             # Try with raw grayscale
             try:
@@ -599,10 +594,10 @@ class VisionController:
                 if results:
                     data = results[0].text
                     fmt = str(results[0].format).replace('BarcodeFormat.', '')
-                    debug_log(f"[VisionController] {fmt} detected at 0° (zxing raw): '{data}'")
+                    log.debug(f"[VisionController] {fmt} detected at 0° (zxing raw): '{data}'")
                     return (data, fmt)
             except Exception as e:
-                debug_log(f"[VisionController] zxing 0° raw failed: {e}")
+                log.debug(f"[VisionController] zxing 0° raw failed: {e}")
             
             # Try with OTSU threshold preprocessing
             try:
@@ -612,19 +607,19 @@ class VisionController:
                 if results:
                     data = results[0].text
                     fmt = str(results[0].format).replace('BarcodeFormat.', '')
-                    debug_log(f"[VisionController] {fmt} detected at 0° (zxing OTSU): '{data}'")
+                    log.debug(f"[VisionController] {fmt} detected at 0° (zxing OTSU): '{data}'")
                     return (data, fmt)
                     
                 # Save 0° images for debugging
                 cv2.imwrite(f"/tmp/micro_qr_0deg_raw_{timestamp}.png", frame)
                 cv2.imwrite(f"/tmp/micro_qr_0deg_otsu_{timestamp}.png", otsu)
             except Exception as e:
-                debug_log(f"[VisionController] zxing 0° OTSU failed: {e}")
+                log.debug(f"[VisionController] zxing 0° OTSU failed: {e}")
             
             # Try 90° rotations
             for angle in [90, 180, 270]:
                 try:
-                    debug_log(f"[VisionController] Trying Micro QR at {angle}° orientation")
+                    log.debug(f"[VisionController] Trying Micro QR at {angle}° orientation")
                     rotated = cv2.rotate(frame, {
                         90: cv2.ROTATE_90_CLOCKWISE,
                         180: cv2.ROTATE_180,
@@ -636,7 +631,7 @@ class VisionController:
                     if results:
                         data = results[0].text
                         fmt = str(results[0].format).replace('BarcodeFormat.', '')
-                        debug_log(f"[VisionController] {fmt} detected at {angle}° (zxing raw): '{data}'")
+                        log.debug(f"[VisionController] {fmt} detected at {angle}° (zxing raw): '{data}'")
                         return (data, fmt)
                     
                     # Try OTSU
@@ -646,7 +641,7 @@ class VisionController:
                     if results:
                         data = results[0].text
                         fmt = str(results[0].format).replace('BarcodeFormat.', '')
-                        debug_log(f"[VisionController] {fmt} detected at {angle}° (zxing OTSU): '{data}'")
+                        log.debug(f"[VisionController] {fmt} detected at {angle}° (zxing OTSU): '{data}'")
                         return (data, fmt)
                     
                     # Save for debugging
@@ -654,14 +649,14 @@ class VisionController:
                     cv2.imwrite(f"/tmp/micro_qr_{angle}deg_otsu_{timestamp}.png", rotated_otsu)
                         
                 except Exception as e:
-                    debug_log(f"[VisionController] zxing rotation {angle}° failed: {e}")
+                    log.debug(f"[VisionController] zxing rotation {angle}° failed: {e}")
                     continue
             
-            debug_log(f"[VisionController] zxing-cpp Micro QR detection failed at all orientations. Check /tmp/micro_qr_*_{timestamp}.png")
+            log.debug(f"[VisionController] zxing-cpp Micro QR detection failed at all orientations. Check /tmp/micro_qr_*_{timestamp}.png")
             return None
         
         # No Micro QR detector available
-        debug_log("[VisionController] No Micro QR detector available. Install zxing-cpp: pip install zxing-cpp")
+        log.debug("[VisionController] No Micro QR detector available. Install zxing-cpp: pip install zxing-cpp")
         return None
     
     async def scan_qr_with_preview(self, camera_preview, timeout=10.0) -> Optional[str]:
@@ -686,21 +681,21 @@ class VisionController:
                 # Check if QR was detected by preview
                 if camera_preview.qr_data:
                     qr_data = camera_preview.qr_data
-                    print(f"[VisionController] QR code detected: {qr_data}")
+                    log.info(f"[VisionController] QR code detected: {qr_data}")
                     break
                 
                 # Sleep longer to reduce CPU overhead (check 10 times per second)
                 await asyncio.sleep(0.1)
             
             if not qr_data:
-                print(f"[VisionController] QR scan timed out after {timeout}s")
+                log.info(f"[VisionController] QR scan timed out after {timeout}s")
         
         except asyncio.CancelledError:
-            print("[VisionController] QR scan cancelled")
+            log.info("[VisionController] QR scan cancelled")
             raise
                 
         except Exception as e:
-            print(f"[VisionController] Error during QR scan with preview: {e}")
+            log.info(f"[VisionController] Error during QR scan with preview: {e}")
         
         return qr_data
     
@@ -745,7 +740,7 @@ class VisionController:
             return frame, data if data else None, bbox
             
         except Exception as e:
-            print(f"[VisionController] Error in get_frame_with_qr_sync: {e}")
+            log.info(f"[VisionController] Error in get_frame_with_qr_sync: {e}")
             return None, None, None
     
     def get_frame_simple(self) -> Optional[np.ndarray]:
@@ -787,7 +782,7 @@ class VisionController:
             return frame
             
         except Exception as e:
-            print(f"[VisionController] Error in get_frame_simple: {e}")
+            log.info(f"[VisionController] Error in get_frame_simple: {e}")
             return None
     
     async def drain_camera_buffer_async(self, max_frames=5):
@@ -802,7 +797,7 @@ class VisionController:
                 if frame is not None:
                     del frame  # Explicitly free frame memory
         except Exception as e:
-            debug_log(f"[VisionController] Error draining buffer: {e}")
+            log.debug(f"[VisionController] Error draining buffer: {e}")
     
     def drain_camera_buffer(self, max_frames=5):
         """Drain accumulated frames from camera buffer to prevent slowdown.
@@ -818,7 +813,7 @@ class VisionController:
                     frame = self.picamera2.capture_array()
                     del frame  # Explicitly free
             except Exception as e:
-                print(f"[VisionController] Error draining buffer: {e}")
+                log.info(f"[VisionController] Error draining buffer: {e}")
         elif self.camera:
             try:
                 # For USB camera, read and discard frames
@@ -827,7 +822,7 @@ class VisionController:
                     if ret:
                         del frame  # Explicitly free
             except Exception as e:
-                print(f"[VisionController] Error draining buffer: {e}")
+                log.info(f"[VisionController] Error draining buffer: {e}")
     
     def detect_qr_in_frame(self, frame: np.ndarray) -> Tuple[Optional[str], Optional[np.ndarray]]:
         """Detect QR code in an existing frame.
@@ -843,7 +838,7 @@ class VisionController:
             data, bbox, _ = self.qr_detector.detectAndDecode(frame)
             return (data if data else None, bbox)
         except Exception as e:
-            print(f"[VisionController] Error in detect_qr_in_frame: {e}")
+            log.info(f"[VisionController] Error in detect_qr_in_frame: {e}")
             return None, None
     
     async def scan_qr_with_image_save(self, save_path: str, retries=3) -> Optional[str]:
@@ -880,7 +875,7 @@ class VisionController:
                 
                 # Save image
                 await loop.run_in_executor(None, cv2.imwrite, save_path, frame)
-                print(f"[VisionController] Saved scan image to {save_path}")
+                log.info(f"[VisionController] Saved scan image to {save_path}")
                 return data
             
             if attempt < retries - 1:
@@ -890,7 +885,7 @@ class VisionController:
         if frame is not None:
             loop = asyncio.get_event_loop()
             await loop.run_in_executor(None, cv2.imwrite, save_path, frame)
-            print(f"[VisionController] Saved failed scan image to {save_path}")
+            log.info(f"[VisionController] Saved failed scan image to {save_path}")
         
         return None
     
@@ -901,17 +896,17 @@ class VisionController:
             num_frames: Number of test frames to capture
         """
         self.update_phase("Testing Camera")
-        print(f"[VisionController] Testing camera with {num_frames} captures...")
+        log.info(f"[VisionController] Testing camera with {num_frames} captures...")
         
         for i in range(num_frames):
             frame = await self.capture_frame()
             if frame is not None:
-                print(f"  Frame {i+1}: {frame.shape} dtype={frame.dtype}")
+                log.info(f"  Frame {i+1}: {frame.shape} dtype={frame.dtype}")
             else:
-                print(f"  Frame {i+1}: FAILED")
+                log.info(f"  Frame {i+1}: FAILED")
             await asyncio.sleep(0.2)
         
-        print("[VisionController] Camera test complete")
+        log.info("[VisionController] Camera test complete")
     
     async def close(self):
         """Release camera resources."""
@@ -926,21 +921,21 @@ class VisionController:
                         # Small delay to ensure cleanup completes
                         time.sleep(0.1)
                     except Exception as e:
-                        print(f"[VisionController] Error during picamera2 cleanup: {e}")
+                        log.info(f"[VisionController] Error during picamera2 cleanup: {e}")
                 
                 loop = asyncio.get_event_loop()
                 await loop.run_in_executor(None, stop_camera)
                 self.picamera2 = None
-                print("[VisionController] Closed Raspberry Pi camera")
+                log.info("[VisionController] Closed Raspberry Pi camera")
             
             if self.camera:
                 loop = asyncio.get_event_loop()
                 await loop.run_in_executor(None, self.camera.release)
                 self.camera = None
-                print("[VisionController] Closed USB camera")
+                log.info("[VisionController] Closed USB camera")
                 
         except Exception as e:
-            print(f"[VisionController] Error closing camera: {e}")
+            log.info(f"[VisionController] Error closing camera: {e}")
     
     def __del__(self):
         """Cleanup on deletion."""

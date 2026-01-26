@@ -1,3 +1,6 @@
+from logger import get_logger
+log = get_logger(__name__)
+
 """Settings management for the progbot application."""
 import json
 import os
@@ -20,10 +23,10 @@ class Settings:
             try:
                 with open(self.settings_file, 'r') as f:
                     data = json.load(f)
-                    print(f"[Settings] Loaded settings from {self.settings_file}")
+                    log.info(f"[Settings] Loaded settings from {self.settings_file}")
                     return data
             except Exception as e:
-                print(f"[Settings] Error loading settings: {e}")
+                log.info(f"[Settings] Error loading settings: {e}")
         
         # Return default settings if file doesn't exist
         return self._default_settings()
@@ -70,9 +73,9 @@ class Settings:
         try:
             with open(self.settings_file, 'w') as f:
                 json.dump(self.data, f, indent=2)
-            print(f"[Settings] Saved settings to {self.settings_file}")
+            log.info(f"[Settings] Saved settings to {self.settings_file}")
         except Exception as e:
-            print(f"[Settings] Error saving settings: {e}")
+            log.info(f"[Settings] Error saving settings: {e}")
     
     def get_all(self):
         """Get all settings."""

@@ -1,6 +1,9 @@
 """Target device controller for testing and communication."""
 import asyncio
 from device_io import AsyncSerialDevice
+from logger import get_logger
+
+log = get_logger(__name__)
 
 
 class TargetController:
@@ -26,10 +29,10 @@ class TargetController:
             try:
                 # Quick health check - see if reader/writer still exist
                 if self.device.reader is None or self.device.writer is None or self.device.writer.is_closing():
-                    print(f"[TargetController] Connection dead, reconnecting to {self.port}")
+                    log.info(f"[TargetController] Connection dead, reconnecting to {self.port}")
                     self.device = None
             except Exception as e:
-                print(f"[TargetController] Health check failed: {e}, reconnecting")
+                log.info(f"[TargetController] Health check failed: {e}, reconnecting")
                 self.device = None
         
         if self.device is None:
@@ -41,12 +44,12 @@ class TargetController:
         await self.connect()
         try:
             response = await self.device.send_command("beep 1")
-            print(f"resp={response}")
+            log.info(f"resp={response}")
             
             await asyncio.sleep(1)
             
             response = await self.device.send_command("beep 1")
-            print(f"resp={response}")
+            log.info(f"resp={response}")
         except:
             pass
 
@@ -58,7 +61,7 @@ class TargetController:
                 while True:
                     line = await self.device.read()
                     if line:
-                        print(f"{line}")
+                        log.info(f"{line}")
             except asyncio.CancelledError:
                 raise
 

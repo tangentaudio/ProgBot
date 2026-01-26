@@ -215,13 +215,51 @@
     BoxLayout:
         orientation: 'vertical'
         
+        # Filter buttons
+        BoxLayout:
+            size_hint_y: None
+            height: '40dp'
+            spacing: 5
+            padding: 5
+            
+            Label:
+                text: 'Filter:'
+                size_hint_x: None
+                width: '50dp'
+            
+            ToggleButton:
+                text: 'DEBUG'
+                group: 'log_filter'
+                size_hint_x: 0.25
+                on_state: if self.state == 'down': log_viewer_widget.set_filter_level('DEBUG')
+            
+            ToggleButton:
+                text: 'INFO'
+                group: 'log_filter'
+                state: 'down'
+                size_hint_x: 0.25
+                on_state: if self.state == 'down': log_viewer_widget.set_filter_level('INFO')
+            
+            ToggleButton:
+                text: 'WARNING'
+                group: 'log_filter'
+                size_hint_x: 0.25
+                on_state: if self.state == 'down': log_viewer_widget.set_filter_level('WARNING')
+            
+            ToggleButton:
+                text: 'ERROR'
+                group: 'log_filter'
+                size_hint_x: 0.25
+                on_state: if self.state == 'down': log_viewer_widget.set_filter_level('ERROR')
+        
         LogViewer:
             id: log_viewer_widget
-            size_hint_y: 0.9
+            size_hint_y: 0.85
         
         Button:
             text: 'Close'
-            size_hint_y: 0.1
+            size_hint_y: None
+            height: '40dp'
             on_press: root.dismiss()
 
 <StatsPopup@Popup>:

@@ -1,3 +1,6 @@
+from logger import get_logger
+log = get_logger(__name__)
+
 """Panel Setup dialog for setting board origin, probe offset, and QR code offset.
 
 This module provides an interactive dialog for configuring panel parameters,
@@ -54,17 +57,17 @@ class EnableableTabbedPanelItem(TabbedPanelItem):
     def _on_tab_state_change(self, instance, state):
         """Show hint when tab is first selected."""
         global _hint_shown_this_session
-        debug_log(f"_on_tab_state_change: {self.phase_name} state={state}, hint_shown={_hint_shown_this_session}")
+        log.debug(f"_on_tab_state_change: {self.phase_name} state={state}, hint_shown={_hint_shown_this_session}")
         if state == 'down' and not _hint_shown_this_session:
             _hint_shown_this_session = True
             try:
                 self._show_hint()
             except Exception as e:
-                debug_log(f"_show_hint failed: {e}")
+                log.debug(f"_show_hint failed: {e}")
     
     def _show_hint(self):
         """Show an ephemeral hint about long-press to toggle."""
-        debug_log("_show_hint called")
+        log.debug("_show_hint called")
         from kivy.uix.boxlayout import BoxLayout
         from kivy.graphics import Color, RoundedRectangle
         from kivy.uix.popup import Popup
@@ -76,15 +79,15 @@ class EnableableTabbedPanelItem(TabbedPanelItem):
         while popup and not isinstance(popup, Popup):
             popup = popup.parent
         if not popup:
-            debug_log("_show_hint: no popup found")
+            log.debug("_show_hint: no popup found")
             return
         
-        debug_log(f"_show_hint: found popup {popup}")
+        log.debug(f"_show_hint: found popup {popup}")
         
         # Get the popup's content (the main BoxLayout)
         content = popup.content
         if not content:
-            debug_log("_show_hint: no content found")
+            log.debug("_show_hint: no content found")
             return
         
         # Create a floating widget to hold the hint
@@ -124,7 +127,7 @@ class EnableableTabbedPanelItem(TabbedPanelItem):
         hint_container._bg_rect.pos = hint_container.pos
         hint_label.pos = hint_container.pos
         
-        debug_log(f"_show_hint: adding hint at {hint_container.pos}")
+        log.debug(f"_show_hint: adding hint at {hint_container.pos}")
         
         # Add to popup's content
         content.add_widget(hint_container)
@@ -140,11 +143,11 @@ class EnableableTabbedPanelItem(TabbedPanelItem):
         anim.bind(on_complete=remove_hint)
         anim.start(hint_container)
         anim.start(hint_label)
-        debug_log("_show_hint: animation started")
+        log.debug("_show_hint: animation started")
     
     def _update_visual(self, *args):
         """Update tab visual to show enabled/disabled state via opacity."""
-        debug_log(f"_update_visual called: phase_name={self.phase_name}, phase_enabled={self.phase_enabled}")
+        log.debug(f"_update_visual called: phase_name={self.phase_name}, phase_enabled={self.phase_enabled}")
         if self.phase_name:
             # Use filled/empty circle to indicate enabled/disabled (Unicode)
             # ● (U+25CF) = filled circle, ○ (U+25CB) = empty circle
@@ -190,18 +193,18 @@ class EnableableTabbedPanelItem(TabbedPanelItem):
     
     def _on_long_press(self, dt):
         """Toggle enabled state on long-press."""
-        debug_log(f"_on_long_press called for {self.phase_name}, settings_key={self.settings_key}")
+        log.debug(f"_on_long_press called for {self.phase_name}, settings_key={self.settings_key}")
         self._long_press_event = None
         
         # Toggle first for instant visual feedback on tab header
         self.phase_enabled = not self.phase_enabled
-        debug_log(f"phase_enabled toggled to {self.phase_enabled}")
+        log.debug(f"phase_enabled toggled to {self.phase_enabled}")
         
         # Then switch to this tab so the user sees the content
         widget = self.parent
         while widget:
             if hasattr(widget, 'switch_to'):
-                debug_log(f"Found TabbedPanel, calling switch_to")
+                log.debug(f"Found TabbedPanel, calling switch_to")
                 widget.switch_to(self)
                 break
             widget = widget.parent
@@ -209,20 +212,20 @@ class EnableableTabbedPanelItem(TabbedPanelItem):
         # Notify the app to save the setting
         from kivy.app import App
         app = App.get_running_app()
-        debug_log(f"app={app}, settings_key={self.settings_key}")
+        log.debug(f"app={app}, settings_key={self.settings_key}")
         if app and self.settings_key:
             # Call the appropriate changed handler
             handler_name = f'ps_{self.settings_key}_changed'
-            debug_log(f"Looking for handler: {handler_name}")
+            log.debug(f"Looking for handler: {handler_name}")
             if hasattr(app, handler_name):
                 # Convert bool to state string for compatibility
                 state = 'down' if self.phase_enabled else 'normal'
-                debug_log(f"Calling {handler_name}('{state}')")
+                log.debug(f"Calling {handler_name}('{state}')")
                 try:
                     getattr(app, handler_name)(state)
-                    debug_log(f"Handler completed successfully")
+                    log.debug(f"Handler completed successfully")
                 except Exception as e:
-                    debug_log(f"Handler raised exception: {e}")
+                    log.debug(f"Handler raised exception: {e}")
 
 
 # Register the custom widget with Factory so it can be used in KV files
@@ -231,17 +234,6 @@ Factory.register('EnableableTabbedPanelItem', cls=EnableableTabbedPanelItem)
 # Load the panel setup KV file
 Builder.load_file('panel_setup.kv')
 
-
-def debug_log(msg):
-    """Write debug message to /tmp/debug.txt"""
-    try:
-        with open('/tmp/debug.txt', 'a') as f:
-            import datetime
-            timestamp = datetime.datetime.now().strftime('%H:%M:%S.%f')[:-3]
-            f.write(f"[{timestamp}] {msg}\n")
-            f.flush()
-    except Exception:
-        pass
 
 
 class PanelSetupController(CameraPreviewMixin):
@@ -316,10 +308,10 @@ class PanelSetupController(CameraPreviewMixin):
     
     def open(self):
         """Open the calibration dialog."""
-        debug_log("[PanelSetup] Opening dialog")
+        log.debug("[PanelSetup] Opening dialog")
         
         if not self.bot or not self.bot.motion:
-            debug_log("[PanelSetup] Bot or motion controller not initialized")
+            log.debug("[PanelSetup] Bot or motion controller not initialized")
             return
         
         # Create popup if needed
@@ -379,13 +371,13 @@ class PanelSetupController(CameraPreviewMixin):
         if 'programmer' not in self._edit_buffer or not self._edit_buffer['programmer']:
             from programmers import get_default_programmer_config
             self._edit_buffer['programmer'] = get_default_programmer_config('nordic_nrf')
-            debug_log("[PanelSetup] Initialized default programmer config in buffer")
+            log.debug("[PanelSetup] Initialized default programmer config in buffer")
         
         # Keep a copy of original values for dirty detection
         self._original_values = copy.deepcopy(self._edit_buffer)
         self._is_dirty = False
         
-        debug_log("[PanelSetup] Edit buffer initialized")
+        log.debug("[PanelSetup] Edit buffer initialized")
     
     def _set_buffer_value(self, key, value):
         """Set a value in the edit buffer and mark dirty if changed."""
@@ -393,7 +385,7 @@ class PanelSetupController(CameraPreviewMixin):
         if old_value != value:
             self._edit_buffer[key] = value
             self._check_dirty()
-            debug_log(f"[PanelSetup] Buffer: {key} = {value}")
+            log.debug(f"[PanelSetup] Buffer: {key} = {value}")
     
     def _set_buffer_nested(self, *keys, value):
         """Set a nested value in the edit buffer (e.g., programmer.steps.identify)."""
@@ -412,7 +404,7 @@ class PanelSetupController(CameraPreviewMixin):
         if old_value != value:
             current[keys[-1]] = value
             self._check_dirty()
-            debug_log(f"[PanelSetup] Buffer: {'.'.join(keys)} = {value}")
+            log.debug(f"[PanelSetup] Buffer: {'.'.join(keys)} = {value}")
     
     def _get_buffer_value(self, key, default=None):
         """Get a value from the edit buffer."""
@@ -455,12 +447,12 @@ class PanelSetupController(CameraPreviewMixin):
     def save_panel(self):
         """Save the edit buffer to panel settings and update the system."""
         if not self._is_dirty:
-            debug_log("[PanelSetup] No changes to save")
+            log.debug("[PanelSetup] No changes to save")
             return
         
         ps = self.panel_settings
         if not ps:
-            debug_log("[PanelSetup] No panel settings to save to")
+            log.debug("[PanelSetup] No panel settings to save to")
             return
         
         # Update panel settings with buffer values
@@ -479,8 +471,8 @@ class PanelSetupController(CameraPreviewMixin):
         self._is_dirty = False
         self._update_save_button()
         
-        debug_log(f"[PanelSetup] Panel saved to {ps.panel_file}")
-        print(f"[PanelSetup] Panel saved to {ps.panel_file}")
+        log.debug(f"[PanelSetup] Panel saved to {ps.panel_file}")
+        log.info(f"[PanelSetup] Panel saved to {ps.panel_file}")
     
     def _apply_settings_to_system(self):
         """Apply buffered settings to the running system (bot.config, UI, etc.)."""
@@ -524,12 +516,12 @@ class PanelSetupController(CameraPreviewMixin):
         if hasattr(self.app, 'update_grid_from_settings'):
             self.app.update_grid_from_settings()
         
-        debug_log("[PanelSetup] Applied settings to system")
+        log.debug("[PanelSetup] Applied settings to system")
     
     def cancel(self):
         """Cancel editing and discard changes."""
         if self._is_dirty:
-            debug_log("[PanelSetup] Discarding unsaved changes")
+            log.debug("[PanelSetup] Discarding unsaved changes")
         
         # Stop camera preview if active
         self._stop_vision_preview()
@@ -606,7 +598,7 @@ class PanelSetupController(CameraPreviewMixin):
     def _do_close(self):
         """Actually close the dialog, moving to safe Z first if needed."""
         async def do_close():
-            debug_log("[PanelSetup] Closing dialog...")
+            log.debug("[PanelSetup] Closing dialog...")
             
             # Stop vision preview if active
             self._stop_vision_preview()
@@ -615,12 +607,12 @@ class PanelSetupController(CameraPreviewMixin):
                 # Check current Z position and move to safe height if needed
                 pos = await self.bot.motion.get_position()
                 if pos['z'] < -0.5:  # If Z is more than 0.5mm below safe height
-                    debug_log(f"[PanelSetup] Z at {pos['z']:.2f}, moving to safe Z before closing...")
+                    log.debug(f"[PanelSetup] Z at {pos['z']:.2f}, moving to safe Z before closing...")
                     await self.bot.motion.rapid_z_abs(0.0)
                     await self.bot.motion.send_gcode_wait_ok("M400")
-                    debug_log("[PanelSetup] Safe Z reached")
+                    log.debug("[PanelSetup] Safe Z reached")
             except Exception as e:
-                debug_log(f"[PanelSetup] Error checking/moving Z: {e}")
+                log.debug(f"[PanelSetup] Error checking/moving Z: {e}")
             
             # Clear buffer
             self._edit_buffer = {}
@@ -632,7 +624,7 @@ class PanelSetupController(CameraPreviewMixin):
                 if self.popup:
                     self.popup.dismiss()
             Clock.schedule_once(dismiss, 0)
-            debug_log("[PanelSetup] Dialog closed")
+            log.debug("[PanelSetup] Dialog closed")
         
         asyncio.ensure_future(do_close())
     
@@ -692,7 +684,7 @@ class PanelSetupController(CameraPreviewMixin):
         # Programming tab - build dynamic UI
         self._build_programmer_ui()
         
-        debug_log("[PanelSetup] Synced buffer to dialog")
+        log.debug("[PanelSetup] Synced buffer to dialog")
     
     def _update_panel_filename(self):
         """Update the panel filename display in the title bar."""
@@ -784,7 +776,7 @@ class PanelSetupController(CameraPreviewMixin):
             
             steps_container.add_widget(btn)
         
-        debug_log(f"[PanelSetup] Built {len(steps)} step toggles for {current_type}")
+        log.debug(f"[PanelSetup] Built {len(steps)} step toggles for {current_type}")
     
     def _on_step_toggle(self, instance, state):
         """Handle step toggle button state change."""
@@ -794,7 +786,7 @@ class PanelSetupController(CameraPreviewMixin):
         # Update buffer
         self._set_buffer_nested('programmer', 'steps', step_id, value=enabled)
         
-        debug_log(f"[PanelSetup] Step {step_id} = {enabled}")
+        log.debug(f"[PanelSetup] Step {step_id} = {enabled}")
     
     def _rebuild_programmer_firmware(self):
         """Rebuild the firmware file input widgets."""
@@ -880,7 +872,7 @@ class PanelSetupController(CameraPreviewMixin):
             
             firmware_container.add_widget(row)
         
-        debug_log(f"[PanelSetup] Built {len(slots)} firmware inputs for {current_type}")
+        log.debug(f"[PanelSetup] Built {len(slots)} firmware inputs for {current_type}")
     
     def _on_firmware_text_change(self, instance):
         """Handle firmware path text input validation (Enter key)."""
@@ -894,7 +886,7 @@ class PanelSetupController(CameraPreviewMixin):
     def _save_firmware_path(self, slot_id, path):
         """Save firmware path to buffer."""
         self._set_buffer_nested('programmer', 'firmware', slot_id, value=path)
-        debug_log(f"[PanelSetup] Firmware {slot_id} = {path}")
+        log.debug(f"[PanelSetup] Firmware {slot_id} = {path}")
     
     def _on_firmware_browse(self, instance):
         """Handle firmware browse button press."""
@@ -967,7 +959,7 @@ class PanelSetupController(CameraPreviewMixin):
             self._rebuild_programmer_steps()
             self._rebuild_programmer_firmware()
         
-        debug_log(f"[PanelSetup] Programmer type changed to {type_id}")
+        log.debug(f"[PanelSetup] Programmer type changed to {type_id}")
 
     def _refresh_position(self):
         """Query current position and update display."""
@@ -992,7 +984,7 @@ class PanelSetupController(CameraPreviewMixin):
                         probe_btn.disabled = not at_safe_z
                 Clock.schedule_once(update_labels, 0)
             except Exception as e:
-                debug_log(f"[PanelSetup] Position refresh error: {e}")
+                log.debug(f"[PanelSetup] Position refresh error: {e}")
                 def show_error(dt):
                     if not self.popup:
                         return
@@ -1010,18 +1002,18 @@ class PanelSetupController(CameraPreviewMixin):
     def set_xy_step(self, step):
         """Set XY jog step size."""
         self.xy_step = step
-        debug_log(f"[PanelSetup] XY step set to {step} mm")
+        log.debug(f"[PanelSetup] XY step set to {step} mm")
     
     def set_z_step(self, step):
         """Set Z jog step size."""
         self.z_step = step
-        debug_log(f"[PanelSetup] Z step set to {step} mm")
+        log.debug(f"[PanelSetup] Z step set to {step} mm")
     
     def home(self):
         """Home the machine from calibration dialog."""
         async def do_home():
             try:
-                debug_log("[PanelSetup] Starting homing...")
+                log.debug("[PanelSetup] Starting homing...")
                 # Disable home button during homing
                 def disable_btn(dt):
                     if self.popup:
@@ -1042,12 +1034,12 @@ class PanelSetupController(CameraPreviewMixin):
                 # Set work coordinates
                 await self.bot.motion.send_gcode_wait_ok("G92 X0 Y0 Z0")
                 
-                debug_log("[PanelSetup] Homing complete")
+                log.debug("[PanelSetup] Homing complete")
                 
                 # Reset probe state since we're now at origin
                 self.probe_z = None
             except Exception as e:
-                debug_log(f"[PanelSetup] Homing error: {e}")
+                log.debug(f"[PanelSetup] Homing error: {e}")
             finally:
                 # Re-enable home button and refresh position
                 def enable_btn(dt):
@@ -1088,7 +1080,7 @@ class PanelSetupController(CameraPreviewMixin):
                 await self.bot.motion.send_gcode_wait_ok("M400")
                 self._refresh_position()
             except Exception as e:
-                debug_log(f"[PanelSetup] Jog error: {e}")
+                log.debug(f"[PanelSetup] Jog error: {e}")
         
         asyncio.ensure_future(do_jog())
     
@@ -1096,10 +1088,10 @@ class PanelSetupController(CameraPreviewMixin):
         """Move to safe Z height (Z=0)."""
         async def do_safe_z():
             try:
-                debug_log("[PanelSetup] Moving to safe Z...")
+                log.debug("[PanelSetup] Moving to safe Z...")
                 await self.bot.motion.rapid_z_abs(0.0)
                 await self.bot.motion.send_gcode_wait_ok("M400")
-                debug_log("[PanelSetup] At safe Z")
+                log.debug("[PanelSetup] At safe Z")
                 # Reset probe state since we're no longer at probe height
                 self.probe_z = None
                 # Disable Go Ofs and capture buttons, refresh position
@@ -1114,7 +1106,7 @@ class PanelSetupController(CameraPreviewMixin):
                 Clock.schedule_once(update_ui, 0)
                 self._refresh_position()
             except Exception as e:
-                debug_log(f"[PanelSetup] Safe Z error: {e}")
+                log.debug(f"[PanelSetup] Safe Z error: {e}")
         
         asyncio.ensure_future(do_safe_z())
     
@@ -1122,7 +1114,7 @@ class PanelSetupController(CameraPreviewMixin):
         """Execute probe operation."""
         async def do_probe_async():
             try:
-                debug_log("[PanelSetup] Starting probe...")
+                log.debug("[PanelSetup] Starting probe...")
                 
                 # Disable probe button during probe
                 def disable_probe_btn(dt):
@@ -1138,7 +1130,7 @@ class PanelSetupController(CameraPreviewMixin):
                 dist = await self.bot.motion.do_probe()
                 self.probe_z = -dist  # Store the Z position after probe (negative)
                 
-                debug_log(f"[PanelSetup] Probe result: {dist} mm, Z position: {self.probe_z}")
+                log.debug(f"[PanelSetup] Probe result: {dist} mm, Z position: {self.probe_z}")
                 
                 # Move to probe height and wait
                 await self.bot.motion.rapid_z_abs(self.probe_z)
@@ -1165,8 +1157,8 @@ class PanelSetupController(CameraPreviewMixin):
                 
             except Exception as e:
                 import traceback
-                debug_log(f"[PanelSetup] Probe error: {e}")
-                debug_log(traceback.format_exc())
+                log.debug(f"[PanelSetup] Probe error: {e}")
+                log.debug(traceback.format_exc())
                 # Refresh position on error too
                 self._refresh_position()
                 def show_error(dt, err=str(e)):
@@ -1199,17 +1191,17 @@ class PanelSetupController(CameraPreviewMixin):
                         except ValueError:
                             pass
                 
-                debug_log(f"[PanelSetup] Moving to origin X={x:.2f}, Y={y:.2f}")
+                log.debug(f"[PanelSetup] Moving to origin X={x:.2f}, Y={y:.2f}")
                 
                 # Move to origin position
                 await self.bot.motion.rapid_xy_abs(x, y)
                 await self.bot.motion.send_gcode_wait_ok("M400")
                 
-                debug_log("[PanelSetup] Arrived at origin")
+                log.debug("[PanelSetup] Arrived at origin")
                 self._refresh_position()
                 
             except Exception as e:
-                debug_log(f"[PanelSetup] Go to origin error: {e}")
+                log.debug(f"[PanelSetup] Go to origin error: {e}")
         
         asyncio.ensure_future(do_goto())
     
@@ -1218,7 +1210,7 @@ class PanelSetupController(CameraPreviewMixin):
         async def do_goto_offset():
             try:
                 if self.probe_z is None:
-                    debug_log("[PanelSetup] Must probe first!")
+                    log.debug("[PanelSetup] Must probe first!")
                     return
                 
                 # Read probe-to-board offset from input field (user may have edited without pressing Enter)
@@ -1235,12 +1227,12 @@ class PanelSetupController(CameraPreviewMixin):
                 # Target Z is probe_z minus the offset (going further down)
                 target_z = self.probe_z - offset
                 
-                debug_log(f"[PanelSetup] Moving to offset: probe_z={self.probe_z:.3f}, offset={offset:.3f}, target_z={target_z:.3f}")
+                log.debug(f"[PanelSetup] Moving to offset: probe_z={self.probe_z:.3f}, offset={offset:.3f}, target_z={target_z:.3f}")
                 
                 # Move Z to target position slowly (same speed as full_cycle)
                 await self.bot.motion.move_z_abs(target_z, 200)
                 
-                debug_log("[PanelSetup] Arrived at offset position")
+                log.debug("[PanelSetup] Arrived at offset position")
                 self._refresh_position()
                 
                 # Disable Go Ofs button since we're no longer at probe height
@@ -1252,7 +1244,7 @@ class PanelSetupController(CameraPreviewMixin):
                 Clock.schedule_once(update_ui, 0)
                 
             except Exception as e:
-                debug_log(f"[PanelSetup] Go to offset error: {e}")
+                log.debug(f"[PanelSetup] Go to offset error: {e}")
         
         asyncio.ensure_future(do_goto_offset())
     
@@ -1266,7 +1258,7 @@ class PanelSetupController(CameraPreviewMixin):
                 # Update edit buffer (will be saved to panel_settings on Save)
                 self._set_buffer_value('board_x', str(x))
                 self._set_buffer_value('board_y', str(y))
-                debug_log(f"[PanelSetup] Buffer: board_x={x}, board_y={y}")
+                log.debug(f"[PanelSetup] Buffer: board_x={x}, board_y={y}")
                 
                 # Update UI widgets
                 def update_ui(dt):
@@ -1279,10 +1271,10 @@ class PanelSetupController(CameraPreviewMixin):
                     self._update_origin_label()
                 Clock.schedule_once(update_ui, 0)
                 
-                debug_log(f"[PanelSetup] Board origin set to X={x:.2f}, Y={y:.2f}")
+                log.debug(f"[PanelSetup] Board origin set to X={x:.2f}, Y={y:.2f}")
                 
             except Exception as e:
-                debug_log(f"[PanelSetup] Set origin error: {e}")
+                log.debug(f"[PanelSetup] Set origin error: {e}")
         
         asyncio.ensure_future(do_set_origin())
     
@@ -1291,7 +1283,7 @@ class PanelSetupController(CameraPreviewMixin):
         async def do_capture():
             try:
                 if self.probe_z is None:
-                    debug_log("[PanelSetup] Must probe first!")
+                    log.debug("[PanelSetup] Must probe first!")
                     return
                 
                 # Get current Z position
@@ -1303,11 +1295,11 @@ class PanelSetupController(CameraPreviewMixin):
                 # offset = probe_z - current_z (should be positive)
                 offset = self.probe_z - current_z
                 
-                debug_log(f"[PanelSetup] Probe Z: {self.probe_z:.3f}, Current Z: {current_z:.3f}, Offset: {offset:.3f}")
+                log.debug(f"[PanelSetup] Probe Z: {self.probe_z:.3f}, Current Z: {current_z:.3f}, Offset: {offset:.3f}")
                 
                 # Update edit buffer (will be saved to panel_settings on Save)
                 self._set_buffer_value('probe_plane', str(offset))
-                debug_log(f"[PanelSetup] Buffer: probe_plane={offset}")
+                log.debug(f"[PanelSetup] Buffer: probe_plane={offset}")
                 
                 # Update UI widgets
                 def update_ui(dt):
@@ -1318,10 +1310,10 @@ class PanelSetupController(CameraPreviewMixin):
                     self._update_probe_offset_label()
                 Clock.schedule_once(update_ui, 0)
                 
-                debug_log(f"[PanelSetup] Probe-to-board offset set to {offset:.2f} mm")
+                log.debug(f"[PanelSetup] Probe-to-board offset set to {offset:.2f} mm")
                 
             except Exception as e:
-                debug_log(f"[PanelSetup] Capture offset error: {e}")
+                log.debug(f"[PanelSetup] Capture offset error: {e}")
         
         asyncio.ensure_future(do_capture())
 
@@ -1384,7 +1376,7 @@ class PanelSetupController(CameraPreviewMixin):
                     self.vision_xy_step = step_val
                     break
         
-        debug_log(f"[PanelSetup] Step selectors synced: xy={self.xy_step}, z={self.z_step}, vision_xy={self.vision_xy_step}")
+        log.debug(f"[PanelSetup] Step selectors synced: xy={self.xy_step}, z={self.z_step}, vision_xy={self.vision_xy_step}")
     
     def _check_vision_tab_selected(self, dt):
         """Check if Vision tab is already selected and start camera if so."""
@@ -1393,7 +1385,7 @@ class PanelSetupController(CameraPreviewMixin):
         
         vision_tab = self.popup.ids.get('vision_tab')
         if vision_tab and vision_tab.state == 'down':
-            debug_log("[PanelSetup] Vision tab already selected on open, starting camera")
+            log.debug("[PanelSetup] Vision tab already selected on open, starting camera")
             self._start_vision_preview()
     
     def _init_vision_preview(self):
@@ -1546,7 +1538,7 @@ class PanelSetupController(CameraPreviewMixin):
                 target_x = target_board_x + qr_offset_x + camera_offset_x
                 target_y = target_board_y + qr_offset_y + camera_offset_y
                 
-                debug_log(f"[PanelSetup] Moving to board [{col},{row}] QR position: "
+                log.debug(f"[PanelSetup] Moving to board [{col},{row}] QR position: "
                          f"board=({target_board_x:.2f}, {target_board_y:.2f}), "
                          f"qr_offset=({qr_offset_x:.2f}, {qr_offset_y:.2f}), "
                          f"camera_offset=({camera_offset_x:.2f}, {camera_offset_y:.2f}), "
@@ -1564,7 +1556,7 @@ class PanelSetupController(CameraPreviewMixin):
                 self._refresh_vision_position()
                 
             except Exception as e:
-                debug_log(f"[PanelSetup] Error moving to board QR: {e}")
+                log.debug(f"[PanelSetup] Error moving to board QR: {e}")
         
         asyncio.ensure_future(do_move())
     
@@ -1584,7 +1576,7 @@ class PanelSetupController(CameraPreviewMixin):
     
     def vision_tab_changed(self, state):
         """Handle Vision tab state changes."""
-        debug_log(f"[PanelSetup] Vision tab state: {state}")
+        log.debug(f"[PanelSetup] Vision tab state: {state}")
         if state == 'down':
             # Enable crosshair for QR offset calibration
             self._crosshair_enabled = True
@@ -1601,7 +1593,7 @@ class PanelSetupController(CameraPreviewMixin):
         if self.vision_preview_active:
             return
         
-        debug_log("[PanelSetup] Starting vision preview")
+        log.debug("[PanelSetup] Starting vision preview")
         self.vision_preview_active = True
         
         # Reset board selector to 0,0
@@ -1613,7 +1605,7 @@ class PanelSetupController(CameraPreviewMixin):
         ps = self.panel_settings
         self._saved_qr_offset_x = float(ps.get('qr_offset_x', 0) if ps else 0)
         self._saved_qr_offset_y = float(ps.get('qr_offset_y', 0) if ps else 0)
-        debug_log(f"[PanelSetup] Saved QR offset for reset: ({self._saved_qr_offset_x:.2f}, {self._saved_qr_offset_y:.2f})")
+        log.debug(f"[PanelSetup] Saved QR offset for reset: ({self._saved_qr_offset_x:.2f}, {self._saved_qr_offset_y:.2f})")
         
         # Update status
         if self.popup:
@@ -1628,10 +1620,10 @@ class PanelSetupController(CameraPreviewMixin):
                 # Ensure camera is connected via bot.vision
                 if self.bot and self.bot.vision:
                     await self.bot.vision.connect()
-                    debug_log("[PanelSetup] Camera connected")
+                    log.debug("[PanelSetup] Camera connected")
                     
                     # Move to safe Z for camera focus
-                    debug_log("[PanelSetup] Moving to safe Z for camera")
+                    log.debug("[PanelSetup] Moving to safe Z for camera")
                     await self.bot.motion.rapid_z_abs(0.0)
                     await self.bot.motion.send_gcode_wait_ok("M400")
                     
@@ -1675,7 +1667,7 @@ class PanelSetupController(CameraPreviewMixin):
                     target_x = board_x + qr_offset_x + camera_offset_x
                     target_y = board_y + qr_offset_y + camera_offset_y
                     
-                    debug_log(f"[PanelSetup] Moving camera to board 0,0 QR: origin=({board_x:.2f},{board_y:.2f}), "
+                    log.debug(f"[PanelSetup] Moving camera to board 0,0 QR: origin=({board_x:.2f},{board_y:.2f}), "
                              f"qr_offset=({qr_offset_x:.2f},{qr_offset_y:.2f}), "
                              f"camera_offset=({camera_offset_x:.2f},{camera_offset_y:.2f}), target=({target_x:.2f},{target_y:.2f})")
                     
@@ -1690,7 +1682,7 @@ class PanelSetupController(CameraPreviewMixin):
                     await self.bot.motion.rapid_xy_abs(target_x, target_y)
                     await self.bot.motion.send_gcode_wait_ok("M400")
                     
-                    debug_log("[PanelSetup] Camera positioned over board 0,0")
+                    log.debug("[PanelSetup] Camera positioned over board 0,0")
                     
                     # Start preview updates at 2 FPS
                     def schedule_preview(dt):
@@ -1711,7 +1703,7 @@ class PanelSetupController(CameraPreviewMixin):
                                 status_label.color = (0, 1, 0, 1)  # Green
                     Clock.schedule_once(update_status, 0)
                 else:
-                    debug_log("[PanelSetup] No vision controller available")
+                    log.debug("[PanelSetup] No vision controller available")
                     def show_error(dt):
                         if self.popup:
                             status_label = self.popup.ids.get('vision_status_label')
@@ -1721,7 +1713,7 @@ class PanelSetupController(CameraPreviewMixin):
                     Clock.schedule_once(show_error, 0)
                     
             except Exception as e:
-                debug_log(f"[PanelSetup] Camera connect error: {e}")
+                log.debug(f"[PanelSetup] Camera connect error: {e}")
                 def show_error(dt, err=str(e)):
                     if self.popup:
                         status_label = self.popup.ids.get('vision_status_label')
@@ -1737,7 +1729,7 @@ class PanelSetupController(CameraPreviewMixin):
         if not self.vision_preview_active:
             return
         
-        debug_log("[PanelSetup] Stopping vision preview")
+        log.debug("[PanelSetup] Stopping vision preview")
         self.vision_preview_active = False
         
         # Cancel preview updates
@@ -1790,7 +1782,7 @@ class PanelSetupController(CameraPreviewMixin):
                         if qr_data:
                             qr_type = 'Standard QR'
                     except Exception as e:
-                        debug_log(f"[PanelSetup] Standard QR detection error: {e}")
+                        log.debug(f"[PanelSetup] Standard QR detection error: {e}")
                     
                     # If no standard QR found, try zxing detection (handles Micro QR and can also detect standard QR)
                     if not qr_data:
@@ -1802,7 +1794,7 @@ class PanelSetupController(CameraPreviewMixin):
                             if result:
                                 qr_data, qr_type = result
                         except Exception as e:
-                            debug_log(f"[PanelSetup] Micro QR detection error: {e}")
+                            log.debug(f"[PanelSetup] Micro QR detection error: {e}")
                     
                     # Apply user-configured rotation for display
                     settings = self.get_settings()
@@ -1876,12 +1868,12 @@ class PanelSetupController(CameraPreviewMixin):
                     Clock.schedule_once(update_ui, 0)
                     
                 except Exception as e:
-                    debug_log(f"[PanelSetup] Preview frame error: {e}")
+                    log.debug(f"[PanelSetup] Preview frame error: {e}")
             
             asyncio.ensure_future(capture_and_display())
             
         except Exception as e:
-            debug_log(f"[PanelSetup] Vision preview error: {e}")
+            log.debug(f"[PanelSetup] Vision preview error: {e}")
     
     def _refresh_vision_position(self):
         """Query current position and update Vision tab display with relative coordinates.
@@ -1941,7 +1933,7 @@ class PanelSetupController(CameraPreviewMixin):
                 rel_x = (machine_x - camera_offset_x) - current_board_x
                 rel_y = (machine_y - camera_offset_y) - current_board_y
                 
-                debug_log(f"[Vision] Position refresh: machine=({machine_x:.2f},{machine_y:.2f}), "
+                log.debug(f"[Vision] Position refresh: machine=({machine_x:.2f},{machine_y:.2f}), "
                          f"camera_offset=({camera_offset_x:.2f},{camera_offset_y:.2f}), "
                          f"board_origin=({current_board_x:.2f},{current_board_y:.2f}), "
                          f"board_sel=({self.vision_board_col},{self.vision_board_row}), "
@@ -1956,7 +1948,7 @@ class PanelSetupController(CameraPreviewMixin):
                         y_label.text = f"Y: {rel_y:.2f}"
                 Clock.schedule_once(update_labels, 0)
             except Exception as e:
-                debug_log(f"[PanelSetup] Vision position refresh error: {e}")
+                log.debug(f"[PanelSetup] Vision position refresh error: {e}")
         
         asyncio.ensure_future(do_refresh())
     
@@ -1964,7 +1956,7 @@ class PanelSetupController(CameraPreviewMixin):
         """Set camera preview rotation and save to settings."""
         settings = self.get_settings()
         settings.set('camera_preview_rotation', rotation)
-        debug_log(f"[PanelSetup] Camera preview rotation set to {rotation}°")
+        log.debug(f"[PanelSetup] Camera preview rotation set to {rotation}°")
         
         # Also update the Config tab spinner if it exists
         def update_config_spinner(dt):
@@ -1977,7 +1969,7 @@ class PanelSetupController(CameraPreviewMixin):
     def vision_set_xy_step(self, step):
         """Set XY jog step size for Vision tab."""
         self.vision_xy_step = step
-        debug_log(f"[PanelSetup] Vision XY step set to {step} mm")
+        log.debug(f"[PanelSetup] Vision XY step set to {step} mm")
     
     def vision_jog(self, axis, direction):
         """Jog the machine in the specified axis and direction (Vision tab - XY only)."""
@@ -1993,7 +1985,7 @@ class PanelSetupController(CameraPreviewMixin):
                 await self.bot.motion.send_gcode_wait_ok("M400")
                 self._refresh_vision_position()
             except Exception as e:
-                debug_log(f"[PanelSetup] Vision jog error: {e}")
+                log.debug(f"[PanelSetup] Vision jog error: {e}")
         
         asyncio.ensure_future(do_jog())
     
@@ -2009,7 +2001,7 @@ class PanelSetupController(CameraPreviewMixin):
             if qr_y_input := self.popup.ids.get('ps_qr_offset_y_input'):
                 qr_y_input.text = f"{saved_y:.2f}"
         
-        debug_log(f"[PanelSetup] Reset QR offset to saved values: ({saved_x:.2f}, {saved_y:.2f})")
+        log.debug(f"[PanelSetup] Reset QR offset to saved values: ({saved_x:.2f}, {saved_y:.2f})")
         
         # Move back to the original QR position
         async def do_move():
@@ -2025,7 +2017,7 @@ class PanelSetupController(CameraPreviewMixin):
                 target_x = origin_x + saved_x + camera_offset_x
                 target_y = origin_y + saved_y + camera_offset_y
                 
-                debug_log(f"[PanelSetup] Moving to reset QR position: ({target_x:.2f}, {target_y:.2f})")
+                log.debug(f"[PanelSetup] Moving to reset QR position: ({target_x:.2f}, {target_y:.2f})")
                 
                 await self.bot.motion.rapid_xy_abs(target_x, target_y)
                 await self.bot.motion.send_gcode_wait_ok("M400")
@@ -2033,7 +2025,7 @@ class PanelSetupController(CameraPreviewMixin):
                 self._refresh_vision_position()
                 
             except Exception as e:
-                debug_log(f"[PanelSetup] Reset QR position error: {e}")
+                log.debug(f"[PanelSetup] Reset QR position error: {e}")
         
         asyncio.ensure_future(do_move())
     
@@ -2060,12 +2052,12 @@ class PanelSetupController(CameraPreviewMixin):
                 qr_offset_x = (x - camera_offset_x) - origin_x
                 qr_offset_y = (y - camera_offset_y) - origin_y
                 
-                debug_log(f"[PanelSetup] Setting QR offset: pos=({x:.2f}, {y:.2f}), camera_offset=({camera_offset_x:.2f}, {camera_offset_y:.2f}), origin=({origin_x:.2f}, {origin_y:.2f}), offset=({qr_offset_x:.2f}, {qr_offset_y:.2f})")
+                log.debug(f"[PanelSetup] Setting QR offset: pos=({x:.2f}, {y:.2f}), camera_offset=({camera_offset_x:.2f}, {camera_offset_y:.2f}), origin=({origin_x:.2f}, {origin_y:.2f}), offset=({qr_offset_x:.2f}, {qr_offset_y:.2f})")
                 
                 # Update edit buffer (will be saved to panel_settings on Save)
                 self._set_buffer_value('qr_offset_x', str(qr_offset_x))
                 self._set_buffer_value('qr_offset_y', str(qr_offset_y))
-                debug_log(f"[PanelSetup] Buffer: qr_offset_x={qr_offset_x}, qr_offset_y={qr_offset_y}")
+                log.debug(f"[PanelSetup] Buffer: qr_offset_x={qr_offset_x}, qr_offset_y={qr_offset_y}")
                 
                 # Update UI widgets
                 def update_ui(dt):
@@ -2079,10 +2071,10 @@ class PanelSetupController(CameraPreviewMixin):
                             status_label.color = (0, 1, 0, 1)  # Green
                 Clock.schedule_once(update_ui, 0)
                 
-                debug_log(f"[PanelSetup] QR offset set to X={qr_offset_x:.2f}, Y={qr_offset_y:.2f}")
+                log.debug(f"[PanelSetup] QR offset set to X={qr_offset_x:.2f}, Y={qr_offset_y:.2f}")
                 
             except Exception as e:
-                debug_log(f"[PanelSetup] Set QR offset error: {e}")
+                log.debug(f"[PanelSetup] Set QR offset error: {e}")
                 def show_error(dt, err=str(e)):
                     if self.popup:
                         status_label = self.popup.ids.get('vision_status_label')

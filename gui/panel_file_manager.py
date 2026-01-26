@@ -1,3 +1,6 @@
+from logger import get_logger
+log = get_logger(__name__)
+
 """Panel file management for the ProgBot GUI.
 
 This module provides a mixin class that handles loading, saving, and selecting
@@ -50,11 +53,11 @@ class PanelFileManagerMixin:
             
             self.file_chooser_popup.open()
         except Exception as e:
-            print(f"[PanelChooser] Error opening file chooser: {e}")
+            log.info(f"[PanelChooser] Error opening file chooser: {e}")
     
     def on_file_row_pressed(self, fullpath):
         """Called when a file row is pressed."""
-        print(f"[PanelChooser] Row pressed - fullpath: {fullpath}")
+        log.info(f"[PanelChooser] Row pressed - fullpath: {fullpath}")
         try:
             # Select file and update all items
             for item in self.panel_file_data:
@@ -64,9 +67,9 @@ class PanelFileManagerMixin:
             file_list = self.file_chooser_popup.ids.file_list
             file_list.data = []
             Clock.schedule_once(lambda dt: setattr(file_list, 'data', self.panel_file_data), 0.01)
-            print(f"[PanelChooser] Selected: {self.selected_panel_path}")
+            log.info(f"[PanelChooser] Selected: {self.selected_panel_path}")
         except Exception as e:
-            print(f"[PanelChooser] Error on press: {e}")
+            log.info(f"[PanelChooser] Error on press: {e}")
             import traceback
             traceback.print_exc()
     
@@ -95,9 +98,9 @@ class PanelFileManagerMixin:
             Clock.schedule_once(lambda dt: self._apply_settings_to_widgets_now())
             # Rebuild bot config with new settings
             Clock.schedule_once(lambda dt: self._reload_bot_config())
-            print(f"[PanelChooser] Loaded panel: {path}")
+            log.info(f"[PanelChooser] Loaded panel: {path}")
         except Exception as e:
-            print(f"[PanelChooser] Error loading panel: {e}")
+            log.info(f"[PanelChooser] Error loading panel: {e}")
     
     # ==================== Panel File Saving ====================
 
@@ -122,7 +125,7 @@ class PanelFileManagerMixin:
             # Focus and show keyboard after dialog opens
             Clock.schedule_once(lambda dt: self._focus_panel_input(), 0.1)
         except Exception as e:
-            print(f"[SavePanel] Error opening save dialog: {e}")
+            log.info(f"[SavePanel] Error opening save dialog: {e}")
 
     def _focus_panel_input(self):
         """Focus the panel name input and trigger keyboard."""
@@ -135,7 +138,7 @@ class PanelFileManagerMixin:
                 self.set_keyboard_layout('qwerty.json')
                 Window.show_keyboard()
         except Exception as e:
-            print(f"[SavePanel] Error focusing input: {e}")
+            log.info(f"[SavePanel] Error focusing input: {e}")
     
     def set_keyboard_layout(self, layout):
         """Switch the virtual keyboard layout."""
@@ -144,7 +147,7 @@ class PanelFileManagerMixin:
     def on_save_panel_confirmed(self, filename: str):
         """Called when user confirms saving panel with new name."""
         if not filename or not self.panel_settings:
-            print("[SavePanel] No filename provided")
+            log.info("[SavePanel] No filename provided")
             return
         
         try:
@@ -160,7 +163,7 @@ class PanelFileManagerMixin:
             
             # Validate filename (basic check)
             if not filename or all(c in '._-' for c in filename):
-                print("[SavePanel] Invalid filename")
+                log.info("[SavePanel] Invalid filename")
                 return
             
             # Add .panel extension
@@ -181,9 +184,9 @@ class PanelFileManagerMixin:
             app_settings = get_settings()
             app_settings.set('last_panel_file', filepath)
             
-            print(f"[SavePanel] Saved panel to: {filepath}")
+            log.info(f"[SavePanel] Saved panel to: {filepath}")
         except Exception as e:
-            print(f"[SavePanel] Error saving panel: {e}")
+            log.info(f"[SavePanel] Error saving panel: {e}")
     
     # ==================== Helper Methods ====================
     
@@ -213,6 +216,6 @@ class PanelFileManagerMixin:
             # Reinitialize panel in bot
             self.bot.init_panel()
             
-            print(f"[AsyncApp] Reloaded bot config: {rows}x{cols} grid")
+            log.info(f"[AsyncApp] Reloaded bot config: {rows}x{cols} grid")
         except Exception as e:
-            print(f"[AsyncApp] Error reloading bot config: {e}")
+            log.info(f"[AsyncApp] Error reloading bot config: {e}")

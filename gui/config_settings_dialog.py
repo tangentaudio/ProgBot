@@ -1,3 +1,6 @@
+from logger import get_logger
+log = get_logger(__name__)
+
 """Config Settings dialog for configuring global machine settings.
 
 This module provides an interactive dialog for configuring global settings
@@ -19,17 +22,6 @@ from jogging_mixin import JoggingMixin
 # Load the config settings KV file
 Builder.load_file('config_settings.kv')
 
-
-def debug_log(msg):
-    """Write debug message to /tmp/debug.txt"""
-    try:
-        with open('/tmp/debug.txt', 'a') as f:
-            import datetime
-            timestamp = datetime.datetime.now().strftime('%H:%M:%S.%f')[:-3]
-            f.write(f"[{timestamp}] {msg}\n")
-            f.flush()
-    except Exception:
-        pass
 
 
 class ConfigSettingsController(CameraPreviewMixin, JoggingMixin):
@@ -85,7 +77,7 @@ class ConfigSettingsController(CameraPreviewMixin, JoggingMixin):
     
     def open(self):
         """Open the config settings dialog."""
-        debug_log("[ConfigSettings] Opening dialog")
+        log.debug("[ConfigSettings] Opening dialog")
         
         # Create popup if needed
         if not self.popup:
@@ -133,7 +125,7 @@ class ConfigSettingsController(CameraPreviewMixin, JoggingMixin):
         self._original_values = copy.deepcopy(self._edit_buffer)
         self._is_dirty = False
         
-        debug_log("[ConfigSettings] Edit buffer initialized")
+        log.debug("[ConfigSettings] Edit buffer initialized")
     
     def _sync_buffer_to_dialog(self):
         """Sync edit buffer values to dialog widgets."""
@@ -164,7 +156,7 @@ class ConfigSettingsController(CameraPreviewMixin, JoggingMixin):
         # Serial port labels (read-only display, configured via separate dialog)
         self._update_serial_port_labels()
         
-        debug_log("[ConfigSettings] Buffer synced to dialog")
+        log.debug("[ConfigSettings] Buffer synced to dialog")
     
     def _sync_rotation_buttons(self, rotation):
         """Sync rotation toggle buttons to match given rotation value."""
@@ -210,7 +202,7 @@ class ConfigSettingsController(CameraPreviewMixin, JoggingMixin):
         if old_value != value:
             self._edit_buffer[key] = value
             self._check_dirty()
-            debug_log(f"[ConfigSettings] Buffer: {key} = {value}")
+            log.debug(f"[ConfigSettings] Buffer: {key} = {value}")
     
     def _get_buffer_value(self, key, default=None):
         """Get a value from the edit buffer."""
@@ -241,7 +233,7 @@ class ConfigSettingsController(CameraPreviewMixin, JoggingMixin):
     def save_settings(self):
         """Save the edit buffer to global settings."""
         if not self._is_dirty:
-            debug_log("[ConfigSettings] No changes to save")
+            log.debug("[ConfigSettings] No changes to save")
             return
         
         settings = self.get_settings()
@@ -259,13 +251,13 @@ class ConfigSettingsController(CameraPreviewMixin, JoggingMixin):
         if hasattr(self.app, 'settings_data') and self.app.settings_data:
             self.app.settings_data.update(self._edit_buffer)
         
-        debug_log("[ConfigSettings] Settings saved")
-        print("[ConfigSettings] Settings saved")
+        log.debug("[ConfigSettings] Settings saved")
+        log.info("[ConfigSettings] Settings saved")
     
     def cancel(self):
         """Cancel editing and discard changes."""
         if self._is_dirty:
-            debug_log("[ConfigSettings] Discarding unsaved changes")
+            log.debug("[ConfigSettings] Discarding unsaved changes")
         
         # Stop camera preview if active
         self.stop_camera_preview()
@@ -341,7 +333,7 @@ class ConfigSettingsController(CameraPreviewMixin, JoggingMixin):
     
     def _do_close(self):
         """Actually close the dialog."""
-        debug_log("[ConfigSettings] Closing dialog...")
+        log.debug("[ConfigSettings] Closing dialog...")
         
         # Stop camera preview if active
         self.stop_camera_preview()
@@ -355,7 +347,7 @@ class ConfigSettingsController(CameraPreviewMixin, JoggingMixin):
         if self.popup:
             self.popup.dismiss()
         
-        debug_log("[ConfigSettings] Dialog closed")
+        log.debug("[ConfigSettings] Dialog closed")
     
     def _check_camera_tab_selected(self, dt):
         """Check if Camera tab is selected and start preview if so."""
@@ -364,7 +356,7 @@ class ConfigSettingsController(CameraPreviewMixin, JoggingMixin):
         
         camera_tab = self.popup.ids.get('cs_camera_tab')
         if camera_tab and camera_tab.state == 'down':
-            debug_log("[ConfigSettings] Camera tab already selected, starting preview")
+            log.debug("[ConfigSettings] Camera tab already selected, starting preview")
             self.start_camera_preview(move_to_position=False)
     
     # =========================================================================
@@ -373,12 +365,12 @@ class ConfigSettingsController(CameraPreviewMixin, JoggingMixin):
     
     def camera_tab_changed(self, state):
         """Handle Camera tab state changes."""
-        debug_log(f"[ConfigSettings] Camera tab state: {state}")
+        log.debug(f"[ConfigSettings] Camera tab state: {state}")
         if state == 'down':
             # Save original offset values for reset functionality
             self._saved_camera_offset_x = float(self._edit_buffer.get('camera_offset_x', 50.0))
             self._saved_camera_offset_y = float(self._edit_buffer.get('camera_offset_y', 50.0))
-            debug_log(f"[ConfigSettings] Saved camera offset for reset: "
+            log.debug(f"[ConfigSettings] Saved camera offset for reset: "
                      f"({self._saved_camera_offset_x:.2f}, {self._saved_camera_offset_y:.2f})")
             
             # Enable crosshair for camera offset calibration
@@ -401,7 +393,7 @@ class ConfigSettingsController(CameraPreviewMixin, JoggingMixin):
         async def do_move():
             try:
                 if not self.bot or not self.bot.motion:
-                    debug_log("[ConfigSettings] No motion controller for camera position")
+                    log.debug("[ConfigSettings] No motion controller for camera position")
                     return
                 
                 # Get board origin from panel settings
@@ -418,7 +410,7 @@ class ConfigSettingsController(CameraPreviewMixin, JoggingMixin):
                 target_x = board_x + camera_offset_x
                 target_y = board_y + camera_offset_y
                 
-                debug_log(f"[ConfigSettings] Moving to camera calibration position: "
+                log.debug(f"[ConfigSettings] Moving to camera calibration position: "
                          f"board=({board_x:.2f}, {board_y:.2f}), "
                          f"camera_offset=({camera_offset_x:.2f}, {camera_offset_y:.2f}), "
                          f"target=({target_x:.2f}, {target_y:.2f})")
@@ -435,7 +427,7 @@ class ConfigSettingsController(CameraPreviewMixin, JoggingMixin):
                 self._refresh_jog_position()
                 
             except Exception as e:
-                debug_log(f"[ConfigSettings] Error moving to camera position: {e}")
+                log.debug(f"[ConfigSettings] Error moving to camera position: {e}")
         
         asyncio.ensure_future(do_move())
     
@@ -454,7 +446,7 @@ class ConfigSettingsController(CameraPreviewMixin, JoggingMixin):
             if y_input := self.popup.ids.get('cs_camera_offset_y_input'):
                 y_input.text = f"{saved_y:.2f}"
         
-        debug_log(f"[ConfigSettings] Reset camera offset to saved values: ({saved_x:.2f}, {saved_y:.2f})")
+        log.debug(f"[ConfigSettings] Reset camera offset to saved values: ({saved_x:.2f}, {saved_y:.2f})")
         
         # Move back to the original calibration position
         async def do_move():
@@ -469,7 +461,7 @@ class ConfigSettingsController(CameraPreviewMixin, JoggingMixin):
                 target_x = board_x + saved_x
                 target_y = board_y + saved_y
                 
-                debug_log(f"[ConfigSettings] Moving to reset position: ({target_x:.2f}, {target_y:.2f})")
+                log.debug(f"[ConfigSettings] Moving to reset position: ({target_x:.2f}, {target_y:.2f})")
                 
                 await self.bot.motion.rapid_xy_abs(target_x, target_y)
                 await self.bot.motion.send_gcode_wait_ok("M400")
@@ -489,7 +481,7 @@ class ConfigSettingsController(CameraPreviewMixin, JoggingMixin):
                         Clock.schedule_once(reset_status, 2.0)
                 
             except Exception as e:
-                debug_log(f"[ConfigSettings] Reset camera position error: {e}")
+                log.debug(f"[ConfigSettings] Reset camera position error: {e}")
         
         asyncio.ensure_future(do_move())
     
@@ -529,7 +521,7 @@ class ConfigSettingsController(CameraPreviewMixin, JoggingMixin):
     
     def set_rotation(self, rotation):
         """Set camera rotation."""
-        debug_log(f"[ConfigSettings] Set rotation: {rotation}")
+        log.debug(f"[ConfigSettings] Set rotation: {rotation}")
         self._set_buffer_value('camera_preview_rotation', rotation)
     
     def _get_camera_rotation(self):
@@ -565,7 +557,7 @@ class ConfigSettingsController(CameraPreviewMixin, JoggingMixin):
                 rel_x = machine_x - board_x
                 rel_y = machine_y - board_y
                 
-                debug_log(f"[ConfigSettings] Position refresh: machine=({machine_x:.2f},{machine_y:.2f}), "
+                log.debug(f"[ConfigSettings] Position refresh: machine=({machine_x:.2f},{machine_y:.2f}), "
                          f"board_origin=({board_x:.2f},{board_y:.2f}), "
                          f"rel=({rel_x:.2f},{rel_y:.2f})")
                 
@@ -579,7 +571,7 @@ class ConfigSettingsController(CameraPreviewMixin, JoggingMixin):
                 Clock.schedule_once(update_labels, 0)
                 
             except Exception as e:
-                debug_log(f"[ConfigSettings] Position refresh error: {e}")
+                log.debug(f"[ConfigSettings] Position refresh error: {e}")
         
         asyncio.ensure_future(do_refresh())
     
@@ -594,7 +586,7 @@ class ConfigSettingsController(CameraPreviewMixin, JoggingMixin):
         async def do_capture():
             try:
                 if not self.bot or not self.bot.motion:
-                    debug_log("[ConfigSettings] No motion controller for offset capture")
+                    log.debug("[ConfigSettings] No motion controller for offset capture")
                     return
                 
                 pos = await self.bot.motion.get_position()
@@ -609,7 +601,7 @@ class ConfigSettingsController(CameraPreviewMixin, JoggingMixin):
                 offset_x = machine_x - board_x
                 offset_y = machine_y - board_y
                 
-                debug_log(f"[ConfigSettings] Capturing camera offset: machine=({machine_x:.2f},{machine_y:.2f}), "
+                log.debug(f"[ConfigSettings] Capturing camera offset: machine=({machine_x:.2f},{machine_y:.2f}), "
                          f"board_origin=({board_x:.2f},{board_y:.2f}), "
                          f"offset=({offset_x:.2f},{offset_y:.2f})")
                 
@@ -620,7 +612,7 @@ class ConfigSettingsController(CameraPreviewMixin, JoggingMixin):
                 Clock.schedule_once(call_handler, 0)
                 
             except Exception as e:
-                debug_log(f"[ConfigSettings] Offset capture error: {e}")
+                log.debug(f"[ConfigSettings] Offset capture error: {e}")
         
         asyncio.ensure_future(do_capture())
     
@@ -634,7 +626,7 @@ class ConfigSettingsController(CameraPreviewMixin, JoggingMixin):
             offset_x: Camera X offset relative to board origin in mm
             offset_y: Camera Y offset relative to board origin in mm
         """
-        debug_log(f"[ConfigSettings] Camera offset captured: X={offset_x:.2f}, Y={offset_y:.2f}")
+        log.debug(f"[ConfigSettings] Camera offset captured: X={offset_x:.2f}, Y={offset_y:.2f}")
         
         # Store in buffer
         self._set_buffer_value('camera_offset_x', offset_x)
@@ -697,7 +689,7 @@ class ConfigSettingsController(CameraPreviewMixin, JoggingMixin):
         available_ports = DevicePortManager.list_ports()
         
         if not available_ports:
-            debug_log(f"[ConfigSettings] No serial ports available")
+            log.debug(f"[ConfigSettings] No serial ports available")
             return
         
         # Build device type label
@@ -711,12 +703,12 @@ class ConfigSettingsController(CameraPreviewMixin, JoggingMixin):
         def on_port_selected(port_info):
             """Handle port selection from dialog."""
             if port_info:
-                debug_log(f"[ConfigSettings] {port_type} port selected: {port_info.unique_id}")
+                log.debug(f"[ConfigSettings] {port_type} port selected: {port_info.unique_id}")
                 key = f'{port_type}_port_id'
                 self._set_buffer_value(key, port_info.unique_id)
                 self._update_serial_port_labels()
             else:
-                debug_log(f"[ConfigSettings] {port_type} port selection cancelled")
+                log.debug(f"[ConfigSettings] {port_type} port selection cancelled")
         
         # Use the app's serial port selector instance
         app = App.get_running_app()

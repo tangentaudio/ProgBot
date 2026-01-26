@@ -1,16 +1,31 @@
 import os
 os.environ['KCFG_INPUT_MOUSE'] = 'mouse,disable_on_activity'
 
-def debug_log(msg):
-    """Write debug message to /tmp/debug.txt"""
+# Initialize logging FIRST before any other imports that might log
+from logger import setup_logging, get_logger, LOG_FILE_PATH
+setup_logging()
+log = get_logger(__name__)
+
+def dump_diagnostics(label=""):
+    """Dump system diagnostics to debug log."""
+    import asyncio
     try:
-        with open('/tmp/debug.txt', 'a') as f:
-            import datetime
-            timestamp = datetime.datetime.now().strftime('%H:%M:%S.%f')[:-3]
-            f.write(f"[{timestamp}] {msg}\n")
-            f.flush()
-    except Exception:
-        pass
+        loop = asyncio.get_event_loop()
+        tasks = asyncio.all_tasks(loop)
+        pending = [t for t in tasks if not t.done()]
+        log.debug(f"[DIAG {label}] Asyncio tasks: {len(tasks)} total, {len(pending)} pending")
+        for t in pending[:10]:  # Log first 10 pending tasks
+            log.debug(f"[DIAG {label}]   Task: {t.get_name()} - {t.get_coro().__qualname__ if t.get_coro() else 'no coro'}")
+    except Exception as e:
+        log.debug(f"[DIAG {label}] Error getting tasks: {e}")
+    
+    try:
+        from kivy.clock import Clock
+        # Count scheduled events
+        events = Clock.get_events()
+        log.debug(f"[DIAG {label}] Clock events scheduled: {len(events)}")
+    except Exception as e:
+        log.debug(f"[DIAG {label}] Error getting clock events: {e}")
 
 from kivy.config import Config
 
@@ -41,6 +56,16 @@ if os.path.exists(NOTO_SANS_FONT):
 
 import sys
 import asyncio
+import logging
+
+# Suppress pynnex debug/trace logging which creates significant overhead
+# Set before importing pynnex to ensure it takes effect
+logging.getLogger('pynnex').setLevel(logging.WARNING)
+logging.getLogger('pynnex.emitter').setLevel(logging.WARNING)
+logging.getLogger('pynnex.listener').setLevel(logging.WARNING)
+logging.getLogger('pynnex.emitter.trace').setLevel(logging.WARNING)
+logging.getLogger('pynnex.listener.trace').setLevel(logging.WARNING)
+
 from pynnex import with_emitters, emitter, listener
 from kivy.app import App
 from kivy.lang.builder import Builder
@@ -73,41 +98,30 @@ from settings_handlers import SettingsHandlersMixin
 from panel_file_manager import PanelFileManagerMixin
 
 class OutputCapture:
-    """Captures print/stderr output and stores it until LogViewer is ready."""
+    """Captures print/stderr output and routes to the logging system.
+    
+    This intercepts print() calls and routes them through Python logging
+    so they appear in the log file with proper formatting.
+    """
     def __init__(self):
-        self.buffer = []
-        self.log_viewer = None
         self.original_stdout = sys.__stdout__
         self.original_stderr = sys.__stderr__
+        self._print_logger = get_logger('print')
     
     def write(self, text):
-        """Write text to buffer and to LogViewer if available."""
-        self.buffer.append(text)
-        if self.log_viewer:
-            try:
-                self.log_viewer.write(text)
-            except Exception:
-                pass
-        else:
-            # If no LogViewer yet, write to original stdout for debugging
-            self.original_stdout.write(text)
-            self.original_stdout.flush()
-    
-    def set_log_viewer(self, log_viewer):
-        """Set the LogViewer and flush buffered output."""
-        self.log_viewer = log_viewer
-        # Flush buffer to the LogViewer
-        for text in self.buffer:
-            try:
-                log_viewer.write(text)
-            except Exception:
-                pass
+        """Route print output to logging system."""
+        # Skip empty or whitespace-only text
+        text = text.rstrip('\n\r')
+        if not text or not text.strip():
+            return
+        # Route through logging (will go to file and console)
+        self._print_logger.info(text)
     
     def flush(self):
         pass
 
 
-# Create a global output capture instance
+# Capture print() statements and route to logging
 output_capture = OutputCapture()
 sys.stdout = output_capture
 sys.stderr = output_capture
@@ -268,13 +282,26 @@ class GridCell(ButtonBehavior, BoxLayout):
             else:
                 self.cell_bg_color = [0.5, 0.5, 0.5, 1]  # Default mid-gray
         except Exception as e:
-            print(f"[GridCell] Error updating status: {e}")
+            log.error(f"[GridCell] Error updating status: {e}")
 
 class LogViewer(ScrollView):
+    """Log viewer that tails a log file when visible (tail -f style).
+    
+    Supports filtering by log level (DEBUG, INFO, WARNING, ERROR).
+    """
+    
+    # Log level filter - show this level and above
+    LOG_LEVELS = ['DEBUG', 'INFO', 'WARNING', 'ERROR']
+    
     def __init__(self, **kwargs):
         kwargs.setdefault('effect_cls', ScrollEffect)
         super().__init__(**kwargs)
         self.log_text = None
+        self._tail_event = None
+        self._file_pos = 0  # Track position in file for incremental reads
+        self._is_tailing = False
+        self._filter_level = 'INFO'  # Default to INFO and above
+        self._all_lines = []  # Store all lines for filtering
         # Find log_text TextInput in children after build
         Clock.schedule_once(self._setup_log_text, 0)
 
@@ -284,36 +311,112 @@ class LogViewer(ScrollView):
         for child in self.children:
             if isinstance(child, TextInput):
                 self.log_text = child
-                print(f"[LogViewer] Found TextInput in children: {self.log_text}")
                 break
         
         # Fallback: check ids
         if not self.log_text:
             self.log_text = self.ids.get('log_text')
-            if self.log_text:
-                print(f"[LogViewer] Found TextInput in ids: {self.log_text}")
         
         if self.log_text:
             self.log_text.bind(minimum_height=self.log_text.setter('height'))
-            print(f"[LogViewer] TextInput setup complete, ready for logging")
-        else:
-            print(f"[LogViewer] Warning: TextInput not found")
 
-    def write(self, text):
+    def set_filter_level(self, level: str):
+        """Set the minimum log level to display.
+        
+        Args:
+            level: One of 'DEBUG', 'INFO', 'WARNING', 'ERROR'
+        """
+        if level in self.LOG_LEVELS:
+            self._filter_level = level
+            self._apply_filter()
+    
+    def _should_show_line(self, line: str) -> bool:
+        """Check if a log line should be shown based on current filter."""
+        filter_idx = self.LOG_LEVELS.index(self._filter_level)
+        for i, level in enumerate(self.LOG_LEVELS):
+            if f'[{level}]' in line:
+                return i >= filter_idx
+        # Lines without a level marker are always shown
+        return True
+    
+    def _apply_filter(self):
+        """Apply the current filter to all stored lines."""
+        if not self.log_text:
+            return
+        filtered = [line for line in self._all_lines if self._should_show_line(line)]
+        # Keep last 300 filtered lines
+        if len(filtered) > 300:
+            filtered = filtered[-300:]
+        self.log_text.text = '\n'.join(filtered)
+        self.scroll_to_bottom()
+
+    def start_tailing(self):
+        """Start tailing the log file (call when log viewer becomes visible)."""
+        if self._is_tailing:
+            return
+        self._is_tailing = True
+        
+        # Load existing content first (last 500 lines, filter to 300)
+        self._load_initial_content()
+        
+        # Schedule periodic tail updates
+        self._tail_event = Clock.schedule_interval(self._tail_update, 0.5)  # Update every 500ms
+    
+    def stop_tailing(self):
+        """Stop tailing the log file (call when log viewer is hidden)."""
+        self._is_tailing = False
+        if self._tail_event:
+            self._tail_event.cancel()
+            self._tail_event = None
+    
+    def _load_initial_content(self):
+        """Load the last N lines from the log file."""
+        if not self.log_text:
+            return
         try:
-            if self.log_text:
-                self.log_text.text += text
-                Clock.schedule_once(lambda dt: self.scroll_to_bottom())
-            else:
-                # Try to find it if it wasn't found earlier
-                for child in self.children:
-                    if isinstance(child, TextInput):
-                        self.log_text = child
-                        self.log_text.text += text
-                        Clock.schedule_once(lambda dt: self.scroll_to_bottom())
-                        break
+            with open(LOG_FILE_PATH, 'r') as f:
+                # Read all and get last 500 lines
+                content = f.read()
+                lines = content.split('\n')
+                if len(lines) > 500:
+                    lines = lines[-500:]
+                self._all_lines = lines
+                # Apply filter
+                self._apply_filter()
+                # Remember file position for incremental reads
+                f.seek(0, 2)  # Seek to end
+                self._file_pos = f.tell()
+        except FileNotFoundError:
+            self.log_text.text = "[Log file not found yet]\n"
+            self._all_lines = []
+            self._file_pos = 0
         except Exception as e:
-            print(f"[LogViewer] Error writing to log: {e}")
+            self.log_text.text = f"[Error loading log: {e}]\n"
+            self._all_lines = []
+            self._file_pos = 0
+    
+    def _tail_update(self, dt):
+        """Read new content from the log file (incremental tail)."""
+        if not self.log_text or not self._is_tailing:
+            return
+        try:
+            with open(LOG_FILE_PATH, 'r') as f:
+                f.seek(self._file_pos)
+                new_content = f.read()
+                if new_content:
+                    new_lines = new_content.split('\n')
+                    self._all_lines.extend(new_lines)
+                    # Keep last 500 lines in memory
+                    if len(self._all_lines) > 500:
+                        self._all_lines = self._all_lines[-500:]
+                    self._file_pos = f.tell()
+                    self._apply_filter()
+        except Exception:
+            pass  # Silently ignore errors during tailing
+    
+    def write(self, text):
+        """Legacy write method - no longer used but kept for compatibility."""
+        pass
 
     def scroll_to_bottom(self):
         self.scroll_y = 0
@@ -400,16 +503,24 @@ class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, App):
             if not self.log_popup:
                 # Create popup if it doesn't exist
                 self.log_popup = Factory.LogPopup()
-                # Give the popup time to initialize, then set up redirection
-                Clock.schedule_once(lambda dt: self._setup_popup_output_redirection(), 0.2)
             
             # Check if popup is open using the internal _is_open attribute
             if hasattr(self.log_popup, '_is_open') and self.log_popup._is_open:
+                # Stop tailing when closing
+                log_viewer = self.log_popup.ids.get('log_viewer_widget')
+                if log_viewer:
+                    log_viewer.stop_tailing()
                 self.log_popup.dismiss()
             else:
                 self.log_popup.open()
+                # Start tailing when opening (after a brief delay for UI setup)
+                def start_tail(dt):
+                    log_viewer = self.log_popup.ids.get('log_viewer_widget')
+                    if log_viewer:
+                        log_viewer.start_tailing()
+                Clock.schedule_once(start_tail, 0.1)
         except Exception as e:
-            print(f"Error toggling log popup: {e}")
+            log.error(f"Error toggling log popup: {e}")
             import traceback
             traceback.print_exc()
     
@@ -431,7 +542,7 @@ class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, App):
                         stats_label.text = self._last_stats_text
                 self.stats_popup.open()
         except Exception as e:
-            print(f"Error toggling stats popup: {e}")
+            log.error(f"Error toggling stats popup: {e}")
             import traceback
             traceback.print_exc()
     
@@ -465,16 +576,6 @@ class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, App):
         timer_label = self.root.ids.get('cycle_timer_label')
         if timer_label:
             timer_label.text = f"{minutes}:{seconds:02d}"
-    
-    def _setup_popup_output_redirection(self):
-        """Redirect stdout/stderr to the popup's LogViewer once it's ready."""
-        if self.log_popup and hasattr(self.log_popup, 'ids'):
-            log_viewer = self.log_popup.ids.get('log_viewer_widget')
-            if log_viewer:
-                output_capture.set_log_viewer(log_viewer)
-                output_capture.write("[App] Redirecting stdout to popup LogViewer\n")
-            else:
-                output_capture.write("[App] Warning: Could not find log_viewer_widget in popup\n")
 
     def _open_error_popup(self, error_info):
         message = error_info.get('message', 'Unknown error') if isinstance(error_info, dict) else str(error_info)
@@ -496,7 +597,7 @@ class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, App):
         try:
             self.error_popup.open()
         except Exception as e:
-            print(f"[ErrorPopup] Failed to open: {e}")
+            log.error(f"[ErrorPopup] Failed to open: {e}")
     
     def _set_widget(self, widget_name: str, **props):
         """Set properties on a widget if it exists."""
@@ -516,7 +617,7 @@ class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, App):
             labels: Optional list of labels for cells (column-major from bottom-left)
         """
         if not (grid := getattr(self, 'panel_grid', None)):
-            print("Error: panel_grid not found")
+            log.error("Error: panel_grid not found")
             return
         
         # Clear existing cells
@@ -565,7 +666,7 @@ class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, App):
                 def on_toggle():
                     skip_pos_updated = self.get_skip_board_pos()
                     get_settings().set('skip_board_pos', skip_pos_updated)
-                    print(f"[GridCell] Saved skip_board_pos: {skip_pos_updated}")
+                    log.debug(f"[GridCell] Saved skip_board_pos: {skip_pos_updated}")
                 return on_toggle
             
             # Create cell with appropriate checked state and callback
@@ -696,9 +797,9 @@ class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, App):
                 "Test Only": sequence.OperationMode.TEST_ONLY,
             }
             self.loaded_operation_mode = mode_mapping.get(mode_text, sequence.OperationMode.PROGRAM)
-            print(f"[AsyncApp.build] Loaded settings from file")
+            log.info(f"[AsyncApp.build] Loaded settings from file")
         except Exception as e:
-            print(f"[AsyncApp.build] Error loading settings: {e}")
+            log.error(f"[AsyncApp.build] Error loading settings: {e}")
         
         # Create file chooser popup for panel files
         self.file_chooser_popup = Factory.PanelFileChooser()
@@ -745,9 +846,6 @@ class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, App):
         # Create serial port chooser
         self.serial_port_selector = SerialPortSelector()
         
-        # Redirect stdout/stderr to the popup's LogViewer so all messages are captured
-        Clock.schedule_once(lambda dt: self._setup_initial_redirection(), 0.2)
-        
         # Update widget values from settings
         Clock.schedule_once(lambda dt: self._apply_settings_to_widgets(root, settings_data), 0.3)
 
@@ -771,7 +869,7 @@ class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, App):
                     return value.lower() in ('true', '1', 'yes')
                 return cast(value)
             except Exception as e:
-                sequence.debug_log(f"[_config_from_settings] Cast failed for {key}: {e}")
+                log.debug(f"[_config_from_settings] Cast failed for {key}: {e}")
                 return fallback
 
         mode_mapping = {
@@ -830,7 +928,7 @@ class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, App):
     
     def _debug_phase_flags(self, config):
         """Log phase flags for debugging."""
-        print(f"[Config] Phase flags: vision={config.vision_enabled}, programming={config.programming_enabled}, provision={config.provision_enabled}, test={config.test_enabled}")
+        log.debug(f"[Config] Phase flags: vision={config.vision_enabled}, programming={config.programming_enabled}, provision={config.provision_enabled}, test={config.test_enabled}")
     
     def _apply_settings_to_widgets(self, root, settings_data):
         """Apply loaded settings to UI widgets."""
@@ -887,19 +985,10 @@ class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, App):
             if main_firmware_input:
                 main_firmware_input.text = settings_data.get('main_core_firmware', '/home/steve/fw/merged.hex')
             
-            print(f"[AsyncApp] Applied settings to widgets")
+            log.info(f"[AsyncApp] Applied settings to widgets")
         except Exception as e:
-            print(f"[AsyncApp] Error applying settings to widgets: {e}")
-    
-    def _setup_initial_redirection(self):
-        """Set up initial stdout/stderr redirection to popup's LogViewer."""
-        if self.log_popup and hasattr(self.log_popup, 'ids'):
-            log_viewer = self.log_popup.ids.get('log_viewer_widget')
-            if log_viewer:
-                # Flush all buffered output to the LogViewer
-                output_capture.set_log_viewer(log_viewer)
-                output_capture.write("[App] Initial redirection complete, flushing buffered output\n")
-    
+            log.error(f"[AsyncApp] Error applying settings to widgets: {e}")
+
     def _set_config_widgets_enabled(self, enabled):
         """Enable or disable all configuration widgets.
         
@@ -907,14 +996,14 @@ class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, App):
             enabled: True to enable, False to disable
         """
         if not hasattr(self, 'config_widgets'):
-            print("[Config] Warning: config_widgets not initialized")
+            log.warning("[Config] Warning: config_widgets not initialized")
             return
         for widget in self.config_widgets:
             if widget:
                 try:
                     widget.disabled = not enabled
                 except Exception as e:
-                    print(f"[Config] Error setting widget disabled state: {e}")
+                    log.error(f"[Config] Error setting widget disabled state: {e}")
     
     def _set_controls_enabled(self, enabled):
         """Enable or disable all controls (config widgets, grid cells, and buttons).
@@ -939,7 +1028,7 @@ class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, App):
             try:
                 cell.disabled = not enabled
             except Exception as e:
-                print(f"[Grid] Error setting cell enabled state: {e}")
+                log.error(f"[Grid] Error setting cell enabled state: {e}")
     
     def update_grid_phase_states(self):
         """Update all grid cells with current phase enabled states from panel settings."""
@@ -964,7 +1053,7 @@ class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, App):
                 cell.provision_enabled = provision_enabled
                 cell.test_enabled = test_enabled
             except Exception as e:
-                print(f"[Grid] Error updating cell phase states: {e}")
+                log.error(f"[Grid] Error updating cell phase states: {e}")
 
     def update_grid_from_settings(self):
         """Update grid display from current panel settings.
@@ -976,10 +1065,10 @@ class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, App):
 
     def home_machine(self, instance):
         """Force machine homing."""
-        print(f"[HomeMachine] Button pressed")
+        log.info(f"[HomeMachine] Button pressed")
         
         if not self.bot or not self.bot.motion:
-            print(f"[HomeMachine] Bot or motion controller not initialized")
+            log.warning(f"[HomeMachine] Bot or motion controller not initialized")
             return
         
         # Disable buttons during homing
@@ -988,23 +1077,23 @@ class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, App):
         
         async def do_homing():
             try:
-                print("[HomeMachine] Starting forced homing...")
+                log.info("[HomeMachine] Starting forced homing...")
                 await self.bot.motion.connect()
                 
                 # Clear alarm
                 await self.bot.motion.device.send_command("M999")
                 
                 # Force homing
-                print("[HomeMachine] Homing...")
+                log.info("[HomeMachine] Homing...")
                 await self.bot.motion.send_gcode_wait_ok("$H", timeout=20)
                 
                 # Set work coordinates
-                print("[HomeMachine] Setting work coordinates...")
+                log.info("[HomeMachine] Setting work coordinates...")
                 await self.bot.motion.send_gcode_wait_ok("G92 X0 Y0 Z0")
                 
-                print("[HomeMachine] Homing complete")
+                log.info("[HomeMachine] Homing complete")
             except Exception as e:
-                print(f"[HomeMachine] Error: {e}")
+                log.error(f"[HomeMachine] Error: {e}")
                 import traceback
                 traceback.print_exc()
             finally:
@@ -1296,7 +1385,7 @@ class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, App):
 
     def reset_grid(self, instance):
         """Reset all grid cells to their default state as if panel was just loaded."""
-        print(f"[ResetGrid] Button pressed")
+        log.info(f"[ResetGrid] Button pressed")
         
         def do_reset(dt):
             # Get skip positions from current panel settings
@@ -1339,14 +1428,14 @@ class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, App):
                 self.bot.board_statuses = {}
                 self.bot.stats.reset()
             
-            print(f"[ResetGrid] Grid reset complete")
+            log.info(f"[ResetGrid] Grid reset complete")
         
         # Schedule to run after button release completes
         Clock.schedule_once(do_reset, 0)
     
     def skip_all_boards(self, instance):
         """Set all grid cells to skipped state."""
-        print(f"[SkipAll] Button pressed")
+        log.info(f"[SkipAll] Button pressed")
         
         def do_skip(dt):
             for cell_id, cell in self.grid_cells.items():
@@ -1358,13 +1447,13 @@ class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, App):
             get_settings().set('skip_board_pos', skip_pos)
             if self.bot:
                 self.bot.set_skip_board_pos(skip_pos)
-            print(f"[SkipAll] All boards skipped")
+            log.info(f"[SkipAll] All boards skipped")
         
         Clock.schedule_once(do_skip, 0)
     
     def enable_all_boards(self, instance):
         """Set all grid cells to enabled state."""
-        print(f"[EnableAll] Button pressed")
+        log.info(f"[EnableAll] Button pressed")
         
         def do_enable(dt):
             for cell_id, cell in self.grid_cells.items():
@@ -1375,14 +1464,13 @@ class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, App):
             get_settings().set('skip_board_pos', skip_pos)
             if self.bot:
                 self.bot.set_skip_board_pos(skip_pos)
-            print(f"[EnableAll] All boards enabled")
+            log.info(f"[EnableAll] All boards enabled")
         
         Clock.schedule_once(do_enable, 0)
     
     def stop(self, instance):
         # concise stops using helper
-        print(f"[Stop] Button pressed")
-        debug_log("[Stop] Stop button pressed")
+        log.info("[Stop] Button pressed")
         try:
             self._set_widget('start_button', disabled=False)
             self._set_widget('stop_button', disabled=True)
@@ -1394,16 +1482,16 @@ class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, App):
             # Note: Board statuses are updated via BoardStatus.INTERRUPTED in sequence.py
             # No need to manually update cell colors/text here - the status updates will handle it
         except Exception as e:
-            print(f"[Stop] Error in widget updates: {e}")
+            log.error(f"[Stop] Error in widget updates: {e}")
         
         # Ensure camera preview is stopped and popup closed
         if hasattr(self, 'bot') and self.bot and hasattr(self.bot, 'camera_preview'):
             if self.bot.camera_preview:
                 try:
                     self.bot.camera_preview.stop_preview()
-                    debug_log("[Stop] Camera preview stopped")
+                    log.info("[Stop] Camera preview stopped")
                 except Exception as e:
-                    debug_log(f"[Stop] Error stopping camera preview: {e}")
+                    log.error(f"[Stop] Error stopping camera preview: {e}")
         
         # Switch back to idle view if camera was showing
         manager = self.root.ids.get('stats_camera_manager')
@@ -1413,27 +1501,24 @@ class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, App):
         # Cancel the running task
         if (bot := getattr(self, 'bot_task', None)):
             try:
-                print(f"[Stop] Cancelling bot task")
-                debug_log("[Stop] Cancelling bot task")
+                log.info("[Stop] Cancelling bot task")
                 bot.cancel()
-                print(f"[Stop] Bot task cancelled")
-                debug_log("[Stop] Bot task cancelled")
+                log.info("[Stop] Bot task cancelled")
             except Exception as e:
-                print(f"[Stop] Error cancelling bot task: {e}")
+                log.error(f"[Stop] Error cancelling bot task: {e}")
         
         # Camera cleanup happens automatically in full_cycle cleanup
         # Don't schedule it here - causes race condition with next start
-        debug_log("[Stop] Camera will be cleaned up when task finishes")
-        print(f"[Stop] Waiting for task cleanup to complete...")
+        log.info("[Stop] Waiting for task cleanup to complete...")
         
         
     def start(self, instance):
         # concise widget updates using helper
-        print(f"[Start] Button pressed")
+        log.info(f"[Start] Button pressed")
         
         # If there's a previous task still cleaning up, wait for it
         if hasattr(self, 'bot_task') and self.bot_task and not self.bot_task.done():
-            print(f"[Start] Previous task still running, waiting for cleanup...")
+            log.info(f"[Start] Previous task still running, waiting for cleanup...")
             async def wait_and_start():
                 try:
                     # Wait up to 3 seconds for previous task to finish
@@ -1441,7 +1526,7 @@ class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, App):
                 except (asyncio.TimeoutError, asyncio.CancelledError):
                     pass
                 except Exception as e:
-                    print(f"[Start] Error waiting for previous task: {e}")
+                    log.error(f"[Start] Error waiting for previous task: {e}")
                 
                 # Small delay to ensure cleanup is complete
                 await asyncio.sleep(0.5)
@@ -1462,7 +1547,7 @@ class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, App):
     
     async def _do_start(self):
         """Actually start the bot cycle."""
-        print(f"[Start] Starting bot cycle")
+        log.info(f"[Start] Starting bot cycle")
         self._set_widget('start_button', disabled=True)
         self._set_widget('stop_button', disabled=False)
         # Disable HOME and grid manipulation buttons during cycle
@@ -1499,27 +1584,52 @@ class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, App):
             b.config = new_config
             b.set_skip_board_pos(skip_pos)
         else:
-            print(f"[Start] Warning: Bot not found")
+            log.warning(f"[Start] Warning: Bot not found")
         
         if (b := getattr(self, 'bot', None)):
-            print(f"[Start] Creating bot task")
+            log.info(f"[Start] Creating bot task")
+            
+            # Reconnect stats_updated signal (in case it was disconnected after previous cycle)
+            try:
+                # First disconnect any existing connection to avoid duplicates
+                b.stats_updated.disconnect(listener=self.on_stats_updated)
+            except:
+                pass  # Ignore if not connected
+            b.stats_updated.connect(self.on_stats_updated)
+            log.info(f"[Start] Reconnected stats_updated signal")
+            
             self.bot_task = asyncio.create_task(b.full_cycle())
             # Add callback to re-enable config widgets when task completes
             self.bot_task.add_done_callback(self._on_task_complete)
             # Start the cycle timer
             self._start_cycle_timer()
-            print(f"[Start] Bot task created")
+            log.info(f"[Start] Bot task created")
         else:
-            print(f"[Start] Error: Bot not available to create task")
+            log.error(f"[Start] Error: Bot not available to create task")
     
     def _on_task_complete(self, task):
         """Called when the bot task completes or is cancelled."""
+        # Dump diagnostics to see system state
+        dump_diagnostics("TASK_COMPLETE")
+        
         try:
             task.exception()
         except asyncio.CancelledError:
             pass
         except Exception as e:
-            print(f"[BotTask] Completed with error: {e}")
+            log.error(f"[BotTask] Completed with error: {e}")
+
+        # Disconnect frequent signal emitters to prevent orphaned tasks
+        # These signals fire during cycles and can cause issues if emitted after completion
+        # Note: We don't disconnect all signals since some are needed for UI updates
+        if hasattr(self, 'bot') and self.bot:
+            try:
+                # Disconnect stats_updated since it's emitted frequently and can pile up
+                if hasattr(self.bot, 'stats_updated'):
+                    self.bot.stats_updated.disconnect(listener=self.on_stats_updated)
+                    log.info("[Task Complete] Disconnected stats_updated signal")
+            except Exception as e:
+                log.error(f"[Task Complete] Error disconnecting signals: {e}")
 
         # Re-enable start button and config widgets
         Clock.schedule_once(lambda dt: self._set_widget('start_button', disabled=False))
@@ -1544,21 +1654,16 @@ class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, App):
             cell_id: The cell ID (0-indexed from bottom-left)
             board_status: BoardStatus object with status information
         """
-        print(f"Board status change: cell_id={cell_id}, status={board_status}")
         if cell := self.grid_cells.get(cell_id):
             Clock.schedule_once(lambda dt: cell.update_status(board_status))
-        else:
-            print(f"Warning: Cell {cell_id} not found in grid_cells")
 
     @listener
     async def on_phase_change(self, value):
-        print(f"Phase is now {value}")
         if (lbl := getattr(self, 'phase_label', None)):
             Clock.schedule_once(lambda dt: setattr(lbl, 'text', str(value)))
 
     @listener
     async def on_panel_change(self, cols, rows):
-        print(f"Panel changed: cols={cols}, rows={rows}")
         Clock.schedule_once(lambda dt: self.populate_grid(rows, cols))
 
     @listener
@@ -1569,11 +1674,8 @@ class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, App):
             cell_id: The cell ID (0-indexed from bottom-left)
             color_rgba: List or tuple [r, g, b, a] with values 0-1
         """
-        print(f"Cell color change: cell_id={cell_id}, color={color_rgba}")
         if cell := self.grid_cells.get(cell_id):
             Clock.schedule_once(lambda dt: setattr(cell, 'cell_bg_color', color_rgba))
-        else:
-            print(f"Warning: Cell {cell_id} not found in grid_cells")
 
     @listener
     async def on_error_occurred(self, error_info):
@@ -1600,7 +1702,6 @@ class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, App):
             manager = self.root.ids.get('stats_camera_manager')
             if manager:
                 manager.current = 'camera'
-                print("[QRScan] Switched to camera preview")
         Clock.schedule_once(do_show)
     
     @listener
@@ -1610,7 +1711,6 @@ class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, App):
             manager = self.root.ids.get('stats_camera_manager')
             if manager:
                 manager.current = 'idle'
-                print("[QRScan] Switched back to idle display")
         Clock.schedule_once(do_hide)
     def on_error_abort(self):
         if self.error_popup:
@@ -1632,7 +1732,7 @@ class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, App):
         col = info.get('col') if isinstance(info, dict) else None
         row = info.get('row') if isinstance(info, dict) else None
         if col is None or row is None or not self.bot:
-            print("[ErrorPopup] No board info for retry; restarting full cycle")
+            log.info("[ErrorPopup] No board info for retry; restarting full cycle")
             Clock.schedule_once(lambda dt: self.start(self.start_button))
             return
 
@@ -1648,7 +1748,7 @@ class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, App):
         self._set_widget('stop_button', disabled=False)
         self._set_config_widgets_enabled(False)
         self._set_grid_cells_enabled(False)
-        print(f"[ErrorPopup] Retrying board [{col}, {row}]")
+        log.info(f"[ErrorPopup] Retrying board [{col}, {row}]")
         self.bot_task = loop.create_task(self.bot.retry_board(col, row))
         self.bot_task.add_done_callback(self._on_task_complete)
 
@@ -1662,7 +1762,7 @@ class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, App):
         if col is None or row is None:
             return
         if not hasattr(self, 'grid_rows') or not hasattr(self, 'grid_cols'):
-            print("[ErrorPopup] Grid dimensions not initialized; cannot skip")
+            log.warning("[ErrorPopup] Grid dimensions not initialized; cannot skip")
             return
 
         try:
@@ -1673,9 +1773,9 @@ class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, App):
             get_settings().set('skip_board_pos', skip_positions)
             if self.bot:
                 self.bot.set_skip_board_pos(skip_positions)
-            print(f"[ErrorPopup] Skipped board [{col}, {row}]")
+            log.info(f"[ErrorPopup] Skipped board [{col}, {row}]")
         except Exception as e:
-            print(f"[ErrorPopup] Failed to skip board: {e}")
+            log.error(f"[ErrorPopup] Failed to skip board: {e}")
 
     # Panel file management (open_panel_file_chooser, on_panel_file_selected, 
     # open_save_panel_dialog, on_save_panel_confirmed, etc.) 
@@ -1733,13 +1833,13 @@ class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, App):
                     if target_label:
                         target_label.text = self.bot.target.port or "Not configured"
         except Exception as e:
-            print(f"[Config] Error updating port labels: {e}")
+            log.error(f"[Config] Error updating port labels: {e}")
 
     async def _reconfigure_port_async(self, device_type):
         """Async helper to reconfigure a specific port."""
         try:
             if not self.bot:
-                print(f"[Config] Cannot reconfigure {device_type}: bot not initialized")
+                log.warning(f"[Config] Cannot reconfigure {device_type}: bot not initialized")
                 return
             
             # Clear the selected port ID so it will prompt for selection
@@ -1775,9 +1875,9 @@ class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, App):
             
             # Update the labels after reconfiguration
             self.update_port_labels()
-            print(f"[Config] Successfully reconfigured {device_type} to {port}")
+            log.info(f"[Config] Successfully reconfigured {device_type} to {port}")
         except Exception as e:
-            print(f"[Config] Error reconfiguring {device_type}: {e}")
+            log.error(f"[Config] Error reconfiguring {device_type}: {e}")
             import traceback
             traceback.print_exc()
 
@@ -1838,15 +1938,15 @@ class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, App):
                                 camera_image,
                                 camera_status
                             )
-                            print("[AsyncApp] Camera preview initialized in stats pane")
+                            log.info("[AsyncApp] Camera preview initialized in stats pane")
                         else:
-                            print("[AsyncApp] Warning: Camera screen widgets not found")
+                            log.warning("[AsyncApp] Warning: Camera screen widgets not found")
                     else:
-                        print("[AsyncApp] Warning: Camera screen not found")
+                        log.warning("[AsyncApp] Warning: Camera screen not found")
                 
-                print("[AsyncApp] Starting port configuration...")
+                log.info("[AsyncApp] Starting port configuration...")
                 await self.bot.configure_ports()
-                print("[AsyncApp] Port configuration complete")
+                log.info("[AsyncApp] Port configuration complete")
                 # Update port labels in Config tab
                 self.update_port_labels()
                 # Enable controls now that ports are configured
@@ -1855,7 +1955,7 @@ class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, App):
             asyncio.create_task(configure_ports_delayed())
             
             await self.async_run(async_lib='asyncio')
-            print('App done')
+            log.info('App done')
             if self.bot_task:
                 self.bot_task.cancel()
 

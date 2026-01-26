@@ -1,3 +1,6 @@
+from logger import get_logger
+log = get_logger(__name__)
+
 """Serial device detection and identification for ProgBot hardware."""
 import serial.tools.list_ports
 
@@ -114,13 +117,13 @@ class DevicePortManager:
         ports = DevicePortManager.list_ports()
         
         if not ports:
-            print("[DevicePortManager] No serial ports found")
+            log.info("[DevicePortManager] No serial ports found")
             return
         
-        print(f"[DevicePortManager] Found {len(ports)} serial port(s):")
+        log.info(f"[DevicePortManager] Found {len(ports)} serial port(s):")
         for i, port in enumerate(ports, 1):
-            print(f"  {i}. {port.display_name}")
-            print(f"     Unique ID: {port.unique_id}")
+            log.info(f"  {i}. {port.display_name}")
+            log.info(f"     Unique ID: {port.unique_id}")
     
     @staticmethod
     def prompt_user_for_port(device_type, gui_callback=None):
@@ -139,19 +142,19 @@ class DevicePortManager:
         ports = DevicePortManager.list_ports()
         
         if not ports:
-            print(f"[DevicePortManager] No serial ports available for {device_type}")
+            log.info(f"[DevicePortManager] No serial ports available for {device_type}")
             return None
         
         # If GUI callback provided, use GUI mode
         if gui_callback:
-            print(f"[DevicePortManager] Opening GUI port selector for {device_type}")
+            log.info(f"[DevicePortManager] Opening GUI port selector for {device_type}")
             return gui_callback(device_type, ports)
         
         # Otherwise use console mode
-        print(f"\n=== Select Serial Port for {device_type} ===")
+        log.info(f"\n=== Select Serial Port for {device_type} ===")
         for i, port in enumerate(ports, 1):
-            print(f"  {i}. {port.display_name}")
-        print(f"  0. Skip (use default)")
+            log.info(f"  {i}. {port.display_name}")
+        log.info(f"  0. Skip (use default)")
         
         while True:
             try:
@@ -162,13 +165,13 @@ class DevicePortManager:
                     return None
                 elif 1 <= choice_num <= len(ports):
                     selected = ports[choice_num - 1]
-                    print(f"Selected: {selected.display_name}")
-                    print(f"Unique ID: {selected.unique_id}")
+                    log.info(f"Selected: {selected.display_name}")
+                    log.info(f"Unique ID: {selected.unique_id}")
                     return selected
                 else:
-                    print(f"Invalid choice. Please enter 1-{len(ports)} or 0.")
+                    log.info(f"Invalid choice. Please enter 1-{len(ports)} or 0.")
             except ValueError:
-                print("Invalid input. Please enter a number.")
+                log.info("Invalid input. Please enter a number.")
             except (EOFError, KeyboardInterrupt):
-                print("\nCancelled")
+                log.info("\nCancelled")
                 return None
