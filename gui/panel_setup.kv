@@ -1,24 +1,71 @@
 # Panel Setup Dialog Layout
-# This file defines the CalibrationPopup widget for panel configuration:
+# This file defines the PanelSetupPopup widget for panel configuration:
 # - Parameters tab: Grid dimensions (columns, rows, width, height)
 # - Origins tab: Board origin (X, Y), probe offset, Z calibration, jogging
 # - Vision tab: Camera preview, QR code detection, QR offset calibration
 
-<CalibrationPopup@Popup>:
-    id: calibration_popup
-    title: 'Panel Setup'
+<PanelSetupPopup@Popup>:
+    id: panel_setup_popup
+    title: ''
     size_hint: 1, 1
     auto_dismiss: False
-    title_size: '14sp'
-    separator_height: 1
+    separator_height: 0
     
     BoxLayout:
         orientation: 'vertical'
         spacing: 2
         padding: 2
         
+        # Custom title bar
+        BoxLayout:
+            orientation: 'horizontal'
+            size_hint_y: None
+            height: 40
+            padding: [10, 5]
+            spacing: 10
+            canvas.before:
+                Color:
+                    rgba: 0.15, 0.15, 0.2, 1
+                Rectangle:
+                    pos: self.pos
+                    size: self.size
+            
+            Label:
+                text: 'Panel Setup'
+                size_hint_x: None
+                width: 100
+                font_size: '18sp'
+                bold: True
+                halign: 'left'
+                valign: 'center'
+                text_size: self.size
+            
+            Label:
+                id: ps_panel_filename
+                text: ''
+                font_size: '14sp'
+                color: 0.7, 0.8, 0.9, 1
+                halign: 'left'
+                valign: 'center'
+                text_size: self.size
+            
+            Button:
+                id: ps_save_btn
+                text: 'Save'
+                size_hint_x: None
+                width: 70
+                background_color: 0.2, 0.5, 0.3, 1
+                disabled: True
+                on_press: app.ps_save_panel()
+            
+            Button:
+                text: 'Close'
+                size_hint_x: None
+                width: 70
+                on_press: app.ps_close()
+        
         TabbedPanel:
-            id: cal_tabs
+            id: ps_tabs
             do_default_tab: False
             tab_width: 150
             tab_height: 40
@@ -59,13 +106,13 @@
                             text_size: self.size
                         
                         Spinner:
-                            id: cal_board_cols_spinner
+                            id: ps_board_cols_spinner
                             text: '2'
                             values: ['1', '2', '3', '4', '5', '6']
                             size_hint_y: None
                             height: 40
                             size_hint_x: 0.5
-                            on_text: app.cal_on_board_cols_change(self.text)
+                            on_text: app.ps_on_board_cols_change(self.text)
                         
                         Label:
                             text: 'Board Rows:'
@@ -77,13 +124,13 @@
                             text_size: self.size
                         
                         Spinner:
-                            id: cal_board_rows_spinner
+                            id: ps_board_rows_spinner
                             text: '5'
                             values: ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10']
                             size_hint_y: None
                             height: 40
                             size_hint_x: 0.5
-                            on_text: app.cal_on_board_rows_change(self.text)
+                            on_text: app.ps_on_board_rows_change(self.text)
                         
                         Label:
                             text: 'Column Width (mm):'
@@ -95,15 +142,15 @@
                             text_size: self.size
                         
                         TextInput:
-                            id: cal_col_width_input
+                            id: ps_col_width_input
                             text: '48.0'
                             size_hint_y: None
                             height: 40
                             size_hint_x: 0.5
                             multiline: False
                             input_filter: 'float'
-                            on_focus: app.set_keyboard_layout('numpad') if self.focus else None
-                            on_text_validate: app.cal_on_col_width_change(self.text)
+                            on_focus: app.set_keyboard_layout('numpad') if self.focus else app.ps_on_col_width_change(self.text)
+                            on_text_validate: app.ps_on_col_width_change(self.text)
                         
                         Label:
                             text: 'Row Height (mm):'
@@ -115,26 +162,18 @@
                             text_size: self.size
                         
                         TextInput:
-                            id: cal_row_height_input
+                            id: ps_row_height_input
                             text: '29.0'
                             size_hint_y: None
                             height: 40
                             size_hint_x: 0.5
                             multiline: False
                             input_filter: 'float'
-                            on_focus: app.set_keyboard_layout('numpad') if self.focus else None
-                            on_text_validate: app.cal_on_row_height_change(self.text)
+                            on_focus: app.set_keyboard_layout('numpad') if self.focus else app.ps_on_row_height_change(self.text)
+                            on_text_validate: app.ps_on_row_height_change(self.text)
                     
                     Widget:
                         size_hint_y: 1
-                    
-                    # Close button at bottom
-                    Button:
-                        text: 'Close'
-                        size_hint_y: None
-                        height: 50
-                        font_size: '14sp'
-                        on_press: app.cal_close()
             
             TabbedPanelItem:
                 id: origins_tab
@@ -159,16 +198,16 @@
                             spacing: 4
                             
                             Button:
-                                id: cal_z_up
+                                id: ps_z_up
                                 text: 'Z+'
                                 font_size: '20sp'
-                                on_press: app.cal_jog('z', 1)
+                                on_press: app.ps_jog('z', 1)
                             
                             Button:
-                                id: cal_z_down
+                                id: ps_z_down
                                 text: 'Z-'
                                 font_size: '20sp'
-                                on_press: app.cal_jog('z', -1)
+                                on_press: app.ps_jog('z', -1)
                         
                         # Z Step selector
                         BoxLayout:
@@ -177,33 +216,33 @@
                             spacing: 2
                             
                             ToggleButton:
-                                id: cal_z_step_1
+                                id: ps_z_step_1
                                 text: '1'
                                 group: 'z_step'
                                 font_size: '13sp'
                                 state: 'down'
-                                on_state: app.cal_set_z_step(1) if self.state == 'down' else None
+                                on_state: app.ps_set_z_step(1) if self.state == 'down' else None
                             
                             ToggleButton:
-                                id: cal_z_step_05
+                                id: ps_z_step_05
                                 text: '.5'
                                 group: 'z_step'
                                 font_size: '13sp'
-                                on_state: app.cal_set_z_step(0.5) if self.state == 'down' else None
+                                on_state: app.ps_set_z_step(0.5) if self.state == 'down' else None
                             
                             ToggleButton:
-                                id: cal_z_step_02
+                                id: ps_z_step_02
                                 text: '.2'
                                 group: 'z_step'
                                 font_size: '13sp'
-                                on_state: app.cal_set_z_step(0.2) if self.state == 'down' else None
+                                on_state: app.ps_set_z_step(0.2) if self.state == 'down' else None
                             
                             ToggleButton:
-                                id: cal_z_step_01
+                                id: ps_z_step_01
                                 text: '.1'
                                 group: 'z_step'
                                 font_size: '13sp'
-                                on_state: app.cal_set_z_step(0.1) if self.state == 'down' else None
+                                on_state: app.ps_set_z_step(0.1) if self.state == 'down' else None
                             
                             Widget:
                         
@@ -225,54 +264,54 @@
                             spacing: 2
                             
                             ToggleButton:
-                                id: cal_xy_step_20
+                                id: ps_xy_step_20
                                 text: '20'
                                 group: 'xy_step'
                                 font_size: '13sp'
-                                on_state: app.cal_set_xy_step(20) if self.state == 'down' else None
+                                on_state: app.ps_set_xy_step(20) if self.state == 'down' else None
                             
                             ToggleButton:
-                                id: cal_xy_step_10
+                                id: ps_xy_step_10
                                 text: '10'
                                 group: 'xy_step'
                                 font_size: '13sp'
-                                on_state: app.cal_set_xy_step(10) if self.state == 'down' else None
+                                on_state: app.ps_set_xy_step(10) if self.state == 'down' else None
                             
                             ToggleButton:
-                                id: cal_xy_step_5
+                                id: ps_xy_step_5
                                 text: '5'
                                 group: 'xy_step'
                                 font_size: '13sp'
                                 state: 'down'
-                                on_state: app.cal_set_xy_step(5) if self.state == 'down' else None
+                                on_state: app.ps_set_xy_step(5) if self.state == 'down' else None
                             
                             ToggleButton:
-                                id: cal_xy_step_1
+                                id: ps_xy_step_1
                                 text: '1'
                                 group: 'xy_step'
                                 font_size: '13sp'
-                                on_state: app.cal_set_xy_step(1) if self.state == 'down' else None
+                                on_state: app.ps_set_xy_step(1) if self.state == 'down' else None
                             
                             ToggleButton:
-                                id: cal_xy_step_05
+                                id: ps_xy_step_05
                                 text: '.5'
                                 group: 'xy_step'
                                 font_size: '13sp'
-                                on_state: app.cal_set_xy_step(0.5) if self.state == 'down' else None
+                                on_state: app.ps_set_xy_step(0.5) if self.state == 'down' else None
                             
                             ToggleButton:
-                                id: cal_xy_step_02
+                                id: ps_xy_step_02
                                 text: '.2'
                                 group: 'xy_step'
                                 font_size: '13sp'
-                                on_state: app.cal_set_xy_step(0.2) if self.state == 'down' else None
+                                on_state: app.ps_set_xy_step(0.2) if self.state == 'down' else None
                             
                             ToggleButton:
-                                id: cal_xy_step_01
+                                id: ps_xy_step_01
                                 text: '.1'
                                 group: 'xy_step'
                                 font_size: '13sp'
-                                on_state: app.cal_set_xy_step(0.1) if self.state == 'down' else None
+                                on_state: app.ps_set_xy_step(0.1) if self.state == 'down' else None
                         
                         # XY Arrow Pad (3x3 grid)
                         GridLayout:
@@ -284,207 +323,188 @@
                             
                             Widget:
                             Button:
-                                id: cal_y_plus
+                                id: ps_y_plus
                                 text: 'Y+'
                                 font_size: '18sp'
-                                on_press: app.cal_jog('y', 1)
+                                on_press: app.ps_jog('y', 1)
                             Widget:
                             
                             Button:
-                                id: cal_x_minus
+                                id: ps_x_minus
                                 text: 'X-'
                                 font_size: '18sp'
-                                on_press: app.cal_jog('x', -1)
+                                on_press: app.ps_jog('x', -1)
                             Widget:
                             Button:
-                                id: cal_x_plus
+                                id: ps_x_plus
                                 text: 'X+'
                                 font_size: '18sp'
-                                on_press: app.cal_jog('x', 1)
+                                on_press: app.ps_jog('x', 1)
                             
                             Widget:
                             Button:
-                                id: cal_y_minus
+                                id: ps_y_minus
                                 text: 'Y-'
                                 font_size: '18sp'
-                                on_press: app.cal_jog('y', -1)
+                                on_press: app.ps_jog('y', -1)
                             Widget:
                     
-                    # Spacer between jog controls and button rows
+                    # Spacer between jog controls and button/info area
                     Widget:
                         size_hint_y: 0.03
                     
-                    # Row 2: XY controls - Home, Go Origin, Set Origin
+                    # Combined buttons and info area
                     BoxLayout:
                         orientation: 'horizontal'
-                        size_hint_y: 0.12
-                        spacing: 6
+                        size_hint_y: 0.24
+                        spacing: 10
                         
-                        Button:
-                            id: cal_home_btn
-                            text: 'Go Home'
-                            size_hint_x: 0.1125
-                            font_size: '13sp'
-                            background_color: 0.5, 0.5, 0.3, 1
-                            on_press: app.cal_home()
-                        
-                        Button:
-                            id: cal_goto_origin_btn
-                            text: 'Go Origin'
-                            size_hint_x: 0.1125
-                            font_size: '13sp'
-                            background_color: 0.3, 0.5, 0.6, 1
-                            on_press: app.cal_goto_origin()
-                        
-                        Widget:
-                            size_hint_x: 0.1125
-                        
-                        Button:
-                            id: cal_set_origin_btn
-                            text: 'Set Origin'
-                            size_hint_x: 0.1125
-                            font_size: '13sp'
-                            background_color: 0.2, 0.6, 0.3, 1
-                            on_press: app.cal_set_board_origin()
-                        
-                        Label:
-                            id: cal_origin_label
-                            text: 'Origin: X=---, Y=---'
-                            size_hint_x: 0.25
-                            font_size: '14sp'
-                            halign: 'left'
-                            valign: 'center'
-                            text_size: self.size
-                            padding: [10, 0]
-                        
-                        # Board X/Y inputs
-                        Label:
-                            text: 'X:'
-                            size_hint_x: 0.04
-                            font_size: '12sp'
-                            halign: 'right'
-                            valign: 'center'
-                            text_size: self.size
-                        
-                        TextInput:
-                            id: cal_board_x_input
-                            text: '110.2'
-                            size_hint_x: 0.09
-                            multiline: False
-                            input_filter: 'float'
-                            font_size: '12sp'
-                            on_focus: app.set_keyboard_layout('numpad') if self.focus else None
-                            on_text_validate: app.cal_on_board_x_change(self.text)
-                        
-                        Label:
-                            text: 'Y:'
-                            size_hint_x: 0.04
-                            font_size: '12sp'
-                            halign: 'right'
-                            valign: 'center'
-                            text_size: self.size
-                        
-                        TextInput:
-                            id: cal_board_y_input
-                            text: '121.0'
-                            size_hint_x: 0.09
-                            multiline: False
-                            input_filter: 'float'
-                            font_size: '12sp'
-                            on_focus: app.set_keyboard_layout('numpad') if self.focus else None
-                            on_text_validate: app.cal_on_board_y_change(self.text)
-                    
-                    # Row 3: Z controls - Go Safe Z, Probe, Go Ofs, Set Z Offset
-                    BoxLayout:
-                        orientation: 'horizontal'
-                        size_hint_y: 0.12
-                        spacing: 6
-                        
-                        Button:
-                            id: cal_safe_z_btn
-                            text: 'Go Safe Z'
-                            size_hint_x: 0.1125
-                            font_size: '13sp'
-                            background_color: 0.3, 0.5, 0.7, 1
-                            on_press: app.cal_safe_z()
-                        
-                        Button:
-                            id: cal_probe_btn
-                            text: 'Probe'
-                            size_hint_x: 0.1125
-                            font_size: '13sp'
-                            background_color: 0.5, 0.3, 0.7, 1
-                            on_press: app.cal_do_probe()
-                        
-                        Button:
-                            id: cal_goto_offset_btn
-                            text: 'Go Ofs'
-                            size_hint_x: 0.1125
-                            font_size: '13sp'
-                            background_color: 0.4, 0.5, 0.5, 1
-                            disabled: True
-                            on_press: app.cal_goto_offset()
-                        
-                        Button:
-                            id: cal_set_probe_offset_btn
-                            text: 'Set Z Ofs'
-                            size_hint_x: 0.1125
-                            font_size: '13sp'
-                            background_color: 0.6, 0.4, 0.2, 1
-                            disabled: True
-                            on_press: app.cal_capture_probe_offset()
-                        
-                        BoxLayout:
-                            orientation: 'vertical'
-                            size_hint_x: 0.25
+                        # Left side: 2x4 button grid
+                        GridLayout:
+                            cols: 4
+                            rows: 2
+                            size_hint_x: 0.5
+                            spacing: 4
                             
-                            Label:
-                                id: cal_probe_result
-                                text: 'Probe: ---'
-                                font_size: '14sp'
-                                halign: 'left'
-                                valign: 'center'
-                                text_size: self.size
-                                padding: [10, 0]
+                            # Row 1: XY buttons
+                            Button:
+                                id: ps_home_btn
+                                text: 'Go Home'
+                                font_size: '13sp'
+                                background_color: 0.5, 0.5, 0.3, 1
+                                on_press: app.ps_home()
                             
-                            Label:
-                                id: cal_probe_offset_label
-                                text: 'Z Offset: --- mm'
-                                font_size: '14sp'
-                                halign: 'left'
-                                valign: 'center'
-                                text_size: self.size
-                                padding: [10, 0]
+                            Button:
+                                id: ps_goto_origin_btn
+                                text: 'Go Origin'
+                                font_size: '13sp'
+                                background_color: 0.3, 0.5, 0.6, 1
+                                on_press: app.ps_goto_origin()
+                            
+                            Widget:
+                                # Spacer for alignment
+                            
+                            Button:
+                                id: ps_set_origin_btn
+                                text: 'Set Origin'
+                                font_size: '13sp'
+                                background_color: 0.2, 0.6, 0.3, 1
+                                on_press: app.ps_set_board_origin()
+                            
+                            # Row 2: Z buttons
+                            Button:
+                                id: ps_safe_z_btn
+                                text: 'Go Safe Z'
+                                font_size: '13sp'
+                                background_color: 0.3, 0.5, 0.7, 1
+                                on_press: app.ps_safe_z()
+                            
+                            Button:
+                                id: ps_probe_btn
+                                text: 'Probe'
+                                font_size: '13sp'
+                                background_color: 0.5, 0.3, 0.7, 1
+                                on_press: app.ps_do_probe()
+                            
+                            Button:
+                                id: ps_goto_offset_btn
+                                text: 'Go Ofs'
+                                font_size: '13sp'
+                                background_color: 0.4, 0.5, 0.5, 1
+                                disabled: True
+                                on_press: app.ps_goto_offset()
+                            
+                            Button:
+                                id: ps_set_probe_offset_btn
+                                text: 'Set Z Ofs'
+                                font_size: '13sp'
+                                background_color: 0.6, 0.4, 0.2, 1
+                                disabled: True
+                                on_press: app.ps_capture_probe_offset()
                         
-                        # Probe-to-Board offset input
-                        Label:
-                            text: 'Probe-Board:'
-                            size_hint_x: 0.12
-                            font_size: '11sp'
-                            halign: 'right'
-                            valign: 'center'
-                            text_size: self.size
-                        
-                        TextInput:
-                            id: cal_probe_plane_input
-                            text: '4.0'
-                            size_hint_x: 0.1
-                            multiline: False
-                            input_filter: 'float'
-                            font_size: '12sp'
-                            on_focus: app.set_keyboard_layout('numpad') if self.focus else None
-                            on_text_validate: app.cal_on_probe_plane_change(self.text)
+                        # Right side: 2x2 info/input grid
+                        GridLayout:
+                            cols: 2
+                            rows: 2
+                            size_hint_x: 0.5
+                            spacing: 4
+                            
+                            # Row 1, Col 1: Origin X display + input
+                            BoxLayout:
+                                orientation: 'horizontal'
+                                spacing: 4
+                                Label:
+                                    id: ps_origin_x_label
+                                    text: 'Origin X: ---'
+                                    font_size: '13sp'
+                                    halign: 'right'
+                                    valign: 'center'
+                                    text_size: self.size
+                                TextInput:
+                                    id: ps_board_x_input
+                                    text: '110.2'
+                                    size_hint_x: 0.4
+                                    multiline: False
+                                    input_filter: 'float'
+                                    font_size: '12sp'
+                                    on_focus: app.set_keyboard_layout('numpad') if self.focus else app.ps_on_board_x_change(self.text)
+                                    on_text_validate: app.ps_on_board_x_change(self.text)
+                            
+                            # Row 1, Col 2: Origin Y display + input
+                            BoxLayout:
+                                orientation: 'horizontal'
+                                spacing: 4
+                                Label:
+                                    id: ps_origin_y_label
+                                    text: 'Origin Y: ---'
+                                    font_size: '13sp'
+                                    halign: 'right'
+                                    valign: 'center'
+                                    text_size: self.size
+                                TextInput:
+                                    id: ps_board_y_input
+                                    text: '121.0'
+                                    size_hint_x: 0.4
+                                    multiline: False
+                                    input_filter: 'float'
+                                    font_size: '12sp'
+                                    on_focus: app.set_keyboard_layout('numpad') if self.focus else app.ps_on_board_y_change(self.text)
+                                    on_text_validate: app.ps_on_board_y_change(self.text)
+                            
+                            # Row 2, Col 1: Z Offset display + input
+                            BoxLayout:
+                                orientation: 'horizontal'
+                                spacing: 4
+                                Label:
+                                    id: ps_probe_offset_label
+                                    text: 'Z Offset: ---'
+                                    font_size: '13sp'
+                                    halign: 'right'
+                                    valign: 'center'
+                                    text_size: self.size
+                                TextInput:
+                                    id: ps_probe_plane_input
+                                    text: '4.0'
+                                    size_hint_x: 0.4
+                                    multiline: False
+                                    input_filter: 'float'
+                                    font_size: '12sp'
+                                    on_focus: app.set_keyboard_layout('numpad') if self.focus else app.ps_on_probe_plane_change(self.text)
+                                    on_text_validate: app.ps_on_probe_plane_change(self.text)
+                            
+                            # Row 2, Col 2: Empty spacer
+                            Widget:
                     
-                    # Row 4: Position display and Close
+                    # Bottom row: Position display + Probe status
                     BoxLayout:
                         orientation: 'horizontal'
                         size_hint_y: 0.09
                         spacing: 6
                         
                         Label:
-                            id: cal_pos_x
+                            id: ps_pos_x
                             text: 'X: ---'
-                            size_hint_x: 0.25
+                            size_hint_x: 0.2
                             font_size: '15sp'
                             halign: 'center'
                             valign: 'center'
@@ -492,9 +512,9 @@
                             bold: True
                         
                         Label:
-                            id: cal_pos_y
+                            id: ps_pos_y
                             text: 'Y: ---'
-                            size_hint_x: 0.25
+                            size_hint_x: 0.2
                             font_size: '15sp'
                             halign: 'center'
                             valign: 'center'
@@ -502,25 +522,28 @@
                             bold: True
                         
                         Label:
-                            id: cal_pos_z
+                            id: ps_pos_z
                             text: 'Z: ---'
-                            size_hint_x: 0.25
+                            size_hint_x: 0.2
                             font_size: '15sp'
                             halign: 'center'
                             valign: 'center'
                             text_size: self.size
                             bold: True
                         
-                        Button:
-                            text: 'Close'
-                            size_hint_x: 0.25
+                        Label:
+                            id: ps_probe_result
+                            text: 'Probe: ---'
+                            size_hint_x: 0.4
                             font_size: '14sp'
-                            on_press: app.cal_close()
+                            halign: 'center'
+                            valign: 'center'
+                            text_size: self.size
             
             TabbedPanelItem:
                 id: vision_tab
                 text: 'Vision'
-                on_state: app.cal_vision_tab_changed(self.state)
+                on_state: app.ps_vision_tab_changed(self.state)
                 
                 BoxLayout:
                     orientation: 'horizontal'
@@ -549,20 +572,20 @@
                                 text_size: self.size
                             
                             ToggleButton:
-                                id: cal_use_camera_checkbox
+                                id: ps_use_camera_checkbox
                                 text: 'Enabled' if self.state == 'down' else 'Disabled'
                                 state: 'down'
                                 size_hint_x: 0.4
                                 font_size: '13sp'
-                                on_state: app.cal_on_use_camera_change(self.state == 'down')
+                                on_state: app.ps_on_use_camera_change(self.state == 'down')
                         
                         # Left side content (disabled when QR scan is off)
                         BoxLayout:
                             id: vision_left_content
                             orientation: 'vertical'
                             spacing: 4
-                            disabled: cal_use_camera_checkbox.state != 'down'
-                            opacity: 1.0 if cal_use_camera_checkbox.state == 'down' else 0.4
+                            disabled: ps_use_camera_checkbox.state != 'down'
+                            opacity: 1.0 if ps_use_camera_checkbox.state == 'down' else 0.4
                             
                             # Camera preview area
                             BoxLayout:
@@ -637,14 +660,14 @@
                                     text_size: self.size
                                 
                                 TextInput:
-                                    id: cal_qr_offset_x_input
+                                    id: ps_qr_offset_x_input
                                     text: '0.0'
                                     size_hint_x: 0.22
                                     multiline: False
                                     input_filter: 'float'
                                     font_size: '12sp'
-                                    on_focus: app.set_keyboard_layout('numpad') if self.focus else None
-                                    on_text_validate: app.cal_on_qr_offset_x_change(self.text)
+                                    on_focus: app.set_keyboard_layout('numpad') if self.focus else app.ps_on_qr_offset_x_change(self.text)
+                                    on_text_validate: app.ps_on_qr_offset_x_change(self.text)
                                 
                                 Label:
                                     text: 'Y:'
@@ -655,14 +678,14 @@
                                     text_size: self.size
                                 
                                 TextInput:
-                                    id: cal_qr_offset_y_input
+                                    id: ps_qr_offset_y_input
                                     text: '0.0'
                                     size_hint_x: 0.22
                                     multiline: False
                                     input_filter: 'float'
                                     font_size: '12sp'
-                                    on_focus: app.set_keyboard_layout('numpad') if self.focus else None
-                                    on_text_validate: app.cal_on_qr_offset_y_change(self.text)
+                                    on_focus: app.set_keyboard_layout('numpad') if self.focus else app.ps_on_qr_offset_y_change(self.text)
+                                    on_text_validate: app.ps_on_qr_offset_y_change(self.text)
                                 
                                 Widget:
                                     size_hint_x: 0.15
@@ -713,7 +736,7 @@
                                     group: 'vision_rotation'
                                     size_hint_x: 0.2
                                     font_size: '12sp'
-                                    on_state: app.cal_vision_set_rotation(0) if self.state == 'down' else None
+                                    on_state: app.ps_vision_set_rotation(0) if self.state == 'down' else None
                                 
                                 ToggleButton:
                                     id: vision_rot_90
@@ -721,7 +744,7 @@
                                     group: 'vision_rotation'
                                     size_hint_x: 0.2
                                     font_size: '12sp'
-                                    on_state: app.cal_vision_set_rotation(90) if self.state == 'down' else None
+                                    on_state: app.ps_vision_set_rotation(90) if self.state == 'down' else None
                                 
                                 ToggleButton:
                                     id: vision_rot_180
@@ -729,7 +752,7 @@
                                     group: 'vision_rotation'
                                     size_hint_x: 0.2
                                     font_size: '12sp'
-                                    on_state: app.cal_vision_set_rotation(180) if self.state == 'down' else None
+                                    on_state: app.ps_vision_set_rotation(180) if self.state == 'down' else None
                                 
                                 ToggleButton:
                                     id: vision_rot_270
@@ -737,7 +760,7 @@
                                     group: 'vision_rotation'
                                     size_hint_x: 0.2
                                     font_size: '12sp'
-                                    on_state: app.cal_vision_set_rotation(270) if self.state == 'down' else None
+                                    on_state: app.ps_vision_set_rotation(270) if self.state == 'down' else None
                     
                     # Right side: XY jog controls and action buttons (disabled when QR scan is off)
                     BoxLayout:
@@ -745,8 +768,8 @@
                         orientation: 'vertical'
                         size_hint_x: 0.55
                         spacing: 4
-                        disabled: cal_use_camera_checkbox.state != 'down'
-                        opacity: 1.0 if cal_use_camera_checkbox.state == 'down' else 0.4
+                        disabled: ps_use_camera_checkbox.state != 'down'
+                        opacity: 1.0 if ps_use_camera_checkbox.state == 'down' else 0.4
                         
                         # Board selector and XY Jog controls
                         BoxLayout:
@@ -779,13 +802,13 @@
                                     Button:
                                         text: 'R+'
                                         font_size: '14sp'
-                                        on_press: app.cal_vision_board_change('row', 1)
+                                        on_press: app.ps_vision_board_change('row', 1)
                                     Widget:
                                     
                                     Button:
                                         text: 'C-'
                                         font_size: '14sp'
-                                        on_press: app.cal_vision_board_change('col', -1)
+                                        on_press: app.ps_vision_board_change('col', -1)
                                     Label:
                                         id: vision_board_pos_label
                                         text: '0,0'
@@ -797,13 +820,13 @@
                                     Button:
                                         text: 'C+'
                                         font_size: '14sp'
-                                        on_press: app.cal_vision_board_change('col', 1)
+                                        on_press: app.ps_vision_board_change('col', 1)
                                     
                                     Widget:
                                     Button:
                                         text: 'R-'
                                         font_size: '14sp'
-                                        on_press: app.cal_vision_board_change('row', -1)
+                                        on_press: app.ps_vision_board_change('row', -1)
                                     Widget:
                             
                             # Spacer to push XY controls to the right
@@ -821,14 +844,14 @@
                                     text: '20'
                                     group: 'vision_xy_step'
                                     font_size: '13sp'
-                                    on_state: app.cal_vision_set_xy_step(20) if self.state == 'down' else None
+                                    on_state: app.ps_vision_set_xy_step(20) if self.state == 'down' else None
                                 
                                 ToggleButton:
                                     id: vision_xy_step_10
                                     text: '10'
                                     group: 'vision_xy_step'
                                     font_size: '13sp'
-                                    on_state: app.cal_vision_set_xy_step(10) if self.state == 'down' else None
+                                    on_state: app.ps_vision_set_xy_step(10) if self.state == 'down' else None
                                 
                                 ToggleButton:
                                     id: vision_xy_step_5
@@ -836,35 +859,35 @@
                                     group: 'vision_xy_step'
                                     font_size: '13sp'
                                     state: 'down'
-                                    on_state: app.cal_vision_set_xy_step(5) if self.state == 'down' else None
+                                    on_state: app.ps_vision_set_xy_step(5) if self.state == 'down' else None
                                 
                                 ToggleButton:
                                     id: vision_xy_step_1
                                     text: '1'
                                     group: 'vision_xy_step'
                                     font_size: '13sp'
-                                    on_state: app.cal_vision_set_xy_step(1) if self.state == 'down' else None
+                                    on_state: app.ps_vision_set_xy_step(1) if self.state == 'down' else None
                                 
                                 ToggleButton:
                                     id: vision_xy_step_05
                                     text: '.5'
                                     group: 'vision_xy_step'
                                     font_size: '13sp'
-                                    on_state: app.cal_vision_set_xy_step(0.5) if self.state == 'down' else None
+                                    on_state: app.ps_vision_set_xy_step(0.5) if self.state == 'down' else None
                                 
                                 ToggleButton:
                                     id: vision_xy_step_02
                                     text: '.2'
                                     group: 'vision_xy_step'
                                     font_size: '13sp'
-                                    on_state: app.cal_vision_set_xy_step(0.2) if self.state == 'down' else None
+                                    on_state: app.ps_vision_set_xy_step(0.2) if self.state == 'down' else None
                                 
                                 ToggleButton:
                                     id: vision_xy_step_01
                                     text: '.1'
                                     group: 'vision_xy_step'
                                     font_size: '13sp'
-                                    on_state: app.cal_vision_set_xy_step(0.1) if self.state == 'down' else None
+                                    on_state: app.ps_vision_set_xy_step(0.1) if self.state == 'down' else None
                             
                             # XY Arrow Pad (3x3 grid)
                             GridLayout:
@@ -879,27 +902,27 @@
                                     id: vision_y_plus
                                     text: 'Y+'
                                     font_size: '18sp'
-                                    on_press: app.cal_vision_jog('y', 1)
+                                    on_press: app.ps_vision_jog('y', 1)
                                 Widget:
                                 
                                 Button:
                                     id: vision_x_minus
                                     text: 'X-'
                                     font_size: '18sp'
-                                    on_press: app.cal_vision_jog('x', -1)
+                                    on_press: app.ps_vision_jog('x', -1)
                                 Widget:
                                 Button:
                                     id: vision_x_plus
                                     text: 'X+'
                                     font_size: '18sp'
-                                    on_press: app.cal_vision_jog('x', 1)
+                                    on_press: app.ps_vision_jog('x', 1)
                                 
                                 Widget:
                                 Button:
                                     id: vision_y_minus
                                     text: 'Y-'
                                     font_size: '18sp'
-                                    on_press: app.cal_vision_jog('y', -1)
+                                    on_press: app.ps_vision_jog('y', -1)
                                 Widget:
                         
                         # Action buttons
@@ -912,16 +935,99 @@
                                 text: 'Reset QR Offset'
                                 font_size: '14sp'
                                 background_color: 0.5, 0.4, 0.3, 1
-                                on_press: app.cal_vision_reset_qr_offset()
+                                on_press: app.ps_vision_reset_qr_offset()
                             
                             Button:
                                 id: vision_set_qr_offset_btn
                                 text: 'Set QR Offset'
                                 font_size: '14sp'
                                 background_color: 0.2, 0.6, 0.3, 1
-                                on_press: app.cal_vision_set_qr_offset()
+                                on_press: app.ps_vision_set_qr_offset()
+            
+            TabbedPanelItem:
+                id: programming_tab
+                text: 'Programming'
+                on_state: app.ps_programming_tab_changed(self.state)
+                
+                BoxLayout:
+                    orientation: 'vertical'
+                    spacing: 10
+                    padding: 20
+                    
+                    # Programmer Type selector
+                    BoxLayout:
+                        orientation: 'horizontal'
+                        size_hint_y: None
+                        height: 40
+                        spacing: 10
+                        
+                        Label:
+                            text: 'Programmer Type:'
+                            size_hint_x: 0.3
+                            halign: 'right'
+                            valign: 'center'
+                            text_size: self.size
+                        
+                        Spinner:
+                            id: ps_programmer_type_spinner
+                            text: 'Nordic nRF (nrfutil)'
+                            values: []
+                            size_hint_x: 0.7
+                            on_text: app.ps_on_programmer_type_change(self.text)
+                    
+                    # Horizontal layout for Steps and Firmware
+                    BoxLayout:
+                        orientation: 'horizontal'
+                        spacing: 20
+                        
+                        # Left side: Programming Steps
+                        BoxLayout:
+                            orientation: 'vertical'
+                            size_hint_x: 0.4
                             
-                            Button:
-                                text: 'Close'
+                            Label:
+                                text: 'Programming Steps'
+                                size_hint_y: None
+                                height: 30
                                 font_size: '14sp'
-                                on_press: app.cal_close()
+                                bold: True
+                                halign: 'left'
+                                valign: 'center'
+                                text_size: self.size
+                            
+                            # Container for dynamic step toggles
+                            BoxLayout:
+                                id: ps_steps_container
+                                orientation: 'vertical'
+                                spacing: 5
+                                size_hint_y: None
+                                height: self.minimum_height
+                            
+                            Widget:
+                                # Spacer
+                        
+                        # Right side: Firmware Files
+                        BoxLayout:
+                            orientation: 'vertical'
+                            size_hint_x: 0.6
+                            
+                            Label:
+                                text: 'Firmware Files'
+                                size_hint_y: None
+                                height: 30
+                                font_size: '14sp'
+                                bold: True
+                                halign: 'left'
+                                valign: 'center'
+                                text_size: self.size
+                            
+                            # Container for dynamic firmware inputs
+                            BoxLayout:
+                                id: ps_firmware_container
+                                orientation: 'vertical'
+                                spacing: 5
+                                size_hint_y: None
+                                height: self.minimum_height
+                            
+                            Widget:
+                                # Spacer

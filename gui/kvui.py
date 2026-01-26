@@ -51,7 +51,7 @@ import os
 import sequence
 from panel_settings import get_panel_settings, find_panel_files
 from numpad_keyboard import switch_keyboard_layout
-from calibration_dialog import CalibrationController
+from panel_setup_dialog import PanelSetupController
 from settings_handlers import SettingsHandlersMixin
 from panel_file_manager import PanelFileManagerMixin
 
@@ -312,7 +312,7 @@ class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, App):
     config_widgets = []  # List of config widgets for enable/disable
     bot = None  # Bot instance
     panel_settings = None
-    calibration_controller = None  # Calibration dialog controller
+    panel_setup_controller = None  # Panel setup dialog controller
     cycle_timer_event = None  # Clock event for cycle timer updates
     cycle_start_time = None  # Start time of current cycle
     
@@ -321,8 +321,8 @@ class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, App):
         # Load KV file early so Factory classes are available
         kv_file = os.path.join(os.path.dirname(__file__), 'progbot.kv')
         Builder.load_file(kv_file)
-        # Initialize calibration controller
-        self.calibration_controller = CalibrationController(self)
+        # Initialize panel setup controller
+        self.panel_setup_controller = PanelSetupController(self)
     
     def toggle_log_popup(self):
         """Toggle the log viewer popup."""
@@ -557,7 +557,8 @@ class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, App):
         def on_select(instance):
             if chooser.selection:
                 path = chooser.selection[0]
-                self.root.ids.network_firmware_input.text = path
+                if network_input := self.root.ids.get('network_firmware_input'):
+                    network_input.text = path
                 self.on_network_firmware_change(path)
                 popup.dismiss()
         
@@ -594,7 +595,8 @@ class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, App):
         def on_select(instance):
             if chooser.selection:
                 path = chooser.selection[0]
-                self.root.ids.main_firmware_input.text = path
+                if main_input := self.root.ids.get('main_firmware_input'):
+                    main_input.text = path
                 self.on_main_firmware_change(path)
                 popup.dismiss()
         
@@ -896,135 +898,162 @@ class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, App):
         import asyncio
         asyncio.ensure_future(do_homing())
     
-    # ==================== Calibration Dialog ====================
-    # Thin wrapper methods that delegate to CalibrationController
-    # These methods are called from the KV file (app.cal_*)
+    # ==================== Panel Setup Dialog ====================
+    # Thin wrapper methods that delegate to PanelSetupController
+    # These methods are called from the KV file (app.ps_*)
     
-    def open_calibration_dialog(self):
-        """Open the calibration dialog for setting board origin and probe offset."""
-        self.calibration_controller.open()
+    def open_panel_setup_dialog(self):
+        """Open the panel setup dialog for setting board origin and probe offset."""
+        self.panel_setup_controller.open()
     
     @property
-    def calibration_popup(self):
-        """Access the calibration popup from the controller."""
-        return self.calibration_controller.popup if self.calibration_controller else None
+    def panel_setup_popup(self):
+        """Access the panel setup popup from the controller."""
+        return self.panel_setup_controller.popup if self.panel_setup_controller else None
     
-    def cal_set_xy_step(self, step):
+    def ps_set_xy_step(self, step):
         """Set XY jog step size."""
-        self.calibration_controller.set_xy_step(step)
+        self.panel_setup_controller.set_xy_step(step)
     
-    def cal_set_z_step(self, step):
+    def ps_set_z_step(self, step):
         """Set Z jog step size."""
-        self.calibration_controller.set_z_step(step)
+        self.panel_setup_controller.set_z_step(step)
     
-    def cal_home(self):
-        """Home the machine from calibration dialog."""
-        self.calibration_controller.home()
+    def ps_home(self):
+        """Home the machine from panel setup dialog."""
+        self.panel_setup_controller.home()
     
-    def cal_jog(self, axis, direction):
+    def ps_jog(self, axis, direction):
         """Jog the machine in the specified axis and direction."""
-        self.calibration_controller.jog(axis, direction)
+        self.panel_setup_controller.jog(axis, direction)
     
-    def cal_safe_z(self):
+    def ps_safe_z(self):
         """Move to safe Z height (Z=0)."""
-        self.calibration_controller.safe_z()
+        self.panel_setup_controller.safe_z()
     
-    def cal_do_probe(self):
+    def ps_do_probe(self):
         """Execute probe operation."""
-        self.calibration_controller.do_probe()
+        self.panel_setup_controller.do_probe()
     
-    def cal_goto_origin(self):
+    def ps_goto_origin(self):
         """Move to the currently configured board origin."""
-        self.calibration_controller.goto_origin()
+        self.panel_setup_controller.goto_origin()
     
-    def cal_goto_offset(self):
+    def ps_goto_offset(self):
         """Move Z down by the configured offset from probe position to board surface."""
-        self.calibration_controller.goto_offset()
+        self.panel_setup_controller.goto_offset()
     
-    def cal_set_board_origin(self):
+    def ps_set_board_origin(self):
         """Set board origin from current XY position."""
-        self.calibration_controller.set_board_origin()
+        self.panel_setup_controller.set_board_origin()
     
-    def cal_capture_probe_offset(self):
+    def ps_capture_probe_offset(self):
         """Capture probe-to-board offset from current Z position vs probe position."""
-        self.calibration_controller.capture_probe_offset()
+        self.panel_setup_controller.capture_probe_offset()
     
-    def cal_close(self):
-        """Close calibration dialog, moving to safe Z first if needed."""
-        self.calibration_controller.close()
+    def ps_close(self):
+        """Close panel setup dialog, moving to safe Z first if needed."""
+        self.panel_setup_controller.close()
     
     # Vision tab wrapper methods
-    def cal_vision_tab_changed(self, state):
+    def ps_vision_tab_changed(self, state):
         """Handle Vision tab state changes."""
-        self.calibration_controller.vision_tab_changed(state)
+        self.panel_setup_controller.vision_tab_changed(state)
     
-    def cal_vision_set_xy_step(self, step):
+    def ps_vision_set_xy_step(self, step):
         """Set XY jog step size for Vision tab."""
-        self.calibration_controller.vision_set_xy_step(step)
+        self.panel_setup_controller.vision_set_xy_step(step)
     
-    def cal_vision_jog(self, axis, direction):
+    def ps_vision_jog(self, axis, direction):
         """Jog the machine in the specified axis and direction (Vision tab)."""
-        self.calibration_controller.vision_jog(axis, direction)
+        self.panel_setup_controller.vision_jog(axis, direction)
     
-    def cal_vision_reset_qr_offset(self):
+    def ps_vision_reset_qr_offset(self):
         """Reset QR offset values to what they were when entering the Vision tab."""
-        self.calibration_controller.vision_reset_qr_offset()
+        self.panel_setup_controller.vision_reset_qr_offset()
     
-    def cal_vision_set_qr_offset(self):
+    def ps_vision_set_qr_offset(self):
         """Set QR offset from current XY position relative to board origin."""
-        self.calibration_controller.vision_set_qr_offset()
+        self.panel_setup_controller.vision_set_qr_offset()
     
-    def cal_vision_set_rotation(self, rotation):
+    def ps_vision_set_rotation(self, rotation):
         """Set camera preview rotation."""
-        self.calibration_controller.vision_set_rotation(rotation)
+        self.panel_setup_controller.vision_set_rotation(rotation)
     
-    def cal_vision_board_change(self, axis, delta):
+    def ps_vision_board_change(self, axis, delta):
         """Change the selected board col or row and move to that position."""
-        self.calibration_controller.vision_board_change(axis, delta)
+        self.panel_setup_controller.vision_board_change(axis, delta)
     
     # ==================== Panel Setup Parameters Tab ====================
     
-    def cal_on_board_cols_change(self, value):
+    def ps_on_board_cols_change(self, value):
         """Handle board columns change from Panel Setup dialog."""
-        self.on_board_cols_change(value)
+        if self.panel_setup_controller:
+            self.panel_setup_controller._set_buffer_value('board_cols', value)
     
-    def cal_on_board_rows_change(self, value):
+    def ps_on_board_rows_change(self, value):
         """Handle board rows change from Panel Setup dialog."""
-        self.on_board_rows_change(value)
+        if self.panel_setup_controller:
+            self.panel_setup_controller._set_buffer_value('board_rows', value)
     
-    def cal_on_col_width_change(self, value):
+    def ps_on_col_width_change(self, value):
         """Handle column width change from Panel Setup dialog."""
-        self.on_col_width_change(value)
+        if self.panel_setup_controller:
+            self.panel_setup_controller._set_buffer_value('col_width', value)
     
-    def cal_on_row_height_change(self, value):
+    def ps_on_row_height_change(self, value):
         """Handle row height change from Panel Setup dialog."""
-        self.on_row_height_change(value)
+        if self.panel_setup_controller:
+            self.panel_setup_controller._set_buffer_value('row_height', value)
     
-    def cal_on_board_x_change(self, value):
+    def ps_on_board_x_change(self, value):
         """Handle board X change from Panel Setup dialog."""
-        self.on_board_x_change(value)
+        if self.panel_setup_controller:
+            self.panel_setup_controller._set_buffer_value('board_x', value)
     
-    def cal_on_board_y_change(self, value):
+    def ps_on_board_y_change(self, value):
         """Handle board Y change from Panel Setup dialog."""
-        self.on_board_y_change(value)
+        if self.panel_setup_controller:
+            self.panel_setup_controller._set_buffer_value('board_y', value)
     
-    def cal_on_probe_plane_change(self, value):
+    def ps_on_probe_plane_change(self, value):
         """Handle probe-to-board offset change from Panel Setup dialog."""
-        self.on_probe_plane_change(value)
+        if self.panel_setup_controller:
+            self.panel_setup_controller._set_buffer_value('probe_plane', value)
     
-    def cal_on_qr_offset_x_change(self, value):
+    def ps_on_qr_offset_x_change(self, value):
         """Handle QR offset X change from Panel Setup dialog."""
-        self.on_qr_offset_x_change(value)
+        if self.panel_setup_controller:
+            self.panel_setup_controller._set_buffer_value('qr_offset_x', value)
     
-    def cal_on_qr_offset_y_change(self, value):
+    def ps_on_qr_offset_y_change(self, value):
         """Handle QR offset Y change from Panel Setup dialog."""
-        self.on_qr_offset_y_change(value)
+        if self.panel_setup_controller:
+            self.panel_setup_controller._set_buffer_value('qr_offset_y', value)
     
-    def cal_on_use_camera_change(self, active):
+    def ps_on_use_camera_change(self, active):
         """Handle QR Code Scan checkbox change from Panel Setup dialog."""
-        self.on_use_camera_change(active)
+        if self.panel_setup_controller:
+            self.panel_setup_controller._set_buffer_value('use_camera', str(active).lower())
     
-    # ==================== End Calibration Dialog ====================
+    def ps_programming_tab_changed(self, state):
+        """Handle Programming tab state change."""
+        if state == 'down':
+            # Tab selected - rebuild dynamic UI in case settings changed
+            if self.panel_setup_controller:
+                self.panel_setup_controller._build_programmer_ui()
+    
+    def ps_on_programmer_type_change(self, display_name):
+        """Handle programmer type spinner change from Panel Setup dialog."""
+        if self.panel_setup_controller:
+            self.panel_setup_controller.on_programmer_type_change(display_name)
+    
+    def ps_save_panel(self):
+        """Save panel from Panel Setup dialog."""
+        if self.panel_setup_controller:
+            self.panel_setup_controller.save_panel()
+    
+    # ==================== End Panel Setup Dialog ====================
 
     def reset_grid(self, instance):
         """Reset all grid cells to their default state as if panel was just loaded."""

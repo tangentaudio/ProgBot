@@ -249,7 +249,7 @@
             size_hint_y: 0.15
             on_press: root.dismiss()
 
-# CalibrationPopup has been moved to calibration.kv and is loaded by CalibrationController
+# PanelSetupPopup has been moved to panel_setup.kv and is loaded by PanelSetupController
 
 <IdleScreen@Screen>:
     name: 'idle'
@@ -642,95 +642,16 @@
                                 on_press: app.open_panel_file_chooser()
 
                             Button:
-                                text: 'Save Panel'
-                                size_hint_y: None
-                                height: 40
-                                background_color: 0.5, 0.55, 0.6, 1
-                                on_press: app.open_save_panel_dialog()
-
-                            Button:
                                 id: panel_setup_btn
                                 text: 'Panel Setup'
                                 size_hint_y: None
                                 height: 40
                                 background_color: 0.6, 0.4, 0.5, 1
-                                on_press: app.open_calibration_dialog()
+                                on_press: app.open_panel_setup_dialog()
 
                             Widget:
                                 size_hint_y: None
                                 height: 40
-
-                            Widget:
-                                size_hint_y: None
-                                height: 10
-
-                            Label:
-                                text: "Operation:"
-                                size_hint_y: None
-                                height: 30
-                                halign: 'right'
-                                valign: 'center'
-                                text_size: self.size
-
-                            Spinner:
-                                id: operation_spinner
-                                text: "Program"
-                                values: ["Identify Only", "Program", "Program & Test", "Test Only"]
-                                size_hint_y: None
-                                height: 30
-                                on_text: app.on_operation_change(self.text)
-
-                            Label:
-                                text: "Network Core FW:"
-                                size_hint_y: None
-                                height: 30
-                                halign: 'right'
-                                valign: 'center'
-                                text_size: self.size
-
-                            BoxLayout:
-                                orientation: 'horizontal'
-                                size_hint_y: None
-                                height: 30
-                                spacing: 4
-
-                                TextInput:
-                                    id: network_firmware_input
-                                    text: "/home/steve/fw/merged_CPUNET.hex"
-                                    size_hint_x: 0.75
-                                    multiline: False
-                                    on_text_validate: app.on_network_firmware_change(self.text)
-
-                                Button:
-                                    text: "..."
-                                    size_hint_x: 0.25
-                                    on_press: app.open_network_firmware_chooser()
-
-                            Label:
-                                text: "Main Core FW:"
-                                size_hint_y: None
-                                height: 30
-                                halign: 'right'
-                                valign: 'center'
-                                text_size: self.size
-
-                            BoxLayout:
-                                orientation: 'horizontal'
-                                size_hint_y: None
-                                height: 30
-                                spacing: 4
-
-                                TextInput:
-                                    id: main_firmware_input
-                                    text: "/home/steve/fw/merged.hex"
-                                    size_hint_x: 0.75
-                                    multiline: False
-                                    on_text_validate: app.on_main_firmware_change(self.text)
-
-                                Button:
-                                    text: "..."
-                                    size_hint_x: 0.25
-                                    on_press: app.open_main_firmware_chooser()
                 
                 TabbedPanelItem:
                     text: 'Config'

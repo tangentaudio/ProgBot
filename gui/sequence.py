@@ -222,7 +222,11 @@ class TestStatus(Enum):
 
 
 class OperationMode(Enum):
-    """Operating modes for the programming cycle."""
+    """Operating modes for the programming cycle.
+    
+    DEPRECATED: Use individual step flags (do_identify, do_recover, do_erase, 
+    do_program, do_lock) instead. This enum is kept for backward compatibility.
+    """
     IDENTIFY_ONLY = "Identify Only"
     PROGRAM = "Program"
     PROGRAM_AND_TEST = "Program & Test"
@@ -239,6 +243,13 @@ class Config:
     board_num_cols: int = BOARD_NUM_COLS
     probe_plane_to_board: float = PROBE_PLANE_TO_BOARD
     contact_adjust_step: float = 0.1  # Y adjustment step in mm when contact fails
+    # Programming step flags (replaces operation_mode enum)
+    do_identify: bool = True   # Run identification step
+    do_recover: bool = False   # Run recovery step (if needed)
+    do_erase: bool = False     # Run erase step
+    do_program: bool = True    # Run programming step
+    do_lock: bool = False      # Set protection/lock bits
+    # Legacy field - kept for backward compatibility
     operation_mode: OperationMode = OperationMode.PROGRAM
     skip_board_pos: List[List[int]] = field(default_factory=list)
     motion_port_id: str = ''  # Unique ID for motion controller port
@@ -398,11 +409,9 @@ class ProgBot:
         self.stats = CycleStats()  # Timing statistics
         self.panel_settings = panel_settings  # Store reference for later use
         self.gui_port_picker = gui_port_picker  # Function to show GUI port picker
-        self.programmer = programmer or ProgrammerController(
-            self.update_phase, 
-            network_core_firmware=self.config.network_core_firmware,
-            main_core_firmware=self.config.main_core_firmware
-        )
+        
+        # Initialize programmer from plugin system
+        self.programmer = programmer or self._create_programmer()
         
         # Controllers will be initialized after port resolution
         self.head = head
@@ -418,6 +427,48 @@ class ProgBot:
         self.current_board: Optional[Tuple[int, int]] = None
         self._ports_configured = False
         self._selected_port_devices = []  # Track already-selected port device paths
+    
+    def _create_programmer(self):
+        """Create programmer instance from panel settings or defaults."""
+        try:
+            from programmers import create_programmer, get_default_programmer_config
+            
+            # Get programmer config from panel settings
+            if self.panel_settings:
+                prog_config = self.panel_settings.get_programmer_config()
+            else:
+                prog_config = get_default_programmer_config('nordic_nrf')
+            
+            type_id = prog_config.get('type', 'nordic_nrf')
+            firmware_paths = prog_config.get('firmware', {})
+            
+            return create_programmer(type_id, self.update_phase, firmware_paths)
+        except Exception as e:
+            print(f"[ProgBot] Error creating programmer: {e}")
+            # Fallback to legacy ProgrammerController
+            return ProgrammerController(
+                self.update_phase,
+                network_core_firmware=self.config.network_core_firmware,
+                main_core_firmware=self.config.main_core_firmware
+            )
+    
+    def _get_enabled_programmer_steps(self) -> list:
+        """Get list of enabled programmer step IDs from panel settings."""
+        try:
+            if self.panel_settings:
+                prog_config = self.panel_settings.get_programmer_config()
+                steps = prog_config.get('steps', {})
+                # Return list of enabled step IDs in the order defined by the programmer
+                from programmers import get_programmer_class
+                type_id = prog_config.get('type', 'nordic_nrf')
+                programmer_class = get_programmer_class(type_id)
+                all_steps = [s['id'] for s in programmer_class.get_steps()]
+                return [s for s in all_steps if steps.get(s, False)]
+        except Exception as e:
+            print(f"[ProgBot] Error getting enabled steps: {e}")
+        
+        # Default: identify and program
+        return ['identify', 'program']
     
     async def discover_devices(self):
         """Stub for device discovery - ports are already configured."""
@@ -941,42 +992,42 @@ class ProgBot:
         await self.head.set_logic(True)
         await asyncio.sleep(1)
 
-        if self.config.operation_mode == OperationMode.IDENTIFY_ONLY:
-            self._mark_program(cell_id, board_status, ProgramStatus.IDENTIFYING)
-            self.update_phase("Identifying device...")
+        # Get enabled programming steps from panel settings
+        enabled_steps = self._get_enabled_programmer_steps()
+        debug_log(f"[_run_board] Enabled programmer steps: {enabled_steps}")
+        
+        if not enabled_steps:
+            # No steps enabled - just mark as completed
+            self._mark_program(cell_id, board_status, ProgramStatus.COMPLETED)
+        else:
+            # Determine status based on what steps are enabled
+            if 'program' in enabled_steps:
+                self._mark_program(cell_id, board_status, ProgramStatus.PROGRAMMING)
+            elif 'identify' in enabled_steps:
+                self._mark_program(cell_id, board_status, ProgramStatus.IDENTIFYING)
+            else:
+                self._mark_program(cell_id, board_status, ProgramStatus.PROGRAMMING)
+            
             try:
-                success = await self.programmer.identify()
+                # Execute all enabled steps through the programmer plugin
+                success = await self.programmer.execute_sequence(enabled_steps)
                 print(f"success={success}")
-                self._mark_program(
-                    cell_id,
-                    board_status,
-                    ProgramStatus.IDENTIFIED if success else ProgramStatus.FAILED,
-                )
+                
+                # Determine final status
+                if success:
+                    if 'program' in enabled_steps:
+                        final_status = ProgramStatus.COMPLETED
+                    elif 'identify' in enabled_steps and len(enabled_steps) == 1:
+                        final_status = ProgramStatus.IDENTIFIED
+                    else:
+                        final_status = ProgramStatus.COMPLETED
+                else:
+                    final_status = ProgramStatus.FAILED
+                
+                self._mark_program(cell_id, board_status, final_status)
+                
             except Exception as e:
-                print(f"Identification failed: {e}")
-                board_status.failure_reason = f"Identification error: {e}"
-                self._mark_program(cell_id, board_status, ProgramStatus.FAILED)
-                self.stats.record_failure()
-                self.stats_updated.emit(self.stats.get_summary_text())
-                # SAFETY: Return to safe Z height before continuing to next board
-                await self.head.set_all(False)
-                await self.motion.rapid_z_abs(0.0)
-                self.current_board = None
-                return  # Soft-skip this board, continue cycle
-
-        elif self.config.operation_mode in (OperationMode.PROGRAM, OperationMode.PROGRAM_AND_TEST):
-            self._mark_program(cell_id, board_status, ProgramStatus.PROGRAMMING)
-            self.update_phase("Programming device...")
-            try:
-                success = await self.programmer.program()
-                print(f"success={success}")
-                self._mark_program(
-                    cell_id,
-                    board_status,
-                    ProgramStatus.COMPLETED if success else ProgramStatus.FAILED,
-                )
-            except Exception as e:
-                print(f"Programming failed: {e}")
+                print(f"Programming sequence failed: {e}")
                 board_status.failure_reason = f"Programming error: {e}"
                 self._mark_program(cell_id, board_status, ProgramStatus.FAILED)
                 self.stats.record_failure()
@@ -987,15 +1038,10 @@ class ProgBot:
                 self.current_board = None
                 return  # Soft-skip this board, continue cycle
 
-            if success:
+            if success and 'program' in enabled_steps:
                 monitor_task = self.target.create_monitor_task()
                 await asyncio.sleep(5)
                 monitor_task.cancel()
-
-            await self.head.set_all(False)
-            await asyncio.sleep(1)
-            self.update_phase("Move to safe height...")
-            await self.motion.rapid_z_abs(0.0)
 
         await self.head.set_all(False)
         await asyncio.sleep(1)
