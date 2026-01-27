@@ -567,7 +567,7 @@
                     # Left side: Camera preview and status
                     BoxLayout:
                         orientation: 'vertical'
-                        size_hint_x: 0.45
+                        size_hint_x: 0.40
                         spacing: 4
                         
                         # Left side content (disabled when vision is off)
@@ -757,7 +757,7 @@
                     BoxLayout:
                         id: vision_right_content
                         orientation: 'vertical'
-                        size_hint_x: 0.55
+                        size_hint_x: 0.60
                         spacing: 4
                         disabled: not vision_tab.phase_enabled
                         opacity: 1.0 if vision_tab.phase_enabled else 0.4
@@ -768,6 +768,10 @@
                             size_hint_y: None
                             height: 200
                             spacing: 4
+                            
+                            # Spacer to push controls to the right
+                            Widget:
+                                size_hint_x: 1
                             
                             # Board selector (3x3 grid cross)
                             GridLayout:
