@@ -1,0 +1,325 @@
+#:kivy 2.0
+
+# Provision Step Editor Dialog
+# Modal dialog for editing a single provisioning step
+
+<ProvisionStepEditorPopup@Popup>:
+    id: step_editor_popup
+    title: ''
+    size_hint: 0.85, 0.9
+    auto_dismiss: False
+    separator_height: 0
+    
+    BoxLayout:
+        orientation: 'vertical'
+        spacing: 5
+        padding: 10
+        
+        # Custom title bar
+        BoxLayout:
+            orientation: 'horizontal'
+            size_hint_y: None
+            height: 50
+            padding: [10, 5]
+            spacing: 10
+            canvas.before:
+                Color:
+                    rgba: 0.15, 0.15, 0.2, 1
+                Rectangle:
+                    pos: self.pos
+                    size: self.size
+            
+            Label:
+                id: pse_title
+                text: 'Edit Step'
+                size_hint_x: None
+                width: 200
+                font_size: '16sp'
+                bold: True
+                halign: 'left'
+                valign: 'center'
+                text_size: self.size
+            
+            Widget:
+                # Spacer
+            
+            # Keyboard toggle
+            BoxLayout:
+                orientation: 'horizontal'
+                size_hint_x: None
+                width: 100
+                spacing: 5
+                
+                CheckBox:
+                    id: pse_keyboard_toggle
+                    size_hint_x: None
+                    width: 30
+                    active: False
+                    on_active: app.pse_toggle_keyboard(self.active)
+                
+                Label:
+                    text: 'Keyboard'
+                    font_size: '11sp'
+                    halign: 'left'
+                    valign: 'center'
+                    text_size: self.size
+            
+            Button:
+                id: pse_save_btn
+                text: 'Save'
+                size_hint_x: None
+                size_hint_y: None
+                width: 80
+                height: 36
+                background_color: 0.2, 0.5, 0.3, 1
+                on_press: app.pse_save_step()
+            
+            Button:
+                text: 'Cancel'
+                size_hint_x: None
+                size_hint_y: None
+                width: 80
+                height: 36
+                on_press: app.pse_cancel()
+        
+        # Main content area
+        BoxLayout:
+            orientation: 'horizontal'
+            spacing: 10
+            
+            # Left column - main fields
+            BoxLayout:
+                orientation: 'vertical'
+                spacing: 8
+                size_hint_x: 0.65
+                
+                # Description
+                BoxLayout:
+                    orientation: 'horizontal'
+                    size_hint_y: None
+                    height: 40
+                    spacing: 10
+                    
+                    Label:
+                        text: 'Description:'
+                        size_hint_x: None
+                        width: 100
+                        font_size: '13sp'
+                        halign: 'right'
+                        valign: 'center'
+                        text_size: self.size
+                    
+                    TextInput:
+                        id: pse_description
+                        hint_text: 'Brief description of this step'
+                        multiline: False
+                        font_size: '13sp'
+                
+                # Send command
+                BoxLayout:
+                    orientation: 'vertical'
+                    size_hint_y: None
+                    height: 100
+                    spacing: 3
+                    
+                    Label:
+                        text: 'Send Command:'
+                        size_hint_y: None
+                        height: 20
+                        font_size: '13sp'
+                        halign: 'left'
+                        valign: 'bottom'
+                        text_size: self.size
+                    
+                    TextInput:
+                        id: pse_send
+                        hint_text: 'Command to send (use \\n for newline, \\r for CR)'
+                        multiline: True
+                        font_size: '12sp'
+                        font_name: '/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf'
+                        background_color: 0.12, 0.12, 0.12, 1
+                        foreground_color: 0.7, 0.9, 0.7, 1
+                
+                # Expect pattern
+                BoxLayout:
+                    orientation: 'vertical'
+                    size_hint_y: 1
+                    spacing: 3
+                    
+                    BoxLayout:
+                        orientation: 'horizontal'
+                        size_hint_y: None
+                        height: 20
+                        
+                        Label:
+                            text: 'Expect Pattern (regex):'
+                            font_size: '13sp'
+                            halign: 'left'
+                            valign: 'bottom'
+                            text_size: self.size
+                        
+                        Label:
+                            id: pse_regex_status
+                            text: ''
+                            font_size: '11sp'
+                            font_name: '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'
+                            halign: 'right'
+                            valign: 'bottom'
+                            text_size: self.size
+                            color: 0.5, 0.5, 0.5, 1
+                    
+                    TextInput:
+                        id: pse_expect
+                        hint_text: 'Regex pattern to match (use (?P<name>...) to capture)'
+                        multiline: True
+                        font_size: '12sp'
+                        font_name: '/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf'
+                        background_color: 0.12, 0.12, 0.12, 1
+                        foreground_color: 0.9, 0.8, 0.6, 1
+                        on_text: app.pse_validate_regex(self.text)
+            
+            # Right column - options
+            BoxLayout:
+                orientation: 'vertical'
+                spacing: 8
+                size_hint_x: 0.35
+                padding: [10, 0, 0, 0]
+                
+                # Options header
+                Label:
+                    text: 'Options'
+                    size_hint_y: None
+                    height: 25
+                    font_size: '14sp'
+                    bold: True
+                    halign: 'left'
+                    valign: 'center'
+                    text_size: self.size
+                
+                # Timeout
+                BoxLayout:
+                    orientation: 'horizontal'
+                    size_hint_y: None
+                    height: 35
+                    spacing: 10
+                    
+                    Label:
+                        text: 'Timeout (s):'
+                        size_hint_x: 0.5
+                        font_size: '12sp'
+                        halign: 'right'
+                        valign: 'center'
+                        text_size: self.size
+                    
+                    Spinner:
+                        id: pse_timeout
+                        text: '(default)'
+                        values: ['(default)', '1.0', '2.0', '3.0', '5.0', '10.0']
+                        size_hint_x: 0.5
+                        size_hint_y: None
+                        height: 30
+                        font_size: '12sp'
+                
+                # Retries
+                BoxLayout:
+                    orientation: 'horizontal'
+                    size_hint_y: None
+                    height: 35
+                    spacing: 10
+                    
+                    Label:
+                        text: 'Retries:'
+                        size_hint_x: 0.5
+                        font_size: '12sp'
+                        halign: 'right'
+                        valign: 'center'
+                        text_size: self.size
+                    
+                    Spinner:
+                        id: pse_retries
+                        text: '(default)'
+                        values: ['(default)', '0', '1', '2', '3', '5']
+                        size_hint_x: 0.5
+                        size_hint_y: None
+                        height: 30
+                        font_size: '12sp'
+                
+                # Retry Delay
+                BoxLayout:
+                    orientation: 'horizontal'
+                    size_hint_y: None
+                    height: 35
+                    spacing: 10
+                    
+                    Label:
+                        text: 'Retry Delay (s):'
+                        size_hint_x: 0.5
+                        font_size: '12sp'
+                        halign: 'right'
+                        valign: 'center'
+                        text_size: self.size
+                    
+                    Spinner:
+                        id: pse_retry_delay
+                        text: '(default)'
+                        values: ['(default)', '0.5', '1.0', '2.0', '3.0', '5.0']
+                        size_hint_x: 0.5
+                        size_hint_y: None
+                        height: 30
+                        font_size: '12sp'
+                
+                # On Fail
+                BoxLayout:
+                    orientation: 'horizontal'
+                    size_hint_y: None
+                    height: 35
+                    spacing: 10
+                    
+                    Label:
+                        text: 'On Fail:'
+                        size_hint_x: 0.5
+                        font_size: '12sp'
+                        halign: 'right'
+                        valign: 'center'
+                        text_size: self.size
+                    
+                    Spinner:
+                        id: pse_on_fail
+                        text: '(default)'
+                        values: ['(default)', 'abort', 'skip', 'continue']
+                        size_hint_x: 0.5
+                        font_size: '12sp'
+                
+                # Separator
+                Widget:
+                    size_hint_y: None
+                    height: 15
+                
+                # Variables help
+                Label:
+                    text: 'Available Variables'
+                    size_hint_y: None
+                    height: 25
+                    font_size: '14sp'
+                    bold: True
+                    halign: 'left'
+                    valign: 'center'
+                    text_size: self.size
+                
+                ScrollView:
+                    size_hint_y: 1
+                    do_scroll_x: False
+                    bar_width: 6
+                    
+                    Label:
+                        id: pse_variables_help
+                        text: '{serial_number}\n{qr_raw}\n{row}\n{col}\n{panel_name}\n{timestamp}\n{date}\n{time}'
+                        markup: True
+                        font_size: '11sp'
+                        font_name: '/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf'
+                        color: 0.6, 0.7, 0.8, 1
+                        halign: 'left'
+                        valign: 'top'
+                        text_size: self.width, None
+                        size_hint_y: None
+                        height: self.texture_size[1]

@@ -977,27 +977,26 @@ class PanelSetupController(CameraPreviewMixin):
         log.debug(f"[PanelSetup] Programmer type changed to {type_id}")
 
     def _build_provision_ui(self):
-        """Build the provisioning steps summary table."""
+        """Build the provisioning steps list with action buttons."""
         if not self.popup:
             return
         
         from kivy.uix.boxlayout import BoxLayout
         from kivy.uix.label import Label
+        from kivy.uix.button import Button
         from kivy.graphics import Color, Rectangle, Line
         
         # Get provision config from buffer
         provision_config = self._get_buffer_value('provision', {})
         script_data = provision_config.get('script', {})
         
-        # Update script name label
-        if name_label := self.popup.ids.get('ps_provision_script_name'):
-            script_name = script_data.get('name', '')
-            if script_name:
-                name_label.text = script_name
-                name_label.color = (0.8, 0.8, 0.8, 1)
-            else:
-                name_label.text = '(none loaded)'
-                name_label.color = (0.5, 0.5, 0.5, 1)
+        # Update default timeout input
+        if timeout_input := self.popup.ids.get('ps_provision_default_timeout'):
+            timeout_input.text = str(script_data.get('default_timeout', 5.0))
+        
+        # Update default retries input
+        if retries_input := self.popup.ids.get('ps_provision_default_retries'):
+            retries_input.text = str(script_data.get('default_retries', 1))
         
         # Get steps container
         steps_container = self.popup.ids.get('ps_provision_steps_container')
@@ -1012,11 +1011,11 @@ class PanelSetupController(CameraPreviewMixin):
         if not steps:
             # Show placeholder when no steps
             placeholder = Label(
-                text='No provisioning script configured',
+                text='No steps defined. Click "+ Add Step" to create one.',
                 size_hint_y=None,
-                height=40,
+                height=60,
                 font_size='12sp',
-                color=(0.4, 0.4, 0.4, 1),
+                color=(0.5, 0.5, 0.5, 1),
                 halign='center',
                 valign='center',
             )
@@ -1028,122 +1027,217 @@ class PanelSetupController(CameraPreviewMixin):
                 status_label.text = ''
             return
         
-        def add_cell_border(widget, is_last=False):
-            """Add vertical cell border to widget."""
-            def update_border(instance, value):
-                instance.canvas.after.clear()
-                with instance.canvas.after:
-                    if not is_last:
-                        Color(0.6, 0.6, 0.6, 1)  # Light gray cell border
-                        Line(points=[instance.right, instance.y, instance.right, instance.top], width=1)
-            widget.bind(pos=update_border, size=update_border)
-            update_border(widget, None)
-        
-        def add_row_border(row_widget, container):
-            """Add bottom border to row spanning full container width."""
-            def update_border(*args):
-                row_widget.canvas.after.clear()
-                with row_widget.canvas.after:
-                    Color(0.5, 0.5, 0.5, 1)  # Medium gray row border
-                    # Use container width to span full table
-                    Line(points=[container.x, row_widget.y, container.x + container.width, row_widget.y], width=0.8)
-            row_widget.bind(pos=update_border, size=update_border)
-            container.bind(pos=update_border, size=update_border)
-            update_border()
-        
         # Build a row for each step
-        for idx, step in enumerate(steps, start=1):
+        for idx, step in enumerate(steps):
             row = BoxLayout(
                 orientation='horizontal',
                 size_hint_y=None,
                 size_hint_x=1,
-                height=30,
-                spacing=0,
-                padding=[2, 0, 2, 0],
+                height=36,
+                spacing=5,
+                padding=[5, 2, 5, 2],
             )
             
-            # Add row border (pass container for full-width line)
-            add_row_border(row, steps_container)
+            # Add alternating row background
+            is_even = idx % 2 == 0
+            bg_color = (0.2, 0.2, 0.22, 1) if is_even else (0.18, 0.18, 0.2, 1)
+            
+            def add_row_bg(widget, color):
+                def update_bg(*args):
+                    widget.canvas.before.clear()
+                    with widget.canvas.before:
+                        Color(*color)
+                        Rectangle(pos=widget.pos, size=widget.size)
+                widget.bind(pos=update_bg, size=update_bg)
+                update_bg()
+            
+            add_row_bg(row, bg_color)
             
             # Step number
             num_label = Label(
-                text=str(idx),
+                text=str(idx + 1),
                 size_hint_x=None,
-                width=35,
-                font_size='11sp',
-                color=(0.2, 0.2, 0.2, 1),
+                width=30,
+                font_size='12sp',
+                color=(0.6, 0.6, 0.6, 1),
                 halign='center',
                 valign='center',
             )
             num_label.bind(size=lambda *a, lbl=num_label: setattr(lbl, 'text_size', lbl.size))
-            add_cell_border(num_label)
             row.add_widget(num_label)
             
-            # Description
-            desc = step.get('description', '-')
+            # Description (takes remaining space)
+            desc = step.get('description', '(no description)')
             desc_label = Label(
                 text=desc,
-                size_hint_x=0.25,
-                font_size='11sp',
-                color=(0.15, 0.15, 0.15, 1),
+                size_hint_x=1,
+                font_size='12sp',
+                color=(0.9, 0.9, 0.9, 1),
                 halign='left',
                 valign='center',
-                padding=[5, 0],
                 shorten=True,
                 shorten_from='right',
             )
-            desc_label.bind(size=lambda *a, lbl=desc_label: setattr(lbl, 'text_size', (lbl.width - 10, lbl.height)))
-            add_cell_border(desc_label)
+            desc_label.bind(size=lambda *a, lbl=desc_label: setattr(lbl, 'text_size', lbl.size))
             row.add_widget(desc_label)
             
-            # Send command (escape newlines for display)
-            send_cmd = step.get('send', '-')
-            send_display = send_cmd.replace('\n', '\\n').replace('\r', '\\r')
-            send_label = Label(
-                text=send_display,
-                size_hint_x=0.35,
-                font_size='10sp',
-                color=(0.0, 0.35, 0.0, 1),  # Dark green for commands
-                halign='left',
-                valign='center',
-                padding=[5, 0],
-                shorten=True,
-                shorten_from='right',
+            # Action buttons container
+            actions = BoxLayout(
+                orientation='horizontal',
+                size_hint_x=None,
+                width=140,
+                spacing=3,
             )
-            send_label.bind(size=lambda *a, lbl=send_label: setattr(lbl, 'text_size', (lbl.width - 10, lbl.height)))
-            add_cell_border(send_label)
-            row.add_widget(send_label)
             
-            # Expect pattern (truncate long patterns)
-            expect = step.get('expect', '-') or '-'
-            if len(expect) > 60:
-                expect_display = expect[:57] + '...'
-            else:
-                expect_display = expect
-            expect_label = Label(
-                text=expect_display,
-                size_hint_x=0.40,
-                font_size='10sp',
-                color=(0.5, 0.3, 0.0, 1),  # Dark orange/brown for patterns
-                halign='left',
-                valign='center',
-                padding=[5, 0],
-                shorten=True,
-                shorten_from='right',
+            # Edit button
+            edit_btn = Button(
+                text='Edit',
+                size_hint_x=None,
+                width=45,
+                font_size='11sp',
+                background_color=(0.3, 0.4, 0.5, 1),
             )
-            expect_label.bind(size=lambda *a, lbl=expect_label: setattr(lbl, 'text_size', (lbl.width - 10, lbl.height)))
-            add_cell_border(expect_label, is_last=True)
-            row.add_widget(expect_label)
+            edit_btn.step_index = idx
+            edit_btn.bind(on_press=lambda btn: self._on_provision_step_edit(btn.step_index))
+            actions.add_widget(edit_btn)
             
+            # Move up button (use DejaVu Sans for Unicode arrow)
+            up_btn = Button(
+                text='↑',
+                size_hint_x=None,
+                width=28,
+                font_size='14sp',
+                font_name='/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
+                disabled=(idx == 0),
+            )
+            up_btn.step_index = idx
+            up_btn.bind(on_press=lambda btn: self._on_provision_step_move_up(btn.step_index))
+            actions.add_widget(up_btn)
+            
+            # Move down button (use DejaVu Sans for Unicode arrow)
+            down_btn = Button(
+                text='↓',
+                size_hint_x=None,
+                width=28,
+                font_size='14sp',
+                font_name='/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
+                disabled=(idx == len(steps) - 1),
+            )
+            down_btn.step_index = idx
+            down_btn.bind(on_press=lambda btn: self._on_provision_step_move_down(btn.step_index))
+            actions.add_widget(down_btn)
+            
+            # Delete button (use DejaVu Sans for Unicode X)
+            del_btn = Button(
+                text='✕',
+                size_hint_x=None,
+                width=28,
+                font_size='12sp',
+                font_name='/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
+                background_color=(0.5, 0.25, 0.25, 1),
+            )
+            del_btn.step_index = idx
+            del_btn.bind(on_press=lambda btn: self._on_provision_step_delete(btn.step_index))
+            actions.add_widget(del_btn)
+            
+            row.add_widget(actions)
             steps_container.add_widget(row)
         
         # Update status
         if status_label := self.popup.ids.get('ps_provision_status'):
-            timeout = script_data.get('default_timeout', 5.0)
-            retries = script_data.get('default_retries', 1)
-            status_label.text = f'{len(steps)} steps | timeout: {timeout}s | retries: {retries}'
+            status_label.text = f'{len(steps)} steps configured'
         
         log.debug(f"[PanelSetup] Built provision UI with {len(steps)} steps")
+    
+    def _on_provision_step_edit(self, step_index):
+        """Handle edit button click for a provision step."""
+        log.debug(f"[PanelSetup] Edit provision step {step_index}")
+        
+        # Get current step data from buffer
+        provision_config = self._get_buffer_value('provision', {})
+        script_data = provision_config.get('script', {})
+        steps = script_data.get('steps', [])
+        
+        if 0 <= step_index < len(steps):
+            step_data = steps[step_index]
+            # Open step editor
+            self.app.provision_step_editor.open(
+                step_data=step_data,
+                step_index=step_index,
+                on_save=self._on_provision_step_saved
+            )
+    
+    def _on_provision_step_saved(self, step_data, step_index):
+        """Handle step saved from editor."""
+        log.debug(f"[PanelSetup] Step {step_index} saved: {step_data}")
+        
+        # Get current provision config from buffer
+        provision_config = self._get_buffer_value('provision', {})
+        if 'script' not in provision_config:
+            provision_config['script'] = {}
+        script_data = provision_config['script']
+        if 'steps' not in script_data:
+            script_data['steps'] = []
+        steps = script_data['steps']
+        
+        if step_index >= 0 and step_index < len(steps):
+            # Update existing step
+            steps[step_index] = step_data
+        else:
+            # Add new step
+            steps.append(step_data)
+        
+        # Save back to buffer
+        self._set_buffer_value('provision', provision_config)
+        
+        # Rebuild UI
+        self._build_provision_ui()
+    
+    def _on_provision_step_move_up(self, step_index):
+        """Move a provision step up in the list."""
+        if step_index <= 0:
+            return
+        
+        log.debug(f"[PanelSetup] Move provision step {step_index} up")
+        
+        provision_config = self._get_buffer_value('provision', {})
+        script_data = provision_config.get('script', {})
+        steps = script_data.get('steps', [])
+        
+        if step_index < len(steps):
+            # Swap with previous step
+            steps[step_index], steps[step_index - 1] = steps[step_index - 1], steps[step_index]
+            self._set_buffer_value('provision', provision_config)
+            self._build_provision_ui()
+    
+    def _on_provision_step_move_down(self, step_index):
+        """Move a provision step down in the list."""
+        provision_config = self._get_buffer_value('provision', {})
+        script_data = provision_config.get('script', {})
+        steps = script_data.get('steps', [])
+        
+        if step_index >= len(steps) - 1:
+            return
+        
+        log.debug(f"[PanelSetup] Move provision step {step_index} down")
+        
+        # Swap with next step
+        steps[step_index], steps[step_index + 1] = steps[step_index + 1], steps[step_index]
+        self._set_buffer_value('provision', provision_config)
+        self._build_provision_ui()
+    
+    def _on_provision_step_delete(self, step_index):
+        """Delete a provision step."""
+        log.debug(f"[PanelSetup] Delete provision step {step_index}")
+        
+        provision_config = self._get_buffer_value('provision', {})
+        script_data = provision_config.get('script', {})
+        steps = script_data.get('steps', [])
+        
+        if 0 <= step_index < len(steps):
+            del steps[step_index]
+            self._set_buffer_value('provision', provision_config)
+            self._build_provision_ui()
 
     def _refresh_position(self):
         """Query current position and update display."""

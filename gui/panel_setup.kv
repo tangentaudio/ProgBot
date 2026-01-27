@@ -1054,110 +1054,104 @@
                 
                 BoxLayout:
                     orientation: 'vertical'
-                    spacing: 10
-                    padding: 20
+                    spacing: 8
+                    padding: 15
                     disabled: not provision_tab.phase_enabled
                     opacity: 1.0 if provision_tab.phase_enabled else 0.4
                     
-                    # Script name header
+                    # Default settings row
                     BoxLayout:
                         orientation: 'horizontal'
                         size_hint_y: None
-                        height: 30
+                        height: 35
+                        spacing: 15
                         
                         Label:
-                            text: 'Script:'
+                            text: 'Default Timeout:'
                             size_hint_x: None
-                            width: 60
-                            font_size: '14sp'
-                            bold: True
+                            width: 105
+                            font_size: '12sp'
                             halign: 'right'
                             valign: 'center'
                             text_size: self.size
                         
+                        Spinner:
+                            id: ps_provision_default_timeout
+                            text: '5.0'
+                            values: ['1.0', '2.0', '3.0', '5.0', '10.0']
+                            size_hint_x: None
+                            width: 70
+                            size_hint_y: None
+                            height: 30
+                            font_size: '12sp'
+                            on_text: app.ps_provision_default_timeout_changed(self.text)
+                        
                         Label:
-                            id: ps_provision_script_name
-                            text: '(none loaded)'
-                            font_size: '14sp'
-                            color: 0.8, 0.8, 0.8, 1
-                            halign: 'left'
+                            text: 'Default Retries:'
+                            size_hint_x: None
+                            width: 100
+                            font_size: '12sp'
+                            halign: 'right'
                             valign: 'center'
                             text_size: self.size
+                        
+                        Spinner:
+                            id: ps_provision_default_retries
+                            text: '1'
+                            values: ['0', '1', '2', '3', '5']
+                            size_hint_x: None
+                            width: 55
+                            size_hint_y: None
+                            height: 30
+                            font_size: '12sp'
+                            on_text: app.ps_provision_default_retries_changed(self.text)
+                        
+                        Widget:
+                            # Spacer to push fields left
                     
                     # Table header row
                     BoxLayout:
                         orientation: 'horizontal'
                         size_hint_y: None
-                        height: 32
+                        height: 30
                         spacing: 0
                         padding: 0
                         canvas.before:
                             Color:
-                                rgba: 0.85, 0.85, 0.85, 1
+                                rgba: 0.25, 0.25, 0.3, 1
                             Rectangle:
                                 pos: self.pos
                                 size: self.size
-                            Color:
-                                rgba: 0.2, 0.2, 0.2, 1
-                            Line:
-                                rectangle: self.x, self.y, self.width, self.height
-                                width: 1.5
                         
                         Label:
                             text: '#'
                             size_hint_x: None
-                            width: 35
+                            width: 30
                             font_size: '12sp'
                             bold: True
-                            color: 0.1, 0.1, 0.1, 1
+                            color: 0.9, 0.9, 0.9, 1
                             halign: 'center'
                             valign: 'center'
                             text_size: self.size
-                            canvas.after:
-                                Color:
-                                    rgba: 0.5, 0.5, 0.5, 1
-                                Line:
-                                    points: [self.right, self.y, self.right, self.top]
-                                    width: 1
                         
                         Label:
                             text: 'Description'
-                            size_hint_x: 0.25
+                            size_hint_x: 1
                             font_size: '12sp'
                             bold: True
-                            color: 0.1, 0.1, 0.1, 1
-                            halign: 'center'
+                            color: 0.9, 0.9, 0.9, 1
+                            halign: 'left'
                             valign: 'center'
                             text_size: self.size
-                            canvas.after:
-                                Color:
-                                    rgba: 0.5, 0.5, 0.5, 1
-                                Line:
-                                    points: [self.right, self.y, self.right, self.top]
-                                    width: 1
+                            padding: [10, 0]
                         
                         Label:
-                            text: 'Send'
-                            size_hint_x: 0.35
+                            text: 'Actions'
+                            size_hint_x: None
+                            width: 140
                             font_size: '12sp'
                             bold: True
-                            color: 0.1, 0.1, 0.1, 1
-                            halign: 'center'
-                            valign: 'center'
-                            text_size: self.size
-                            canvas.after:
-                                Color:
-                                    rgba: 0.5, 0.5, 0.5, 1
-                                Line:
-                                    points: [self.right, self.y, self.right, self.top]
-                                    width: 1
-                        
-                        Label:
-                            text: 'Expect'
-                            size_hint_x: 0.40
-                            font_size: '12sp'
-                            bold: True
-                            color: 0.1, 0.1, 0.1, 1
+                            color: 0.9, 0.9, 0.9, 1
                             halign: 'center'
                             valign: 'center'
                             text_size: self.size
@@ -1169,30 +1163,44 @@
                         bar_width: 8
                         canvas.before:
                             Color:
-                                rgba: 0.2, 0.2, 0.2, 1
-                            Line:
-                                rectangle: self.x, self.y, self.width, self.height
-                                width: 1.5
+                                rgba: 0.15, 0.15, 0.15, 1
+                            Rectangle:
+                                pos: self.pos
+                                size: self.size
                         
                         BoxLayout:
                             id: ps_provision_steps_container
                             orientation: 'vertical'
                             size_hint_y: None
                             height: self.minimum_height
-                            spacing: 0
-                            canvas.before:
-                                Color:
-                                    rgba: 0.95, 0.95, 0.95, 1
-                                Rectangle:
-                                    pos: self.pos
-                                    size: self.size
+                            spacing: 1
                     
-                    # Status / info label
+                    # Add step button row
+                    BoxLayout:
+                        orientation: 'horizontal'
+                        size_hint_y: None
+                        height: 40
+                        spacing: 10
+                        
+                        Widget:
+                            # Spacer
+                        
+                        Button:
+                            text: '+ Add Step'
+                            size_hint_x: None
+                            width: 120
+                            font_size: '13sp'
+                            on_press: app.ps_provision_add_step()
+                        
+                        Widget:
+                            # Spacer
+                    
+                    # Status label
                     Label:
                         id: ps_provision_status
                         text: ''
                         size_hint_y: None
-                        height: 25
+                        height: 20
                         font_size: '11sp'
                         color: 0.5, 0.5, 0.5, 1
                         halign: 'center'

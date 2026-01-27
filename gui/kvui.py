@@ -133,6 +133,7 @@ from panel_settings import get_panel_settings, find_panel_files
 from numpad_keyboard import switch_keyboard_layout
 from panel_setup_dialog import PanelSetupController
 from config_settings_dialog import ConfigSettingsController
+from provision_step_editor import ProvisionStepEditorController, ProvisionStepEditorMixin
 from settings_handlers import SettingsHandlersMixin
 from panel_file_manager import PanelFileManagerMixin
 
@@ -464,8 +465,8 @@ class LogViewer(ScrollView):
         pass
 
 
-class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, App):
-    """Main application class with settings and panel file handlers mixed in."""
+class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, ProvisionStepEditorMixin, App):
+    """Main application class with settings, panel file, and step editor handlers mixed in."""
     
     other_task = None
     bot_task = None
@@ -480,6 +481,7 @@ class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, App):
     panel_settings = None
     panel_setup_controller = None  # Panel setup dialog controller
     config_settings_controller = None  # Config settings dialog controller
+    provision_step_editor = None  # Provision step editor dialog controller
     main_menu_dropdown = None  # Main hamburger menu dropdown
     cycle_timer_event = None  # Clock event for cycle timer updates
     cycle_start_time = None  # Start time of current cycle
@@ -493,6 +495,8 @@ class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, App):
         self.panel_setup_controller = PanelSetupController(self)
         # Initialize config settings controller
         self.config_settings_controller = ConfigSettingsController(self)
+        # Initialize provision step editor controller
+        self.provision_step_editor = ProvisionStepEditorController(self)
     
     # ==================== Main Menu ====================
     
@@ -1313,6 +1317,42 @@ class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, App):
         if self.panel_setup_controller:
             enabled = (state == 'down')
             self.panel_setup_controller._set_buffer_value('provision_enabled', enabled)
+    
+    def ps_provision_default_timeout_changed(self, value):
+        """Handle provision default timeout change from Panel Setup dialog."""
+        if self.panel_setup_controller:
+            try:
+                timeout = float(value) if value else 5.0
+                provision_config = self.panel_setup_controller._get_buffer_value('provision', {})
+                if 'script' not in provision_config:
+                    provision_config['script'] = {}
+                provision_config['script']['default_timeout'] = timeout
+                self.panel_setup_controller._set_buffer_value('provision', provision_config)
+            except ValueError:
+                pass
+    
+    def ps_provision_default_retries_changed(self, value):
+        """Handle provision default retries change from Panel Setup dialog."""
+        if self.panel_setup_controller:
+            try:
+                retries = int(value) if value else 1
+                provision_config = self.panel_setup_controller._get_buffer_value('provision', {})
+                if 'script' not in provision_config:
+                    provision_config['script'] = {}
+                provision_config['script']['default_retries'] = retries
+                self.panel_setup_controller._set_buffer_value('provision', provision_config)
+            except ValueError:
+                pass
+    
+    def ps_provision_add_step(self):
+        """Add a new provision step from Panel Setup dialog."""
+        if self.provision_step_editor and self.panel_setup_controller:
+            # Open editor for new step
+            self.provision_step_editor.open(
+                step_data=None,
+                step_index=-1,
+                on_save=self.panel_setup_controller._on_provision_step_saved
+            )
     
     def ps_test_enabled_changed(self, state):
         """Handle test enabled toggle change from Panel Setup dialog."""
