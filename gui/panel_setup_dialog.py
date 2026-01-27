@@ -90,10 +90,22 @@ class EnableableTabbedPanelItem(TabbedPanelItem):
             log.debug("_show_hint: no content found")
             return
         
+        # If content is not wrapped in FloatLayout, wrap it once
+        if not isinstance(content, FloatLayout):
+            log.debug("_show_hint: wrapping content in FloatLayout")
+            float_wrapper = FloatLayout()
+            popup.content = float_wrapper
+            # Re-add original content with full size
+            content.size_hint = (1, 1)
+            float_wrapper.add_widget(content)
+            container = float_wrapper
+        else:
+            container = content
+        
         # Create a floating widget to hold the hint
         hint_container = Widget(
             size_hint=(None, None),
-            size=(280, 32),
+            size=(320, 60),
         )
         
         # Add rounded background
@@ -102,40 +114,40 @@ class EnableableTabbedPanelItem(TabbedPanelItem):
             hint_container._bg_rect = RoundedRectangle(
                 pos=(0, 0),
                 size=hint_container.size,
-                radius=[8]
+                radius=[12]
             )
         
         hint_label = KivyLabel(
             text='Long-press tab to enable/disable',
-            font_size='11sp',
+            font_size='14sp',
             color=(0.4, 0.9, 1.0, 1),
             size_hint=(None, None),
-            size=(280, 32),
+            size=(320, 60),
             halign='center',
             valign='center',
             pos=(0, 0),
         )
-        hint_label.text_size = (260, 32)
+        hint_label.text_size = (300, 60)
         hint_container.add_widget(hint_label)
         
-        # Position centered below the tabs (lower Y value in Kivy = lower on screen)
-        # The content BoxLayout starts at bottom, so we need to calculate from tab position
+        # Position centered horizontally, in the middle of the content area vertically
+        # Title bar + tabs take ~100px from top, so center in remaining space
         hint_container.pos = (
             (popup.width - hint_container.width) / 2,
-            popup.height - 140  # Below title bar (~40) + tabs (~40) + padding
+            (popup.height - 100) / 2  # Center in the space below title/tabs
         )
         hint_container._bg_rect.pos = hint_container.pos
         hint_label.pos = hint_container.pos
         
         log.debug(f"_show_hint: adding hint at {hint_container.pos}")
         
-        # Add to popup's content
-        content.add_widget(hint_container)
+        # Add to FloatLayout container
+        container.add_widget(hint_container)
         
         # Fade out after 5 seconds
         def remove_hint(*args):
             try:
-                content.remove_widget(hint_container)
+                container.remove_widget(hint_container)
             except Exception:
                 pass
         

@@ -33,7 +33,7 @@ from kivy.config import Config
 #Config.set('graphics', 'height', 415)
 #Config.set('graphics', 'resizable', 0)
 Config.set('graphics', 'fullscreen', 'auto')
-Config.set('graphics', 'maxfps', 10)  # Very low FPS (10 updates/sec) to minimize overhead
+Config.set('graphics', 'maxfps', 30)  # 30 FPS for smooth UI updates
 Config.set('graphics', 'multisamples', 0)  # Disable graphics antialiasing (for shapes)
 Config.set('graphics', 'vsync', 0)  # Disable vsync to reduce frame timing overhead
 Config.set('kivy', 'keyboard_mode', 'systemanddock') 
@@ -47,12 +47,14 @@ def _patched_label_init(self, *args, **kwargs):
     _original_label_init(self, *args, **kwargs)
 CoreLabel.__init__ = _patched_label_init
 
-# Register Noto Sans font for Unicode support (similar aesthetic to Roboto)
+# Register DejaVu Sans as default font for Unicode support
 from kivy.core.text import LabelBase
-NOTO_SANS_FONT = '/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf'
-if os.path.exists(NOTO_SANS_FONT):
-    LabelBase.register(name='NotoSans', fn_regular=NOTO_SANS_FONT)
-    # Don't override default - keep Roboto for everything except specific Unicode widgets 
+DEJAVU_SANS_FONT = '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'
+if os.path.exists(DEJAVU_SANS_FONT):
+    # Register as named font
+    LabelBase.register(name='DejaVuSans', fn_regular=DEJAVU_SANS_FONT)
+    # Override default Roboto font with DejaVu Sans for Unicode support
+    LabelBase.register(name='Roboto', fn_regular=DEJAVU_SANS_FONT) 
 
 import sys
 import asyncio

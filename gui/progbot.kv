@@ -1,5 +1,9 @@
 #:kivy 2.0
 
+# NOTE: All buttons should have visual feedback when pressed
+# Use background_normal: '' and background_down: '' with a state-based background_color
+# Example: background_color: (darker_color) if self.state == 'down' else (normal_color)
+
 <PanelFileRow@Button>:
     filename: ''
     fullpath: ''
@@ -260,6 +264,9 @@
             text: 'Close'
             size_hint_y: None
             height: '40dp'
+            background_normal: ''
+            background_down: ''
+            background_color: (0.35, 0.35, 0.4, 1) if self.state == 'down' else (0.25, 0.25, 0.3, 1)
             on_press: root.dismiss()
 
 <StatsPopup@Popup>:
@@ -285,6 +292,9 @@
         Button:
             text: 'Close'
             size_hint_y: 0.15
+            background_normal: ''
+            background_down: ''
+            background_color: (0.35, 0.35, 0.4, 1) if self.state == 'down' else (0.25, 0.25, 0.3, 1)
             on_press: root.dismiss()
 
 # PanelSetupPopup has been moved to panel_setup.kv and is loaded by PanelSetupController
@@ -376,17 +386,23 @@
 
             Button:
                 text: 'Abort Cycle'
-                background_color: 0.8, 0.1, 0.1, 1
+                background_normal: ''
+                background_down: ''
+                background_color: (0.9, 0.2, 0.2, 1) if self.state == 'down' else (0.8, 0.1, 0.1, 1)
                 on_press: app.on_error_abort()
 
             Button:
                 text: 'Retry This Board'
-                background_color: 0.1, 0.6, 0.8, 1
+                background_normal: ''
+                background_down: ''
+                background_color: (0.2, 0.7, 0.9, 1) if self.state == 'down' else (0.1, 0.6, 0.8, 1)
                 on_press: app.on_error_retry()
 
             Button:
                 text: 'Skip This Board'
-                background_color: 0.6, 0.6, 0.1, 1
+                background_normal: ''
+                background_down: ''
+                background_color: (0.7, 0.7, 0.2, 1) if self.state == 'down' else (0.6, 0.6, 0.1, 1)
                 on_press: app.on_error_skip()
 
 <PanelFileChooser@Popup>:
@@ -434,12 +450,18 @@
             Button:
                 text: 'Load'
                 font_size: '16sp'
+                background_normal: ''
+                background_down: ''
+                background_color: (0.1, 0.9, 0.3, 1) if self.state == 'down' else (0, 0.8, 0.2, 1)
                 on_press: app.on_custom_panel_file_selected()
                 on_press: root.dismiss()
 
             Button:
                 text: 'Cancel'
                 font_size: '16sp'
+                background_normal: ''
+                background_down: ''
+                background_color: (0.35, 0.35, 0.4, 1) if self.state == 'down' else (0.25, 0.25, 0.3, 1)
                 on_press: root.dismiss()
 
 <SavePanelDialog@Popup>:
@@ -477,12 +499,18 @@
             Button:
                 text: 'Save'
                 font_size: '14sp'
+                background_normal: ''
+                background_down: ''
+                background_color: (0.1, 0.9, 0.3, 1) if self.state == 'down' else (0, 0.8, 0.2, 1)
                 on_press: app.on_save_panel_confirmed(panel_name_input.text)
                 on_press: root.dismiss()
 
             Button:
                 text: 'Cancel'
                 font_size: '14sp'
+                background_normal: ''
+                background_down: ''
+                background_color: (0.35, 0.35, 0.4, 1) if self.state == 'down' else (0.25, 0.25, 0.3, 1)
                 on_press: root.dismiss()
 
 <AppRoot@BoxLayout>:
@@ -546,11 +574,14 @@
                 
                 Button:
                     id: menu_btn
-                    text: 'Menu'
+                    text: '☰'
                     size_hint_x: None
                     width: 70
-                    font_size: '18sp'
-                    background_color: 0.3, 0.35, 0.4, 1
+                    font_size: '24sp'
+                    font_name: 'DejaVuSans'
+                    background_normal: ''
+                    background_down: ''
+                    background_color: (0.2, 0.25, 0.3, 0.5) if self.state == 'down' else (0, 0, 0, 0)
                     on_release: app.show_main_menu()
             
             # Main controls (formerly Run tab content)
@@ -567,27 +598,34 @@
                     size_hint_y: None
                     height: 80
                     font_size: '18sp'
+                    background_normal: ''
+                    background_down: ''
+                    background_color: (0.35, 0.35, 0.4, 1) if self.state == 'down' else (0.25, 0.25, 0.3, 1)
                     on_press: app.home_machine(self)
 
                 Button:
                     id: stop_btn
                     text: 'STOP'
                     disabled: True
-                    background_color: 1, 0.4, 0, 1
                     size_hint_x: 0.375
                     size_hint_y: None
                     height: 80
                     font_size: '24sp'
+                    background_normal: ''
+                    background_down: ''
+                    background_color: (1.2, 0.5, 0.1, 1) if self.state == 'down' else (1, 0.4, 0, 1)
                     on_press: app.stop(self)
 
                 Button:
                     id: start_btn
                     text: 'START'
-                    background_color: 0, 0.8, 0.2, 1
                     size_hint_x: 0.375
                     size_hint_y: None
                     height: 80
                     font_size: '24sp'
+                    background_normal: ''
+                    background_down: ''
+                    background_color: (0.1, 0.9, 0.3, 1) if self.state == 'down' else (0, 0.8, 0.2, 1)
                     on_press: app.start(self)
             
             BoxLayout:
@@ -599,22 +637,28 @@
                 Button:
                     id: reset_grid_btn
                     text: 'Reset Grid'
-                    background_color: 0.4, 0.4, 0.6, 1
                     font_size: '16sp'
+                    background_normal: ''
+                    background_down: ''
+                    background_color: (0.5, 0.5, 0.7, 1) if self.state == 'down' else (0.4, 0.4, 0.6, 1)
                     on_press: app.reset_grid(self)
                 
                 Button:
                     id: skip_all_btn
                     text: 'Skip All'
-                    background_color: 0.4, 0.4, 0.6, 1
                     font_size: '16sp'
+                    background_normal: ''
+                    background_down: ''
+                    background_color: (0.5, 0.5, 0.7, 1) if self.state == 'down' else (0.4, 0.4, 0.6, 1)
                     on_press: app.skip_all_boards(self)
                 
                 Button:
                     id: enable_all_btn
                     text: 'Enable All'
-                    background_color: 0.4, 0.4, 0.6, 1
                     font_size: '16sp'
+                    background_normal: ''
+                    background_down: ''
+                    background_color: (0.5, 0.5, 0.7, 1) if self.state == 'down' else (0.4, 0.4, 0.6, 1)
                     on_press: app.enable_all_boards(self)
             
             # Camera preview pane (shows during QR scanning)
@@ -728,7 +772,7 @@
             font_size: '16sp'
             background_normal: ''
             background_down: ''
-            background_color: 0.25, 0.25, 0.3, 1
+            background_color: (0.35, 0.35, 0.4, 1) if self.state == 'down' else (0.25, 0.25, 0.3, 1)
             color: 0.9, 0.9, 0.9, 1
             on_release: app.menu_load_panel()
         
@@ -739,7 +783,7 @@
             font_size: '16sp'
             background_normal: ''
             background_down: ''
-            background_color: 0.25, 0.25, 0.3, 1
+            background_color: (0.35, 0.35, 0.4, 1) if self.state == 'down' else (0.25, 0.25, 0.3, 1)
             color: 0.9, 0.9, 0.9, 1
             on_release: app.menu_panel_setup()
         
@@ -750,7 +794,7 @@
             font_size: '16sp'
             background_normal: ''
             background_down: ''
-            background_color: 0.25, 0.25, 0.3, 1
+            background_color: (0.35, 0.35, 0.4, 1) if self.state == 'down' else (0.25, 0.25, 0.3, 1)
             color: 0.9, 0.9, 0.9, 1
             on_release: app.menu_config_settings()
         
@@ -765,7 +809,7 @@
             font_size: '16sp'
             background_normal: ''
             background_down: ''
-            background_color: 0.4, 0.25, 0.25, 1
+            background_color: (0.5, 0.3, 0.3, 1) if self.state == 'down' else (0.4, 0.25, 0.25, 1)
             color: 0.9, 0.9, 0.9, 1
             on_release: app.menu_exit()
 
