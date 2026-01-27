@@ -94,10 +94,15 @@ class CameraPreview:
             
             # Update status
             if qr_found:
-                self.status_label.text = f'Found: {qr_found} ({strategy_name})'
+                # Handle both tuple (data, format) and plain string formats
+                if isinstance(qr_found, tuple) and len(qr_found) >= 2:
+                    data, qr_type = qr_found[0], qr_found[1]
+                    self.status_label.text = f'{qr_type}: {data}'
+                else:
+                    self.status_label.text = f'QR Code: {qr_found}'
                 self.status_label.color = (0, 1, 0, 1)  # Green
             else:
-                self.status_label.text = f'Trying: {strategy_name}'
+                self.status_label.text = f'Scanning...'
                 self.status_label.color = (1, 1, 0, 1)  # Yellow
             
             # Convert frame to Kivy texture

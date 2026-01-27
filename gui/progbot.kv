@@ -1,4 +1,5 @@
 #:kivy 2.0
+#:import NoTransition kivy.uix.screenmanager.NoTransition
 
 # NOTE: All buttons should have visual feedback when pressed
 # Use background_normal: '' and background_down: '' with a state-based background_color
@@ -334,11 +335,25 @@
             shorten: True
             shorten_from: 'right'
         
-        Image:
-            id: camera_preview_image
-            size_hint_y: 1
-            allow_stretch: True
-            keep_ratio: True
+        # Center container for the image with border
+        AnchorLayout:
+            anchor_x: 'center'
+            anchor_y: 'center'
+            
+            BoxLayout:
+                size_hint: None, None
+                size: 141, 141  # Square container for camera preview
+                canvas.before:
+                    Color:
+                        rgba: 0, 0, 0, 1
+                    Line:
+                        rectangle: self.x, self.y, self.width, self.height
+                        width: 2
+                
+                Image:
+                    id: camera_preview_image
+                    allow_stretch: True
+                    keep_ratio: True
 
 <ErrorPopup@Popup>:
     id: error_popup
@@ -596,11 +611,19 @@
                     text: 'HOME'
                     size_hint_x: 0.25
                     size_hint_y: None
-                    height: 80
-                    font_size: '18sp'
+                    height: 70
+                    font_size: '12sp'
+                    bold: True
                     background_normal: ''
                     background_down: ''
-                    background_color: (0.35, 0.35, 0.4, 1) if self.state == 'down' else (0.25, 0.25, 0.3, 1)
+                    background_color: 0, 0, 0, 0
+                    canvas.before:
+                        Color:
+                            rgba: (0.35, 0.35, 0.4, 1) if self.state == 'down' else (0.45, 0.45, 0.5, 1)
+                        RoundedRectangle:
+                            pos: self.pos
+                            size: self.size
+                            radius: [10]
                     on_press: app.home_machine(self)
 
                 Button:
@@ -609,11 +632,19 @@
                     disabled: True
                     size_hint_x: 0.375
                     size_hint_y: None
-                    height: 80
-                    font_size: '24sp'
+                    height: 70
+                    font_size: '12sp'
+                    bold: True
                     background_normal: ''
                     background_down: ''
-                    background_color: (1.2, 0.5, 0.1, 1) if self.state == 'down' else (1, 0.4, 0, 1)
+                    background_color: 0, 0, 0, 0
+                    canvas.before:
+                        Color:
+                            rgba: (0.3, 0.3, 0.35, 1) if self.disabled else ((0.4, 0.2, 0.2, 1) if self.state == 'down' else (0.5, 0.3, 0.3, 1))
+                        RoundedRectangle:
+                            pos: self.pos
+                            size: self.size
+                            radius: [10]
                     on_press: app.stop(self)
 
                 Button:
@@ -621,58 +652,85 @@
                     text: 'START'
                     size_hint_x: 0.375
                     size_hint_y: None
-                    height: 80
-                    font_size: '24sp'
+                    height: 70
+                    font_size: '12sp'
+                    bold: True
                     background_normal: ''
                     background_down: ''
-                    background_color: (0.1, 0.9, 0.3, 1) if self.state == 'down' else (0, 0.8, 0.2, 1)
+                    background_color: 0, 0, 0, 0
+                    canvas.before:
+                        Color:
+                            rgba: (0.2, 0.4, 0.2, 1) if self.state == 'down' else (0.3, 0.5, 0.3, 1)
+                        RoundedRectangle:
+                            pos: self.pos
+                            size: self.size
+                            radius: [10]
                     on_press: app.start(self)
             
             BoxLayout:
                 orientation: 'horizontal'
                 size_hint_y: None
                 height: 50
-                spacing: 5
+                spacing: 8
+                padding: [0, 8, 0, 0]
                 
                 Button:
                     id: reset_grid_btn
                     text: 'Reset Grid'
-                    font_size: '16sp'
+                    font_size: '12sp'
                     background_normal: ''
                     background_down: ''
-                    background_color: (0.5, 0.5, 0.7, 1) if self.state == 'down' else (0.4, 0.4, 0.6, 1)
+                    background_color: 0, 0, 0, 0
+                    canvas.before:
+                        Color:
+                            rgba: (0.35, 0.35, 0.4, 1) if self.state == 'down' else (0.45, 0.45, 0.5, 1)
+                        RoundedRectangle:
+                            pos: self.pos
+                            size: self.size
+                            radius: [10]
                     on_press: app.reset_grid(self)
                 
                 Button:
                     id: skip_all_btn
                     text: 'Skip All'
-                    font_size: '16sp'
+                    font_size: '12sp'
                     background_normal: ''
                     background_down: ''
-                    background_color: (0.5, 0.5, 0.7, 1) if self.state == 'down' else (0.4, 0.4, 0.6, 1)
+                    background_color: 0, 0, 0, 0
+                    canvas.before:
+                        Color:
+                            rgba: (0.35, 0.35, 0.4, 1) if self.state == 'down' else (0.45, 0.45, 0.5, 1)
+                        RoundedRectangle:
+                            pos: self.pos
+                            size: self.size
+                            radius: [10]
                     on_press: app.skip_all_boards(self)
                 
                 Button:
                     id: enable_all_btn
                     text: 'Enable All'
-                    font_size: '16sp'
+                    font_size: '12sp'
                     background_normal: ''
                     background_down: ''
-                    background_color: (0.5, 0.5, 0.7, 1) if self.state == 'down' else (0.4, 0.4, 0.6, 1)
+                    background_color: 0, 0, 0, 0
+                    canvas.before:
+                        Color:
+                            rgba: (0.35, 0.35, 0.4, 1) if self.state == 'down' else (0.45, 0.45, 0.5, 1)
+                        RoundedRectangle:
+                            pos: self.pos
+                            size: self.size
+                            radius: [10]
                     on_press: app.enable_all_boards(self)
+            
+            Widget:
+                size_hint_y: 1
             
             # Camera preview pane (shows during QR scanning)
             ScreenManager:
                 id: stats_camera_manager
                 size_hint_y: None
                 height: 165
-                
-                canvas.before:
-                    Color:
-                        rgba: 0.1, 0.1, 0.15, 1
-                    Rectangle:
-                        pos: self.pos
-                        size: self.size
+                transition: NoTransition()
                 
                 IdleScreen:
                     id: idle_screen
@@ -686,17 +744,39 @@
             BoxLayout:
                 orientation: 'horizontal'
                 size_hint_y: None
-                height: 40
-                spacing: 5
+                height: 44
+                spacing: 8
                 
                 Button:
                     id: log_btn
                     text: 'Log'
+                    font_size: '12sp'
+                    background_normal: ''
+                    background_down: ''
+                    background_color: 0, 0, 0, 0
+                    canvas.before:
+                        Color:
+                            rgba: (0.35, 0.35, 0.4, 1) if self.state == 'down' else (0.45, 0.45, 0.5, 1)
+                        RoundedRectangle:
+                            pos: self.pos
+                            size: self.size
+                            radius: [10]
                     on_press: app.toggle_log_popup()
                 
                 Button:
                     id: stats_btn
                     text: 'Stats'
+                    font_size: '12sp'
+                    background_normal: ''
+                    background_down: ''
+                    background_color: 0, 0, 0, 0
+                    canvas.before:
+                        Color:
+                            rgba: (0.35, 0.35, 0.4, 1) if self.state == 'down' else (0.45, 0.45, 0.5, 1)
+                        RoundedRectangle:
+                            pos: self.pos
+                            size: self.size
+                            radius: [10]
                     on_press: app.toggle_stats_popup()
 
             # Status bar at bottom

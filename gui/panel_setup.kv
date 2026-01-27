@@ -1,3 +1,5 @@
+#:kivy 2.0
+
 # Panel Setup Dialog Layout
 # This file defines the PanelSetupPopup widget for panel configuration:
 # - Parameters tab: Grid dimensions (columns, rows, width, height)
@@ -20,8 +22,8 @@
         BoxLayout:
             orientation: 'horizontal'
             size_hint_y: None
-            height: 40
-            padding: [10, 5]
+            height: 54
+            padding: [10, 7]
             spacing: 10
             canvas.before:
                 Color:
@@ -53,7 +55,12 @@
                 id: ps_save_btn
                 text: 'Save'
                 size_hint_x: None
+                size_hint_y: None
                 width: 70
+                height: 40
+                halign: 'center'
+                valign: 'center'
+                text_size: self.size
                 background_color: 0.2, 0.5, 0.3, 1
                 disabled: True
                 on_press: app.ps_save_panel()
@@ -61,7 +68,12 @@
             Button:
                 text: 'Close'
                 size_hint_x: None
+                size_hint_y: None
                 width: 70
+                height: 40
+                halign: 'center'
+                valign: 'center'
+                text_size: self.size
                 on_press: app.ps_close()
         
         TabbedPanel:

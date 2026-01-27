@@ -1,3 +1,5 @@
+#:kivy 2.0
+
 # Config Settings Dialog Layout
 # This file defines the ConfigSettingsPopup widget for global machine configuration:
 # - Serial Ports tab: Motion controller, Head controller, Target device ports
@@ -20,8 +22,8 @@
         BoxLayout:
             orientation: 'horizontal'
             size_hint_y: None
-            height: 40
-            padding: [10, 5]
+            height: 54
+            padding: [10, 7]
             spacing: 10
             canvas.before:
                 Color:
@@ -47,7 +49,12 @@
                 id: cs_save_btn
                 text: 'Save'
                 size_hint_x: None
+                size_hint_y: None
                 width: 70
+                height: 40
+                halign: 'center'
+                valign: 'center'
+                text_size: self.size
                 background_color: 0.2, 0.5, 0.3, 1
                 disabled: True
                 on_press: app.cs_save_settings()
@@ -55,7 +62,12 @@
             Button:
                 text: 'Close'
                 size_hint_x: None
+                size_hint_y: None
                 width: 70
+                height: 40
+                halign: 'center'
+                valign: 'center'
+                text_size: self.size
                 on_press: app.cs_close()
         
         TabbedPanel:

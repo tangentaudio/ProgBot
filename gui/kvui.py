@@ -34,7 +34,7 @@ from kivy.config import Config
 #Config.set('graphics', 'resizable', 0)
 Config.set('graphics', 'fullscreen', 'auto')
 Config.set('graphics', 'maxfps', 30)  # 30 FPS for smooth UI updates
-Config.set('graphics', 'multisamples', 0)  # Disable graphics antialiasing (for shapes)
+Config.set('graphics', 'multisamples', 4)  # Enable 4x MSAA for smooth rounded corners
 Config.set('graphics', 'vsync', 0)  # Disable vsync to reduce frame timing overhead
 Config.set('kivy', 'keyboard_mode', 'systemanddock') 
 
@@ -47,14 +47,51 @@ def _patched_label_init(self, *args, **kwargs):
     _original_label_init(self, *args, **kwargs)
 CoreLabel.__init__ = _patched_label_init
 
-# Register DejaVu Sans as default font for Unicode support
+# Register Noto Sans as default font with Symbol fallback for Unicode support
 from kivy.core.text import LabelBase
+NOTO_SANS_FONT = '/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf'
+NOTO_SYMBOLS_FONT = '/usr/share/fonts/truetype/noto/NotoSansSymbols-Regular.ttf'
+NOTO_SYMBOLS2_FONT = '/usr/share/fonts/truetype/noto/NotoSansSymbols2-Regular.ttf'
 DEJAVU_SANS_FONT = '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'
-if os.path.exists(DEJAVU_SANS_FONT):
-    # Register as named font
+
+# Try Noto Sans first (modern, looks like Roboto), with fallbacks for symbols
+if os.path.exists(NOTO_SANS_FONT):
+    log.info(f"Font: Primary font found: {NOTO_SANS_FONT}")
+    
+    # Register Noto Sans as primary font
+    LabelBase.register(name='NotoSans', fn_regular=NOTO_SANS_FONT)
+    LabelBase.register(name='Roboto', fn_regular=NOTO_SANS_FONT)
+    log.info("Font: Registered 'Roboto' (app-wide default) -> Noto Sans")
+    
+    # Register symbol fonts separately so Kivy can find glyphs
+    # Note: Kivy doesn't support explicit fallback chains, but registered fonts
+    # with missing glyphs will automatically fall back to system fonts
+    symbol_fonts_registered = 0
+    if os.path.exists(NOTO_SYMBOLS_FONT):
+        try:
+            LabelBase.register(name='NotoSansSymbols', fn_regular=NOTO_SYMBOLS_FONT)
+            log.info(f"Font: Registered symbol font 1: {NOTO_SYMBOLS_FONT}")
+            symbol_fonts_registered += 1
+        except Exception as e:
+            log.debug(f"Font: Could not register {NOTO_SYMBOLS_FONT}: {e}")
+    if os.path.exists(NOTO_SYMBOLS2_FONT):
+        try:
+            LabelBase.register(name='NotoSansSymbols2', fn_regular=NOTO_SYMBOLS2_FONT)
+            log.info(f"Font: Registered symbol font 2: {NOTO_SYMBOLS2_FONT}")
+            symbol_fonts_registered += 1
+        except Exception as e:
+            log.debug(f"Font: Could not register {NOTO_SYMBOLS2_FONT}: {e}")
+    
+    log.info(f"Font: Noto Sans active with {symbol_fonts_registered} symbol fonts available")
+    
+elif os.path.exists(DEJAVU_SANS_FONT):
+    # Fallback to DejaVu Sans if Noto not available
+    log.info(f"Font: Primary font (Noto Sans) not found, using fallback: {DEJAVU_SANS_FONT}")
     LabelBase.register(name='DejaVuSans', fn_regular=DEJAVU_SANS_FONT)
-    # Override default Roboto font with DejaVu Sans for Unicode support
-    LabelBase.register(name='Roboto', fn_regular=DEJAVU_SANS_FONT) 
+    LabelBase.register(name='Roboto', fn_regular=DEJAVU_SANS_FONT)
+    log.info("Font: Registered 'Roboto' (app-wide default) -> DejaVu Sans")
+else:
+    log.warning("Font: No custom fonts found, using Kivy defaults")
 
 import sys
 import asyncio
