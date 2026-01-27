@@ -1423,14 +1423,19 @@ class ProgBot:
             self._safe_emit_stats()
             self._cycle_active = False  # Prevent further emissions
             
+            # Shield cleanup motions from cancellation - we must move the platform
+            # to the accessible position even if the user is spamming stop
             try:
                 log.debug("[full_cycle] Moving Z to safe height...")
-                await self.motion.rapid_z_abs(0.0)
-                log.debug("[full_cycle] Moving XY to home...")
-                await self.motion.rapid_xy_abs(0, 300)
-                log.debug("[full_cycle] Homing complete")
+                await asyncio.shield(self.motion.rapid_z_abs(0.0))
+                log.debug("[full_cycle] Moving Y to accessible position...")
+                await asyncio.shield(self.motion.rapid_xy_abs(0, 300))
+                log.debug("[full_cycle] Platform moved to accessible position")
+            except asyncio.CancelledError:
+                # Cancellation during shielded operation - ignore and continue cleanup
+                log.debug("[full_cycle] Cancellation during cleanup motion (shielded)")
             except Exception as e:
-                log.debug(f"[full_cycle] Error during homing: {e}")
+                log.debug(f"[full_cycle] Error during cleanup motion: {e}")
             
             log.debug("[full_cycle] Turning off motors...")
             await self.motion.motors_off()
@@ -1509,9 +1514,12 @@ class ProgBot:
             await self.motion.rapid_xy_abs(0, 300)
             await self.motion.motors_off()
         except asyncio.CancelledError:
+            # Shield cleanup motions from cancellation
             try:
-                await self.motion.rapid_z_abs(0.0)
-                await self.motion.rapid_xy_abs(0, 300)
+                await asyncio.shield(self.motion.rapid_z_abs(0.0))
+                await asyncio.shield(self.motion.rapid_xy_abs(0, 300))
+            except asyncio.CancelledError:
+                log.debug("[retry_board] Cancellation during cleanup motion (shielded)")
             except Exception:
                 pass
             await self.motion.motors_off()

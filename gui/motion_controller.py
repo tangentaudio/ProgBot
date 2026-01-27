@@ -58,57 +58,23 @@ class MotionController:
 
         homed = False
         if do_homing:
-            # Check if already homed by querying machine state
-            log.info(f"Checking if already homed...")
+            # Always perform homing at cycle start for safety
+            # Smoothie with must_be_homed=false won't report Alarm when unhomed,
+            # so we cannot reliably detect unhomed state from status query alone.
+            # The safest approach is to always home at cycle start.
+            log.info(f"Performing homing cycle...")
             try:
-                # Send status query and wait for actual status response (not just 'ok')
-                self.device.writer.write("?\n".encode())
-                await self.device.writer.drain()
-                
-                # Read responses until we get one with '<' (status format) or timeout
-                start_time = time.time()
-                status = None
-                while time.time() - start_time < 2.0:
-                    try:
-                        response = await asyncio.wait_for(self.device.line_queue.get(), timeout=0.5)
-                        log.debug(f"[MOTION] Status query response: {response}")
-                        if '<' in response:  # This is the actual status
-                            status = response
-                            break
-                    except asyncio.TimeoutError:
-                        continue
-                
-                if not status:
-                    log.debug(f"[MOTION] No status response received, doing homing")
-                    log.info(f"Status query timeout, homing anyway...")
-                    await self.send_gcode_wait_ok("$H", timeout=20)
-                    homed = True
-                elif 'Alarm' in status:
-                    log.debug(f"[MOTION] Machine in Alarm state, homing required")
-                    log.info(f"Machine in Alarm state, homing...")
-                    await self.send_gcode_wait_ok("$H", timeout=20)
-                    homed = True
-                else:
-                    # Check if at valid homed position (not 0,0,0)
-                    log.info(f"Already homed, skipping homing cycle")
-                    log.debug(f"[MOTION] Skipped homing - status: {status}")
-                    homed = False
-                    
-            except Exception as e:
-                # If status query fails, do homing anyway to be safe
-                log.debug(f"[MOTION] Status query failed: {e}, doing homing anyway")
-                log.info(f"Status query failed, homing anyway...")
                 await self.send_gcode_wait_ok("$H", timeout=20)
                 homed = True
+                log.debug(f"[MOTION] Homing completed successfully")
+            except Exception as e:
+                log.error(f"[MOTION] Homing failed: {e}")
+                raise RuntimeError(f"Homing failed: {e}")
     
-        # Only reset work coordinates if we just homed
-        # If we skipped homing, work coordinates are already correct
+        # Reset work coordinates after homing
         if homed:
             log.info(f"Set G54 zero...")
             await self.send_gcode_wait_ok("G92 X0 Y0 Z0")
-        else:
-            log.info(f"Skipping G92 - work coordinates already set")
-            log.debug(f"[MOTION] Skipped G92 - using existing work coordinates")
     
         log.info(f"Retract BLTouch...")
         await self.send_gcode_wait_ok("M281 G4 P0.5 M400")

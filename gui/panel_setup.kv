@@ -770,58 +770,65 @@
                             spacing: 4
                             
                             # Board selector (3x3 grid cross)
-                            BoxLayout:
-                                orientation: 'vertical'
+                            GridLayout:
+                                cols: 3
+                                rows: 3
                                 size_hint_x: None
-                                width: 100
-                                spacing: 2
+                                width: 180
+                                spacing: 3
                                 
-                                Label:
-                                    text: 'Board'
-                                    size_hint_y: None
-                                    height: 18
-                                    font_size: '11sp'
-                                    halign: 'center'
-                                    color: 0.7, 0.7, 0.7, 1
+                                Widget:
+                                Button:
+                                    text: 'R+'
+                                    font_size: '18sp'
+                                    on_press: app.ps_vision_board_change('row', 1)
+                                Widget:
                                 
-                                GridLayout:
-                                    cols: 3
-                                    rows: 3
-                                    spacing: 2
-                                    
-                                    Widget:
-                                    Button:
-                                        text: 'R+'
-                                        font_size: '14sp'
-                                        on_press: app.ps_vision_board_change('row', 1)
-                                    Widget:
-                                    
-                                    Button:
-                                        text: 'C-'
-                                        font_size: '14sp'
-                                        on_press: app.ps_vision_board_change('col', -1)
+                                Button:
+                                    text: 'C-'
+                                    font_size: '18sp'
+                                    on_press: app.ps_vision_board_change('col', -1)
+                                BoxLayout:
+                                    orientation: 'vertical'
+                                    Label:
+                                        text: 'Board'
+                                        size_hint_y: 0.4
+                                        font_size: '11sp'
+                                        halign: 'center'
+                                        valign: 'bottom'
+                                        text_size: self.size
+                                        color: 0.7, 0.7, 0.7, 1
                                     Label:
                                         id: vision_board_pos_label
                                         text: '0,0'
+                                        size_hint_y: 0.6
                                         font_size: '14sp'
                                         bold: True
                                         halign: 'center'
-                                        valign: 'middle'
+                                        valign: 'top'
                                         text_size: self.size
-                                    Button:
-                                        text: 'C+'
-                                        font_size: '14sp'
-                                        on_press: app.ps_vision_board_change('col', 1)
-                                    
-                                    Widget:
-                                    Button:
-                                        text: 'R-'
-                                        font_size: '14sp'
-                                        on_press: app.ps_vision_board_change('row', -1)
-                                    Widget:
+                                Button:
+                                    text: 'C+'
+                                    font_size: '18sp'
+                                    on_press: app.ps_vision_board_change('col', 1)
+                                
+                                Widget:
+                                Button:
+                                    text: 'R-'
+                                    font_size: '18sp'
+                                    on_press: app.ps_vision_board_change('row', -1)
+                                Widget:
                             
-                            # Spacer to push XY controls to the right
+                            # Vertical divider
                             Widget:
+                                size_hint_x: None
+                                width: 12
+                                canvas:
+                                    Color:
+                                        rgba: 0.4, 0.4, 0.4, 1
+                                    Rectangle:
+                                        pos: self.center_x - 1, self.y + 10
+                                        size: 2, self.height - 20
                             
                             # XY Step selector
                             BoxLayout:
