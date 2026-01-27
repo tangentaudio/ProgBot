@@ -392,15 +392,20 @@ class PanelSetupController(CameraPreviewMixin):
         log.debug("[PanelSetup] Edit buffer initialized")
     
     def _set_buffer_value(self, key, value):
-        """Set a value in the edit buffer and mark dirty if changed."""
-        old_value = self._edit_buffer.get(key)
-        if old_value != value:
-            self._edit_buffer[key] = value
-            self._check_dirty()
-            log.debug(f"[PanelSetup] Buffer: {key} = {value}")
+        """Set a value in the edit buffer and check dirty state.
+        
+        Note: Always checks dirty state against original values since the
+        value might be modified in place before being set back.
+        """
+        self._edit_buffer[key] = value
+        self._check_dirty()
+        log.debug(f"[PanelSetup] Buffer: {key} updated")
     
     def _set_buffer_nested(self, *keys, value):
-        """Set a nested value in the edit buffer (e.g., programmer.steps.identify)."""
+        """Set a nested value in the edit buffer (e.g., programmer.steps.identify).
+        
+        Always checks dirty state against original values.
+        """
         if len(keys) < 2:
             self._set_buffer_value(keys[0], value)
             return
@@ -412,11 +417,9 @@ class PanelSetupController(CameraPreviewMixin):
                 current[key] = {}
             current = current[key]
         
-        old_value = current.get(keys[-1])
-        if old_value != value:
-            current[keys[-1]] = value
-            self._check_dirty()
-            log.debug(f"[PanelSetup] Buffer: {'.'.join(keys)} = {value}")
+        current[keys[-1]] = value
+        self._check_dirty()
+        log.debug(f"[PanelSetup] Buffer: {'.'.join(keys)} updated")
     
     def _get_buffer_value(self, key, default=None):
         """Get a value from the edit buffer."""
@@ -1033,9 +1036,9 @@ class PanelSetupController(CameraPreviewMixin):
                 orientation='horizontal',
                 size_hint_y=None,
                 size_hint_x=1,
-                height=36,
+                height=50,
                 spacing=5,
-                padding=[5, 2, 5, 2],
+                padding=[5, 4, 5, 4],
             )
             
             # Add alternating row background
@@ -1057,8 +1060,8 @@ class PanelSetupController(CameraPreviewMixin):
             num_label = Label(
                 text=str(idx + 1),
                 size_hint_x=None,
-                width=30,
-                font_size='12sp',
+                width=40,
+                font_size='14sp',
                 color=(0.6, 0.6, 0.6, 1),
                 halign='center',
                 valign='center',
@@ -1071,7 +1074,7 @@ class PanelSetupController(CameraPreviewMixin):
             desc_label = Label(
                 text=desc,
                 size_hint_x=1,
-                font_size='12sp',
+                font_size='13sp',
                 color=(0.9, 0.9, 0.9, 1),
                 halign='left',
                 valign='center',
@@ -1085,16 +1088,16 @@ class PanelSetupController(CameraPreviewMixin):
             actions = BoxLayout(
                 orientation='horizontal',
                 size_hint_x=None,
-                width=140,
-                spacing=3,
+                width=180,
+                spacing=4,
             )
             
             # Edit button
             edit_btn = Button(
                 text='Edit',
                 size_hint_x=None,
-                width=45,
-                font_size='11sp',
+                width=55,
+                font_size='13sp',
                 background_color=(0.3, 0.4, 0.5, 1),
             )
             edit_btn.step_index = idx
@@ -1105,8 +1108,8 @@ class PanelSetupController(CameraPreviewMixin):
             up_btn = Button(
                 text='↑',
                 size_hint_x=None,
-                width=28,
-                font_size='14sp',
+                width=38,
+                font_size='18sp',
                 font_name='/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
                 disabled=(idx == 0),
             )
@@ -1118,8 +1121,8 @@ class PanelSetupController(CameraPreviewMixin):
             down_btn = Button(
                 text='↓',
                 size_hint_x=None,
-                width=28,
-                font_size='14sp',
+                width=38,
+                font_size='18sp',
                 font_name='/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
                 disabled=(idx == len(steps) - 1),
             )
@@ -1131,8 +1134,8 @@ class PanelSetupController(CameraPreviewMixin):
             del_btn = Button(
                 text='✕',
                 size_hint_x=None,
-                width=28,
-                font_size='12sp',
+                width=38,
+                font_size='16sp',
                 font_name='/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
                 background_color=(0.5, 0.25, 0.25, 1),
             )
