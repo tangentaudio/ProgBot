@@ -74,6 +74,20 @@ class PanelSettings:
             'test_enabled': False,  # Enable testing phase
             # Programmer configuration (nested)
             'programmer': _get_default_programmer_config(),
+            # Provisioning configuration (nested)
+            'provision': {
+                'script': {
+                    'name': 'default',
+                    'default_timeout': 5.0,
+                    'default_retries': 1,
+                    'default_retry_delay': 0.5,
+                    'default_on_fail': 'abort',
+                    'global_ignore_patterns': [],  # e.g., ["^\\[DEBUG\\]"]
+                    'global_strip_prompt': None,   # e.g., "> "
+                    'steps': []  # List of ProvisionStep dicts
+                },
+                'custom_variables': {},  # Panel-defined board variables
+            },
         }
     
     def _migrate_settings(self, data):
@@ -100,6 +114,22 @@ class PanelSettings:
                         'lock': False,
                     }
                 # Other modes use default steps
+        
+        # Add provision config if missing (migration for older panels)
+        if 'provision' not in data:
+            data['provision'] = {
+                'script': {
+                    'name': 'default',
+                    'default_timeout': 5.0,
+                    'default_retries': 1,
+                    'default_retry_delay': 0.5,
+                    'default_on_fail': 'abort',
+                    'global_ignore_patterns': [],
+                    'global_strip_prompt': None,
+                    'steps': []
+                },
+                'custom_variables': {},
+            }
         
         return data
     

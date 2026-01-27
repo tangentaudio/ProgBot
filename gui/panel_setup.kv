@@ -1059,30 +1059,145 @@
                     disabled: not provision_tab.phase_enabled
                     opacity: 1.0 if provision_tab.phase_enabled else 0.4
                     
-                    # Description
-                    Label:
-                        text: 'Provisioning assigns unique identifiers and configuration\\nto each board during the programming cycle.'
+                    # Script name header
+                    BoxLayout:
+                        orientation: 'horizontal'
                         size_hint_y: None
-                        height: 60
-                        font_size: '14sp'
-                        color: 0.7, 0.7, 0.7, 1
-                        halign: 'center'
-                        valign: 'top'
-                        text_size: self.size
+                        height: 30
+                        
+                        Label:
+                            text: 'Script:'
+                            size_hint_x: None
+                            width: 60
+                            font_size: '14sp'
+                            bold: True
+                            halign: 'right'
+                            valign: 'center'
+                            text_size: self.size
+                        
+                        Label:
+                            id: ps_provision_script_name
+                            text: '(none loaded)'
+                            font_size: '14sp'
+                            color: 0.8, 0.8, 0.8, 1
+                            halign: 'left'
+                            valign: 'center'
+                            text_size: self.size
                     
-                    # Placeholder for future provisioning options
-                    Label:
-                        text: '(Provisioning options will appear here)'
+                    # Table header row
+                    BoxLayout:
+                        orientation: 'horizontal'
                         size_hint_y: None
-                        height: 40
-                        font_size: '12sp'
+                        height: 32
+                        spacing: 0
+                        padding: 0
+                        canvas.before:
+                            Color:
+                                rgba: 0.85, 0.85, 0.85, 1
+                            Rectangle:
+                                pos: self.pos
+                                size: self.size
+                            Color:
+                                rgba: 0.2, 0.2, 0.2, 1
+                            Line:
+                                rectangle: self.x, self.y, self.width, self.height
+                                width: 1.5
+                        
+                        Label:
+                            text: '#'
+                            size_hint_x: None
+                            width: 35
+                            font_size: '12sp'
+                            bold: True
+                            color: 0.1, 0.1, 0.1, 1
+                            halign: 'center'
+                            valign: 'center'
+                            text_size: self.size
+                            canvas.after:
+                                Color:
+                                    rgba: 0.5, 0.5, 0.5, 1
+                                Line:
+                                    points: [self.right, self.y, self.right, self.top]
+                                    width: 1
+                        
+                        Label:
+                            text: 'Description'
+                            size_hint_x: 0.25
+                            font_size: '12sp'
+                            bold: True
+                            color: 0.1, 0.1, 0.1, 1
+                            halign: 'center'
+                            valign: 'center'
+                            text_size: self.size
+                            canvas.after:
+                                Color:
+                                    rgba: 0.5, 0.5, 0.5, 1
+                                Line:
+                                    points: [self.right, self.y, self.right, self.top]
+                                    width: 1
+                        
+                        Label:
+                            text: 'Send'
+                            size_hint_x: 0.35
+                            font_size: '12sp'
+                            bold: True
+                            color: 0.1, 0.1, 0.1, 1
+                            halign: 'center'
+                            valign: 'center'
+                            text_size: self.size
+                            canvas.after:
+                                Color:
+                                    rgba: 0.5, 0.5, 0.5, 1
+                                Line:
+                                    points: [self.right, self.y, self.right, self.top]
+                                    width: 1
+                        
+                        Label:
+                            text: 'Expect'
+                            size_hint_x: 0.40
+                            font_size: '12sp'
+                            bold: True
+                            color: 0.1, 0.1, 0.1, 1
+                            halign: 'center'
+                            valign: 'center'
+                            text_size: self.size
+                    
+                    # Scrollable steps container
+                    ScrollView:
+                        size_hint_y: 1
+                        do_scroll_x: False
+                        bar_width: 8
+                        canvas.before:
+                            Color:
+                                rgba: 0.2, 0.2, 0.2, 1
+                            Line:
+                                rectangle: self.x, self.y, self.width, self.height
+                                width: 1.5
+                        
+                        BoxLayout:
+                            id: ps_provision_steps_container
+                            orientation: 'vertical'
+                            size_hint_y: None
+                            height: self.minimum_height
+                            spacing: 0
+                            canvas.before:
+                                Color:
+                                    rgba: 0.95, 0.95, 0.95, 1
+                                Rectangle:
+                                    pos: self.pos
+                                    size: self.size
+                    
+                    # Status / info label
+                    Label:
+                        id: ps_provision_status
+                        text: ''
+                        size_hint_y: None
+                        height: 25
+                        font_size: '11sp'
                         color: 0.5, 0.5, 0.5, 1
                         halign: 'center'
                         valign: 'center'
                         text_size: self.size
-                    
-                    Widget:
-                        # Spacer
 
             EnableableTabbedPanelItem:
                 id: test_tab

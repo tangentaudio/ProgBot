@@ -14,6 +14,7 @@ from target_controller import TargetController
 from motion_controller import MotionController
 from vision_controller import VisionController
 from device_discovery import DevicePortManager
+from provisioning import ProvisioningEngine, ProvisionScript, VariableContext
 from logger import get_logger
 
 log = get_logger(__name__)
@@ -863,7 +864,8 @@ class ProgBot:
     async def _provision_board(self, col: int, row: int, board_status, cell_id):
         """Provision a board with unique identifiers and configuration.
         
-        This is a stub for future provisioning functionality.
+        Executes the provisioning script defined in panel settings, sending
+        commands to the target device and capturing responses.
         
         Args:
             col: Board column index
@@ -871,16 +873,67 @@ class ProgBot:
             board_status: BoardStatus object for this board
             cell_id: Cell ID for status updates
         """
-        log.debug(f"[_provision_board] Provisioning board [{col},{row}] (stub)")
+        log.debug(f"[_provision_board] Provisioning board [{col},{row}]")
         self.update_phase(f"Provisioning Board [{col}, {row}]...")
         
-        # TODO: Implement provisioning logic
-        # - Assign unique serial number
-        # - Write configuration data
-        # - Register with backend system
+        # Get provisioning configuration from panel settings
+        provision_config = self.panel_settings.get('provision', {})
+        script_data = provision_config.get('script', {})
+        custom_vars = provision_config.get('custom_variables', {})
         
-        await asyncio.sleep(0.1)  # Placeholder
-        log.debug(f"[_provision_board] Board [{col},{row}] provisioning complete (stub)")
+        # Check if there's a script to execute
+        if not script_data.get('steps'):
+            log.debug(f"[_provision_board] No provisioning steps configured, skipping")
+            self._mark_provision(cell_id, board_status, ProvisionStatus.SKIPPED)
+            return
+        
+        # Mark as provisioning in progress
+        self._mark_provision(cell_id, board_status, ProvisionStatus.PROVISIONING)
+        
+        # Build the provisioning script
+        script = ProvisionScript.from_dict(script_data)
+        
+        # Build vision variables from QR scan if available
+        vision_vars = {}
+        if board_status.board_info and board_status.board_info.serial_number:
+            vision_vars['serial_number'] = board_status.board_info.serial_number
+        if board_status.qr_code:
+            vision_vars['qr_raw'] = board_status.qr_code
+        
+        # Create variable context
+        panel_name = self.panel_settings.get('name', 'unknown')
+        context = VariableContext(
+            row=row,
+            col=col,
+            panel_name=panel_name,
+            vision_vars=vision_vars,
+            custom_vars=custom_vars,
+        )
+        
+        # Ensure target device is connected
+        await self.target.connect()
+        
+        # Execute the provisioning script
+        engine = ProvisioningEngine(verbose=True)
+        result = await engine.execute(script, self.target.device, context)
+        
+        if result.success:
+            log.info(f"[_provision_board] Board [{col},{row}] provisioning complete")
+            log.info(f"[_provision_board] Captures: {result.captures}")
+            
+            # Store captured data in board_info
+            if board_status.board_info:
+                # Add all captures to test_data dict for export
+                board_status.board_info.test_data.update(result.captures)
+            
+            # Mark as completed
+            self._mark_provision(cell_id, board_status, ProvisionStatus.COMPLETED)
+        else:
+            log.warning(f"[_provision_board] Board [{col},{row}] provisioning failed: {result.error}")
+            # Mark board as failed
+            board_status.failure_reason = result.error
+            self._mark_provision(cell_id, board_status, ProvisionStatus.FAILED)
+            self._update_cell_color(cell_id, [1, 0, 0, 1])  # Red
 
     async def _test_board(self, col: int, row: int, board_status, cell_id):
         """Run automated tests on a board.
@@ -1110,6 +1163,9 @@ class ProgBot:
         # Provisioning phase (if enabled)
         if self.config.provision_enabled:
             await self._provision_board(col, row, board_status, cell_id)
+        else:
+            # Provisioning disabled - mark as skipped
+            self._mark_provision(cell_id, board_status, ProvisionStatus.SKIPPED)
         
         # Test phase (if enabled)
         if self.config.test_enabled:

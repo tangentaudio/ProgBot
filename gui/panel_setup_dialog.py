@@ -696,6 +696,9 @@ class PanelSetupController(CameraPreviewMixin):
         # Programming tab - build dynamic UI
         self._build_programmer_ui()
         
+        # Provision tab - build steps table
+        self._build_provision_ui()
+        
         log.debug("[PanelSetup] Synced buffer to dialog")
     
     def _update_panel_filename(self):
@@ -972,6 +975,175 @@ class PanelSetupController(CameraPreviewMixin):
             self._rebuild_programmer_firmware()
         
         log.debug(f"[PanelSetup] Programmer type changed to {type_id}")
+
+    def _build_provision_ui(self):
+        """Build the provisioning steps summary table."""
+        if not self.popup:
+            return
+        
+        from kivy.uix.boxlayout import BoxLayout
+        from kivy.uix.label import Label
+        from kivy.graphics import Color, Rectangle, Line
+        
+        # Get provision config from buffer
+        provision_config = self._get_buffer_value('provision', {})
+        script_data = provision_config.get('script', {})
+        
+        # Update script name label
+        if name_label := self.popup.ids.get('ps_provision_script_name'):
+            script_name = script_data.get('name', '')
+            if script_name:
+                name_label.text = script_name
+                name_label.color = (0.8, 0.8, 0.8, 1)
+            else:
+                name_label.text = '(none loaded)'
+                name_label.color = (0.5, 0.5, 0.5, 1)
+        
+        # Get steps container
+        steps_container = self.popup.ids.get('ps_provision_steps_container')
+        if not steps_container:
+            return
+        
+        # Clear existing rows
+        steps_container.clear_widgets()
+        
+        steps = script_data.get('steps', [])
+        
+        if not steps:
+            # Show placeholder when no steps
+            placeholder = Label(
+                text='No provisioning script configured',
+                size_hint_y=None,
+                height=40,
+                font_size='12sp',
+                color=(0.4, 0.4, 0.4, 1),
+                halign='center',
+                valign='center',
+            )
+            placeholder.bind(size=lambda *a: setattr(placeholder, 'text_size', placeholder.size))
+            steps_container.add_widget(placeholder)
+            
+            # Update status
+            if status_label := self.popup.ids.get('ps_provision_status'):
+                status_label.text = ''
+            return
+        
+        def add_cell_border(widget, is_last=False):
+            """Add vertical cell border to widget."""
+            def update_border(instance, value):
+                instance.canvas.after.clear()
+                with instance.canvas.after:
+                    if not is_last:
+                        Color(0.6, 0.6, 0.6, 1)  # Light gray cell border
+                        Line(points=[instance.right, instance.y, instance.right, instance.top], width=1)
+            widget.bind(pos=update_border, size=update_border)
+            update_border(widget, None)
+        
+        def add_row_border(row_widget, container):
+            """Add bottom border to row spanning full container width."""
+            def update_border(*args):
+                row_widget.canvas.after.clear()
+                with row_widget.canvas.after:
+                    Color(0.5, 0.5, 0.5, 1)  # Medium gray row border
+                    # Use container width to span full table
+                    Line(points=[container.x, row_widget.y, container.x + container.width, row_widget.y], width=0.8)
+            row_widget.bind(pos=update_border, size=update_border)
+            container.bind(pos=update_border, size=update_border)
+            update_border()
+        
+        # Build a row for each step
+        for idx, step in enumerate(steps, start=1):
+            row = BoxLayout(
+                orientation='horizontal',
+                size_hint_y=None,
+                size_hint_x=1,
+                height=30,
+                spacing=0,
+                padding=[2, 0, 2, 0],
+            )
+            
+            # Add row border (pass container for full-width line)
+            add_row_border(row, steps_container)
+            
+            # Step number
+            num_label = Label(
+                text=str(idx),
+                size_hint_x=None,
+                width=35,
+                font_size='11sp',
+                color=(0.2, 0.2, 0.2, 1),
+                halign='center',
+                valign='center',
+            )
+            num_label.bind(size=lambda *a, lbl=num_label: setattr(lbl, 'text_size', lbl.size))
+            add_cell_border(num_label)
+            row.add_widget(num_label)
+            
+            # Description
+            desc = step.get('description', '-')
+            desc_label = Label(
+                text=desc,
+                size_hint_x=0.25,
+                font_size='11sp',
+                color=(0.15, 0.15, 0.15, 1),
+                halign='left',
+                valign='center',
+                padding=[5, 0],
+                shorten=True,
+                shorten_from='right',
+            )
+            desc_label.bind(size=lambda *a, lbl=desc_label: setattr(lbl, 'text_size', (lbl.width - 10, lbl.height)))
+            add_cell_border(desc_label)
+            row.add_widget(desc_label)
+            
+            # Send command (escape newlines for display)
+            send_cmd = step.get('send', '-')
+            send_display = send_cmd.replace('\n', '\\n').replace('\r', '\\r')
+            send_label = Label(
+                text=send_display,
+                size_hint_x=0.35,
+                font_size='10sp',
+                color=(0.0, 0.35, 0.0, 1),  # Dark green for commands
+                halign='left',
+                valign='center',
+                padding=[5, 0],
+                shorten=True,
+                shorten_from='right',
+            )
+            send_label.bind(size=lambda *a, lbl=send_label: setattr(lbl, 'text_size', (lbl.width - 10, lbl.height)))
+            add_cell_border(send_label)
+            row.add_widget(send_label)
+            
+            # Expect pattern (truncate long patterns)
+            expect = step.get('expect', '-') or '-'
+            if len(expect) > 60:
+                expect_display = expect[:57] + '...'
+            else:
+                expect_display = expect
+            expect_label = Label(
+                text=expect_display,
+                size_hint_x=0.40,
+                font_size='10sp',
+                color=(0.5, 0.3, 0.0, 1),  # Dark orange/brown for patterns
+                halign='left',
+                valign='center',
+                padding=[5, 0],
+                shorten=True,
+                shorten_from='right',
+            )
+            expect_label.bind(size=lambda *a, lbl=expect_label: setattr(lbl, 'text_size', (lbl.width - 10, lbl.height)))
+            add_cell_border(expect_label, is_last=True)
+            row.add_widget(expect_label)
+            
+            steps_container.add_widget(row)
+        
+        # Update status
+        if status_label := self.popup.ids.get('ps_provision_status'):
+            timeout = script_data.get('default_timeout', 5.0)
+            retries = script_data.get('default_retries', 1)
+            status_label.text = f'{len(steps)} steps | timeout: {timeout}s | retries: {retries}'
+        
+        log.debug(f"[PanelSetup] Built provision UI with {len(steps)} steps")
 
     def _refresh_position(self):
         """Query current position and update display."""

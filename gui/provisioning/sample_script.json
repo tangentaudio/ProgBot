@@ -1,0 +1,28 @@
+{
+  "name": "echo_test",
+  "default_timeout": 3.0,
+  "default_retries": 1,
+  "default_on_fail": "abort",
+  "global_ignore_patterns": ["^\\[DEBUG\\]", "^\\[INFO\\]"],
+  "global_strip_prompt": "> ",
+  "steps": [
+    {
+      "description": "Ping device",
+      "send": "ping",
+      "expect": "pong|PONG|ready",
+      "timeout": 2.0
+    },
+    {
+      "description": "Echo serial number",
+      "send": "echo {serial_number}",
+      "expect": "(?P<echoed>.+)",
+      "timeout": 2.0
+    },
+    {
+      "description": "Get device info",
+      "send": "info",
+      "expect": "MAC=(?P<mac_address>[0-9A-Fa-f:]+).*ID=(?P<device_id>\\w+)",
+      "timeout": 3.0
+    }
+  ]
+}
