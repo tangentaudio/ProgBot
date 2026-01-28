@@ -40,6 +40,7 @@ class ProvisionStep:
     retries: int = 1  # Number of attempts (1 = no retry, 2 = retry once, etc.)
     retry_delay: float = 0.5  # Seconds to wait between retry attempts
     on_fail: str = 'abort'  # 'abort' | 'skip' | 'continue'
+    post_delay: float = 0.0  # Delay after step completes (before next step)
     
     # Description for logging/debugging
     description: Optional[str] = None
@@ -61,6 +62,7 @@ class ProvisionScript:
     default_retries: int = 1
     default_retry_delay: float = 0.5
     default_on_fail: str = 'abort'
+    default_post_delay: float = 0.0
     
     # Global noise filtering (applied to all steps unless overridden)
     global_ignore_patterns: Optional[List[str]] = None  # e.g., [r"^\[DEBUG\]"]
@@ -87,6 +89,7 @@ class ProvisionScript:
             default_retries=data.get('default_retries', 1),
             default_retry_delay=data.get('default_retry_delay', 0.5),
             default_on_fail=data.get('default_on_fail', 'abort'),
+            default_post_delay=data.get('default_post_delay', 0.0),
             global_ignore_patterns=data.get('global_ignore_patterns'),
             global_strip_prompt=data.get('global_strip_prompt'),
         )
@@ -102,6 +105,7 @@ class ProvisionScript:
             'default_timeout': self.default_timeout,
             'default_retries': self.default_retries,
             'default_on_fail': self.default_on_fail,
+            'default_post_delay': self.default_post_delay,
             'global_ignore_patterns': self.global_ignore_patterns,
             'global_strip_prompt': self.global_strip_prompt,
         }

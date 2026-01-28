@@ -114,6 +114,7 @@
                         hint_text: 'Brief description of this step'
                         multiline: False
                         font_size: '13sp'
+                        on_text: app.pse_check_dirty()
                 
                 # Send command
                 BoxLayout:
@@ -139,6 +140,7 @@
                         font_name: '/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf'
                         background_color: 0.12, 0.12, 0.12, 1
                         foreground_color: 0.7, 0.9, 0.7, 1
+                        on_text: app.pse_check_dirty()
                 
                 # Expect pattern
                 BoxLayout:
@@ -150,6 +152,7 @@
                         orientation: 'horizontal'
                         size_hint_y: None
                         height: 20
+                        spacing: 5
                         
                         Label:
                             text: 'Expect Pattern (regex):'
@@ -158,15 +161,15 @@
                             valign: 'bottom'
                             text_size: self.size
                         
-                        Label:
-                            id: pse_regex_status
-                            text: ''
-                            font_size: '11sp'
-                            font_name: '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'
-                            halign: 'right'
-                            valign: 'bottom'
-                            text_size: self.size
-                            color: 0.5, 0.5, 0.5, 1
+                        Button:
+                            id: pse_regex_help_btn
+                            text: '?'
+                            size_hint_x: None
+                            width: 24
+                            font_size: '14sp'
+                            bold: True
+                            background_color: 0.3, 0.4, 0.5, 1
+                            on_press: app.pse_open_regex_helper()
                     
                     TextInput:
                         id: pse_expect
@@ -176,7 +179,19 @@
                         font_name: '/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf'
                         background_color: 0.12, 0.12, 0.12, 1
                         foreground_color: 0.9, 0.8, 0.6, 1
-                        on_text: app.pse_validate_regex(self.text)
+                        on_text: app.pse_validate_regex(self.text); app.pse_check_dirty()
+                    
+                    Label:
+                        id: pse_regex_status
+                        text: ''
+                        size_hint_y: None
+                        height: self.texture_size[1] if self.texture else 20
+                        font_size: '11sp'
+                        font_name: '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'
+                        halign: 'left'
+                        valign: 'top'
+                        text_size: self.width, None
+                        color: 0.5, 0.5, 0.5, 1
             
             # Right column - options
             BoxLayout:
@@ -219,6 +234,7 @@
                         size_hint_y: None
                         height: 30
                         font_size: '12sp'
+                        on_text: app.pse_check_dirty()
                 
                 # Retries
                 BoxLayout:
@@ -243,6 +259,7 @@
                         size_hint_y: None
                         height: 30
                         font_size: '12sp'
+                        on_text: app.pse_check_dirty()
                 
                 # Retry Delay
                 BoxLayout:
@@ -267,6 +284,7 @@
                         size_hint_y: None
                         height: 30
                         font_size: '12sp'
+                        on_text: app.pse_check_dirty()
                 
                 # On Fail
                 BoxLayout:
@@ -289,6 +307,32 @@
                         values: ['(default)', 'abort', 'skip', 'continue']
                         size_hint_x: 0.5
                         font_size: '12sp'
+                        on_text: app.pse_check_dirty()
+                
+                # Post Delay
+                BoxLayout:
+                    orientation: 'horizontal'
+                    size_hint_y: None
+                    height: 35
+                    spacing: 10
+                    
+                    Label:
+                        text: 'Post Delay (s):'
+                        size_hint_x: 0.5
+                        font_size: '12sp'
+                        halign: 'right'
+                        valign: 'center'
+                        text_size: self.size
+                    
+                    Spinner:
+                        id: pse_post_delay
+                        text: '(default)'
+                        values: ['(default)', '0', '1', '2', '5', '10']
+                        size_hint_x: 0.5
+                        size_hint_y: None
+                        height: 30
+                        font_size: '12sp'
+                        on_text: app.pse_check_dirty()
                 
                 # Separator
                 Widget:

@@ -81,6 +81,7 @@ class PanelSettings:
                     'default_timeout': 5.0,
                     'default_retries': 1,
                     'default_retry_delay': 0.5,
+                    'default_post_delay': 0.0,
                     'default_on_fail': 'abort',
                     'global_ignore_patterns': [],  # e.g., ["^\\[DEBUG\\]"]
                     'global_strip_prompt': None,   # e.g., "> "

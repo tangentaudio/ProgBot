@@ -73,6 +73,7 @@ class ProvisioningEngine:
             step_retries = step.retries if step.retries else script.default_retries
             step_retry_delay = step.retry_delay if step.retry_delay else script.default_retry_delay
             step_on_fail = step.on_fail if step.on_fail else script.default_on_fail
+            step_post_delay = step.post_delay if step.post_delay else script.default_post_delay
             
             # Merge noise filtering (step overrides global)
             ignore_patterns = step.ignore_patterns
@@ -97,6 +98,7 @@ class ProvisioningEngine:
                 retries=step_retries,
                 retry_delay=step_retry_delay,
                 on_fail=step_on_fail,
+                post_delay=step_post_delay,
                 description=step.description,
             )
             
@@ -122,6 +124,13 @@ class ProvisioningEngine:
                     logger.info(f"Captured: {result.captures}")
                 elif self.verbose:
                     print(f"  ✓ OK")
+                
+                # Apply post-step delay if configured
+                if step_post_delay > 0:
+                    if self.verbose:
+                        print(f"  (waiting {step_post_delay}s)")
+                    logger.debug(f"Post-step delay: {step_post_delay}s")
+                    await asyncio.sleep(step_post_delay)
             else:
                 if self.verbose:
                     print(f"  ✗ FAILED: {result.error}")
@@ -292,6 +301,8 @@ class ProvisioningEngine:
             expect_pattern, missing = context.substitute(step.expect)
             if missing:
                 logger.warning(f"Missing variables in expect pattern: {missing}")
+            if self.verbose and expect_pattern != step.expect:
+                print(f"  Expect pattern after substitution: {expect_pattern}")
         
         if step.expect_any:
             expect_any_patterns = []

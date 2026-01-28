@@ -1001,6 +1001,20 @@ class PanelSetupController(CameraPreviewMixin):
         if retries_input := self.popup.ids.get('ps_provision_default_retries'):
             retries_input.text = str(script_data.get('default_retries', 1))
         
+        # Update default retry delay input
+        if retry_delay_input := self.popup.ids.get('ps_provision_default_retry_delay'):
+            retry_delay_input.text = str(script_data.get('default_retry_delay', 0.5))
+        
+        # Update default post delay input
+        if post_delay_input := self.popup.ids.get('ps_provision_default_post_delay'):
+            post_delay_val = script_data.get('default_post_delay', 0.0)
+            # Format: show as integer if whole number
+            post_delay_input.text = str(int(post_delay_val)) if post_delay_val == int(post_delay_val) else str(post_delay_val)
+        
+        # Update default on_fail input
+        if on_fail_input := self.popup.ids.get('ps_provision_default_on_fail'):
+            on_fail_input.text = script_data.get('default_on_fail', 'abort')
+        
         # Get steps container
         steps_container = self.popup.ids.get('ps_provision_steps_container')
         if not steps_container:

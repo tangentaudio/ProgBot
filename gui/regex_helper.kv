@@ -1,0 +1,194 @@
+#:kivy 2.0
+
+# Regex Helper Popup
+# Provides regex pattern palette and testing for provisioning step editor
+
+<RegexHelperPopup@Popup>:
+    id: regex_helper_popup
+    title: ''
+    size_hint: 0.9, 0.95
+    auto_dismiss: False
+    separator_height: 0
+    
+    BoxLayout:
+        orientation: 'vertical'
+        spacing: 5
+        padding: 10
+        
+        # Custom title bar
+        BoxLayout:
+            orientation: 'horizontal'
+            size_hint_y: None
+            height: 45
+            padding: [10, 5]
+            spacing: 10
+            canvas.before:
+                Color:
+                    rgba: 0.15, 0.15, 0.2, 1
+                Rectangle:
+                    pos: self.pos
+                    size: self.size
+            
+            Label:
+                text: 'Regex Pattern Helper'
+                size_hint_x: None
+                width: 200
+                font_size: '16sp'
+                bold: True
+                halign: 'left'
+                valign: 'center'
+                text_size: self.size
+            
+            Widget:
+                # Spacer
+            
+            Button:
+                id: rh_apply_btn
+                text: 'Apply'
+                size_hint_x: None
+                size_hint_y: None
+                width: 80
+                height: 36
+                background_color: 0.2, 0.5, 0.3, 1
+                on_press: app.rh_apply()
+            
+            Button:
+                text: 'Cancel'
+                size_hint_x: None
+                size_hint_y: None
+                width: 80
+                height: 36
+                on_press: app.rh_cancel()
+        
+        # Main content - two columns
+        BoxLayout:
+            orientation: 'horizontal'
+            spacing: 10
+            
+            # Left column - Pattern editor and test
+            BoxLayout:
+                orientation: 'vertical'
+                spacing: 8
+                size_hint_x: 0.55
+                
+                # Pattern field
+                Label:
+                    text: 'Expect Pattern (regex):'
+                    size_hint_y: None
+                    height: 20
+                    font_size: '13sp'
+                    halign: 'left'
+                    valign: 'bottom'
+                    text_size: self.size
+                
+                TextInput:
+                    id: rh_pattern
+                    hint_text: 'Use single backslashes: \\w \\d \\s (not \\\\w)'
+                    multiline: True
+                    size_hint_y: None
+                    height: 100
+                    font_size: '12sp'
+                    font_name: '/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf'
+                    background_color: 0.12, 0.12, 0.12, 1
+                    foreground_color: 0.9, 0.8, 0.6, 1
+                    on_text: app.rh_validate_and_test()
+                
+                # Validation status
+                Label:
+                    id: rh_pattern_status
+                    text: ''
+                    size_hint_y: None
+                    height: self.texture_size[1] if self.texture else 20
+                    font_size: '11sp'
+                    font_name: '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'
+                    halign: 'left'
+                    valign: 'top'
+                    text_size: self.width, None
+                    color: 0.5, 0.5, 0.5, 1
+                
+                # Sample text field
+                Label:
+                    text: 'Sample Text (paste device output here):'
+                    size_hint_y: None
+                    height: 20
+                    font_size: '13sp'
+                    halign: 'left'
+                    valign: 'bottom'
+                    text_size: self.size
+                
+                TextInput:
+                    id: rh_sample_text
+                    hint_text: 'Paste sample output to test pattern matching'
+                    multiline: True
+                    size_hint_y: 1
+                    font_size: '11sp'
+                    font_name: '/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf'
+                    background_color: 0.1, 0.1, 0.12, 1
+                    foreground_color: 0.8, 0.8, 0.8, 1
+                    on_text: app.rh_validate_and_test()
+                
+                # Match results
+                Label:
+                    text: 'Match Results:'
+                    size_hint_y: None
+                    height: 20
+                    font_size: '13sp'
+                    halign: 'left'
+                    valign: 'bottom'
+                    text_size: self.size
+                
+                BoxLayout:
+                    orientation: 'vertical'
+                    size_hint_y: None
+                    height: 80
+                    canvas.before:
+                        Color:
+                            rgba: 0.08, 0.08, 0.1, 1
+                        Rectangle:
+                            pos: self.pos
+                            size: self.size
+                    
+                    ScrollView:
+                        do_scroll_x: False
+                        bar_width: 6
+                        
+                        Label:
+                            id: rh_match_results
+                            text: 'Enter pattern and sample text to test'
+                            font_size: '11sp'
+                            font_name: '/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf'
+                            color: 0.6, 0.6, 0.6, 1
+                            halign: 'left'
+                            valign: 'top'
+                            text_size: self.width - 10, None
+                            size_hint_y: None
+                            height: self.texture_size[1]
+                            padding: [5, 5]
+            
+            # Right column - Pattern palette
+            BoxLayout:
+                orientation: 'vertical'
+                spacing: 5
+                size_hint_x: 0.45
+                
+                Label:
+                    text: 'Pattern Palette (tap to insert)'
+                    size_hint_y: None
+                    height: 25
+                    font_size: '14sp'
+                    bold: True
+                    halign: 'left'
+                    valign: 'center'
+                    text_size: self.size
+                
+                ScrollView:
+                    do_scroll_x: False
+                    bar_width: 8
+                    
+                    GridLayout:
+                        id: rh_palette
+                        cols: 1
+                        spacing: 3
+                        size_hint_y: None
+                        height: self.minimum_height
+                        padding: [0, 0, 5, 0]

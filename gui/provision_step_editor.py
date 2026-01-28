@@ -60,6 +60,8 @@ class ProvisionStepEditorController:
         self.on_save_callback = None
         self._regex_valid = True
         self._saved_allow_vkeyboard = None  # Track original vkeyboard state
+        self._initial_values = {}  # Track initial field values for dirty detection
+        self._is_dirty = False
     
     def open(self, step_data=None, step_index=-1, on_save=None):
         """Open the step editor dialog.
@@ -96,11 +98,14 @@ class ProvisionStepEditorController:
             else:
                 title_label.text = 'New Step'
         
-        # Populate fields from step_data
-        self._populate_fields()
-        
-        # Open popup
+        # Open popup first, then populate fields after layout
         self.popup.open()
+        
+        # Schedule field population after widget is laid out (fixes display issue)
+        Clock.schedule_once(lambda dt: self._populate_fields(), 0.1)
+        
+        # Store initial values for dirty tracking (after fields are populated)
+        Clock.schedule_once(lambda dt: self._store_initial_values(), 0.2)
     
     def _populate_fields(self):
         """Populate dialog fields from step_data."""
@@ -121,7 +126,8 @@ class ProvisionStepEditorController:
         
         # Expect pattern
         if expect := ids.get('pse_expect'):
-            expect.text = self.step_data.get('expect', '')
+            expect_text = self.step_data.get('expect', '')
+            expect.text = expect_text
         
         # Timeout - use Spinner with (default) option
         if timeout := ids.get('pse_timeout'):
@@ -146,8 +152,78 @@ class ProvisionStepEditorController:
             else:
                 on_fail.text = '(default)'
         
+        # Post delay - use Spinner with (default) option
+        if post_delay := ids.get('pse_post_delay'):
+            val = self.step_data.get('post_delay')
+            if val is not None:
+                # Show as integer if whole number
+                post_delay.text = str(int(val)) if val == int(val) else str(val)
+            else:
+                post_delay.text = '(default)'
+        
         # Validate initial regex
         self.validate_regex(self.step_data.get('expect', ''))
+    
+    def _store_initial_values(self):
+        """Store initial field values for dirty tracking."""
+        if not self.popup:
+            return
+        
+        ids = self.popup.ids
+        self._initial_values = {
+            'description': ids.get('pse_description').text if ids.get('pse_description') else '',
+            'send': ids.get('pse_send').text if ids.get('pse_send') else '',
+            'expect': ids.get('pse_expect').text if ids.get('pse_expect') else '',
+            'timeout': ids.get('pse_timeout').text if ids.get('pse_timeout') else '(default)',
+            'retries': ids.get('pse_retries').text if ids.get('pse_retries') else '(default)',
+            'retry_delay': ids.get('pse_retry_delay').text if ids.get('pse_retry_delay') else '(default)',
+            'on_fail': ids.get('pse_on_fail').text if ids.get('pse_on_fail') else '(default)',
+            'post_delay': ids.get('pse_post_delay').text if ids.get('pse_post_delay') else '(default)',
+        }
+        self._is_dirty = False
+        self._update_save_button()
+    
+    def _get_current_values(self):
+        """Get current field values for comparison."""
+        if not self.popup:
+            return {}
+        
+        ids = self.popup.ids
+        return {
+            'description': ids.get('pse_description').text if ids.get('pse_description') else '',
+            'send': ids.get('pse_send').text if ids.get('pse_send') else '',
+            'expect': ids.get('pse_expect').text if ids.get('pse_expect') else '',
+            'timeout': ids.get('pse_timeout').text if ids.get('pse_timeout') else '(default)',
+            'retries': ids.get('pse_retries').text if ids.get('pse_retries') else '(default)',
+            'retry_delay': ids.get('pse_retry_delay').text if ids.get('pse_retry_delay') else '(default)',
+            'on_fail': ids.get('pse_on_fail').text if ids.get('pse_on_fail') else '(default)',
+            'post_delay': ids.get('pse_post_delay').text if ids.get('pse_post_delay') else '(default)',
+        }
+    
+    def check_dirty(self):
+        """Check if any fields have changed from initial values."""
+        current = self._get_current_values()
+        self._is_dirty = current != self._initial_values
+        self._update_save_button()
+        return self._is_dirty
+    
+    def _update_save_button(self):
+        """Update Save button enabled state based on dirty status."""
+        if not self.popup:
+            return
+        
+        save_btn = self.popup.ids.get('pse_save_btn')
+        if save_btn:
+            # Enable only if dirty and regex is valid
+            enabled = self._is_dirty and self._regex_valid
+            save_btn.disabled = not enabled
+            # Visual feedback
+            if enabled:
+                save_btn.background_color = (0.2, 0.5, 0.3, 1)
+                save_btn.color = (1, 1, 1, 1)
+            else:
+                save_btn.background_color = (0.3, 0.3, 0.3, 1)
+                save_btn.color = (0.5, 0.5, 0.5, 1)
     
     def _collect_fields(self):
         """Collect field values into step_data dict."""
@@ -203,6 +279,15 @@ class ProvisionStepEditorController:
             if on_fail.text and on_fail.text != '(default)':
                 result['on_fail'] = on_fail.text
         
+        # Post delay (optional) - from Spinner
+        if post_delay := ids.get('pse_post_delay'):
+            text = post_delay.text
+            if text and text != '(default)':
+                try:
+                    result['post_delay'] = float(text)
+                except ValueError:
+                    pass
+        
         return result
     
     def validate_regex(self, pattern):
@@ -224,6 +309,7 @@ class ProvisionStepEditorController:
             if status_label:
                 status_label.text = ''
                 status_label.color = (0.5, 0.5, 0.5, 1)
+            self._update_save_button()
             return True
         
         try:
@@ -242,6 +328,7 @@ class ProvisionStepEditorController:
                     status_label.text = '✓ Valid pattern'
                     status_label.color = (0.5, 0.7, 0.5, 1)
             
+            self._update_save_button()
             return True
             
         except re.error as e:
@@ -249,6 +336,7 @@ class ProvisionStepEditorController:
             if status_label:
                 status_label.text = f'✗ {str(e)}'
                 status_label.color = (0.9, 0.4, 0.4, 1)
+            self._update_save_button()
             return False
     
     def save_step(self):
@@ -310,6 +398,27 @@ class ProvisionStepEditorController:
         if enabled:
             # Make sure keyboard is not docked so it can be dismissed by tapping outside
             Window.docked_vkeyboard = False
+    
+    def open_regex_helper(self):
+        """Open the regex helper dialog with current pattern."""
+        if not self.popup:
+            return
+        
+        # Get current pattern
+        expect_input = self.popup.ids.get('pse_expect')
+        current_pattern = expect_input.text if expect_input else ''
+        
+        # Initialize regex helper on the app if needed (so mixin methods work)
+        from regex_helper import RegexHelperController
+        if not hasattr(self.app, 'regex_helper') or self.app.regex_helper is None:
+            self.app.regex_helper = RegexHelperController(self.app)
+        
+        # Open with callback to update pattern
+        def on_apply(pattern):
+            if expect_input:
+                expect_input.text = pattern
+        
+        self.app.regex_helper.open(initial_pattern=current_pattern, on_apply=on_apply)
 
 
 # Mixin methods for the main app to delegate to the controller
@@ -335,7 +444,17 @@ class ProvisionStepEditorMixin:
         if hasattr(self, 'provision_step_editor') and self.provision_step_editor:
             self.provision_step_editor.validate_regex(pattern)
     
+    def pse_check_dirty(self):
+        """Check if step editor has unsaved changes."""
+        if hasattr(self, 'provision_step_editor') and self.provision_step_editor:
+            self.provision_step_editor.check_dirty()
+    
     def pse_toggle_keyboard(self, enabled):
         """Toggle on-screen keyboard in step editor."""
         if hasattr(self, 'provision_step_editor') and self.provision_step_editor:
             self.provision_step_editor.toggle_keyboard(enabled)
+    
+    def pse_open_regex_helper(self):
+        """Open the regex helper from step editor."""
+        if hasattr(self, 'provision_step_editor') and self.provision_step_editor:
+            self.provision_step_editor.open_regex_helper()

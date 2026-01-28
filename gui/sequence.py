@@ -933,7 +933,6 @@ class ProgBot:
             # Mark board as failed
             board_status.failure_reason = result.error
             self._mark_provision(cell_id, board_status, ProvisionStatus.FAILED)
-            self._update_cell_color(cell_id, [1, 0, 0, 1])  # Red
 
     async def _test_board(self, col: int, row: int, board_status, cell_id):
         """Run automated tests on a board.

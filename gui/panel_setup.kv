@@ -1057,159 +1057,260 @@
                 phase_enabled: True if app.panel_settings and app.panel_settings.get('provision_enabled', False) else False
                 
                 BoxLayout:
-                    orientation: 'vertical'
-                    spacing: 8
-                    padding: 15
+                    orientation: 'horizontal'
+                    spacing: 10
+                    padding: 10
                     disabled: not provision_tab.phase_enabled
                     opacity: 1.0 if provision_tab.phase_enabled else 0.4
                     
-                    # Default settings row
+                    # Left column - Default settings (30%)
                     BoxLayout:
-                        orientation: 'horizontal'
-                        size_hint_y: None
-                        height: 35
-                        spacing: 15
+                        orientation: 'vertical'
+                        size_hint_x: 0.3
+                        spacing: 8
+                        padding: [5, 5]
                         
                         Label:
-                            text: 'Default Timeout:'
-                            size_hint_x: None
-                            width: 105
-                            font_size: '12sp'
-                            halign: 'right'
-                            valign: 'center'
-                            text_size: self.size
-                        
-                        Spinner:
-                            id: ps_provision_default_timeout
-                            text: '5.0'
-                            values: ['1.0', '2.0', '3.0', '5.0', '10.0']
-                            size_hint_x: None
-                            width: 70
+                            text: 'Step Defaults'
                             size_hint_y: None
-                            height: 30
-                            font_size: '12sp'
-                            on_text: app.ps_provision_default_timeout_changed(self.text)
-                        
-                        Label:
-                            text: 'Default Retries:'
-                            size_hint_x: None
-                            width: 100
-                            font_size: '12sp'
-                            halign: 'right'
-                            valign: 'center'
-                            text_size: self.size
-                        
-                        Spinner:
-                            id: ps_provision_default_retries
-                            text: '1'
-                            values: ['0', '1', '2', '3', '5']
-                            size_hint_x: None
-                            width: 55
-                            size_hint_y: None
-                            height: 30
-                            font_size: '12sp'
-                            on_text: app.ps_provision_default_retries_changed(self.text)
-                        
-                        Widget:
-                            # Spacer to push fields left
-                    
-                    # Table header row
-                    BoxLayout:
-                        orientation: 'horizontal'
-                        size_hint_y: None
-                        height: 44
-                        spacing: 0
-                        padding: 0
-                        canvas.before:
-                            Color:
-                                rgba: 0.25, 0.25, 0.3, 1
-                            Rectangle:
-                                pos: self.pos
-                                size: self.size
-                        
-                        Label:
-                            text: '#'
-                            size_hint_x: None
-                            width: 40
+                            height: 25
                             font_size: '13sp'
                             bold: True
-                            color: 0.9, 0.9, 0.9, 1
                             halign: 'center'
                             valign: 'center'
                             text_size: self.size
                         
-                        Label:
-                            text: 'Description'
-                            size_hint_x: 1
-                            font_size: '13sp'
-                            bold: True
-                            color: 0.9, 0.9, 0.9, 1
-                            halign: 'left'
-                            valign: 'center'
-                            text_size: self.size
-                            padding: [10, 0]
-                        
-                        Label:
-                            text: 'Actions'
-                            size_hint_x: None
-                            width: 180
-                            font_size: '13sp'
-                            bold: True
-                            color: 0.9, 0.9, 0.9, 1
-                            halign: 'center'
-                            valign: 'center'
-                            text_size: self.size
-                    
-                    # Scrollable steps container
-                    ScrollView:
-                        size_hint_y: 1
-                        do_scroll_x: False
-                        bar_width: 8
-                        canvas.before:
-                            Color:
-                                rgba: 0.15, 0.15, 0.15, 1
-                            Rectangle:
-                                pos: self.pos
-                                size: self.size
-                        
+                        # Timeout row
                         BoxLayout:
-                            id: ps_provision_steps_container
-                            orientation: 'vertical'
+                            orientation: 'horizontal'
                             size_hint_y: None
-                            height: self.minimum_height
-                            spacing: 1
+                            height: 32
+                            spacing: 5
+                            
+                            Label:
+                                text: 'Timeout:'
+                                size_hint_x: 0.55
+                                font_size: '12sp'
+                                halign: 'right'
+                                valign: 'center'
+                                text_size: self.size
+                            
+                            Spinner:
+                                id: ps_provision_default_timeout
+                                text: '5.0'
+                                values: ['1.0', '2.0', '3.0', '5.0', '10.0']
+                                size_hint_x: 0.45
+                                size_hint_y: None
+                                height: 30
+                                font_size: '12sp'
+                                on_text: app.ps_provision_default_timeout_changed(self.text)
+                        
+                        # Retries row
+                        BoxLayout:
+                            orientation: 'horizontal'
+                            size_hint_y: None
+                            height: 32
+                            spacing: 5
+                            
+                            Label:
+                                text: 'Retries:'
+                                size_hint_x: 0.55
+                                font_size: '12sp'
+                                halign: 'right'
+                                valign: 'center'
+                                text_size: self.size
+                            
+                            Spinner:
+                                id: ps_provision_default_retries
+                                text: '1'
+                                values: ['0', '1', '2', '3', '5']
+                                size_hint_x: 0.45
+                                size_hint_y: None
+                                height: 30
+                                font_size: '12sp'
+                                on_text: app.ps_provision_default_retries_changed(self.text)
+                        
+                        # Retry Delay row
+                        BoxLayout:
+                            orientation: 'horizontal'
+                            size_hint_y: None
+                            height: 32
+                            spacing: 5
+                            
+                            Label:
+                                text: 'Retry Delay:'
+                                size_hint_x: 0.55
+                                font_size: '12sp'
+                                halign: 'right'
+                                valign: 'center'
+                                text_size: self.size
+                            
+                            Spinner:
+                                id: ps_provision_default_retry_delay
+                                text: '0.5'
+                                values: ['0.1', '0.2', '0.5', '1.0', '2.0']
+                                size_hint_x: 0.45
+                                size_hint_y: None
+                                height: 30
+                                font_size: '12sp'
+                                on_text: app.ps_provision_default_retry_delay_changed(self.text)
+                        
+                        # Post Delay row
+                        BoxLayout:
+                            orientation: 'horizontal'
+                            size_hint_y: None
+                            height: 32
+                            spacing: 5
+                            
+                            Label:
+                                text: 'Post Delay:'
+                                size_hint_x: 0.55
+                                font_size: '12sp'
+                                halign: 'right'
+                                valign: 'center'
+                                text_size: self.size
+                            
+                            Spinner:
+                                id: ps_provision_default_post_delay
+                                text: '0'
+                                values: ['0', '1', '2', '5', '10']
+                                size_hint_x: 0.45
+                                size_hint_y: None
+                                height: 30
+                                font_size: '12sp'
+                                on_text: app.ps_provision_default_post_delay_changed(self.text)
+                        
+                        # On Fail row
+                        BoxLayout:
+                            orientation: 'horizontal'
+                            size_hint_y: None
+                            height: 32
+                            spacing: 5
+                            
+                            Label:
+                                text: 'On Fail:'
+                                size_hint_x: 0.55
+                                font_size: '12sp'
+                                halign: 'right'
+                                valign: 'center'
+                                text_size: self.size
+                            
+                            Spinner:
+                                id: ps_provision_default_on_fail
+                                text: 'abort'
+                                values: ['abort', 'skip', 'continue']
+                                size_hint_x: 0.45
+                                size_hint_y: None
+                                height: 30
+                                font_size: '12sp'
+                                on_text: app.ps_provision_default_on_fail_changed(self.text)
+                        
+                        Widget:
+                            # Spacer to push settings up
                     
-                    # Add step button row
+                    # Right column - Steps list (70%)
                     BoxLayout:
-                        orientation: 'horizontal'
-                        size_hint_y: None
-                        height: 40
-                        spacing: 10
+                        orientation: 'vertical'
+                        size_hint_x: 0.7
+                        spacing: 5
                         
-                        Widget:
-                            # Spacer
+                        # Table header row
+                        BoxLayout:
+                            orientation: 'horizontal'
+                            size_hint_y: None
+                            height: 44
+                            spacing: 0
+                            padding: 0
+                            canvas.before:
+                                Color:
+                                    rgba: 0.25, 0.25, 0.3, 1
+                                Rectangle:
+                                    pos: self.pos
+                                    size: self.size
+                            
+                            Label:
+                                text: '#'
+                                size_hint_x: None
+                                width: 40
+                                font_size: '13sp'
+                                bold: True
+                                color: 0.9, 0.9, 0.9, 1
+                                halign: 'center'
+                                valign: 'center'
+                                text_size: self.size
+                            
+                            Label:
+                                text: 'Description'
+                                size_hint_x: 1
+                                font_size: '13sp'
+                                bold: True
+                                color: 0.9, 0.9, 0.9, 1
+                                halign: 'left'
+                                valign: 'center'
+                                text_size: self.size
+                                padding: [10, 0]
+                            
+                            Label:
+                                text: 'Actions'
+                                size_hint_x: None
+                                width: 150
+                                font_size: '13sp'
+                                bold: True
+                                color: 0.9, 0.9, 0.9, 1
+                                halign: 'center'
+                                valign: 'center'
+                                text_size: self.size
                         
-                        Button:
-                            text: '+ Add Step'
-                            size_hint_x: None
-                            width: 120
-                            font_size: '13sp'
-                            on_press: app.ps_provision_add_step()
+                        # Scrollable steps container
+                        ScrollView:
+                            size_hint_y: 1
+                            do_scroll_x: False
+                            bar_width: 8
+                            canvas.before:
+                                Color:
+                                    rgba: 0.15, 0.15, 0.15, 1
+                                Rectangle:
+                                    pos: self.pos
+                                    size: self.size
+                            
+                            BoxLayout:
+                                id: ps_provision_steps_container
+                                orientation: 'vertical'
+                                size_hint_y: None
+                                height: self.minimum_height
+                                spacing: 1
                         
-                        Widget:
-                            # Spacer
-                    
-                    # Status label
-                    Label:
-                        id: ps_provision_status
-                        text: ''
-                        size_hint_y: None
-                        height: 20
-                        font_size: '11sp'
-                        color: 0.5, 0.5, 0.5, 1
-                        halign: 'center'
-                        valign: 'center'
-                        text_size: self.size
+                        # Add step button row
+                        BoxLayout:
+                            orientation: 'horizontal'
+                            size_hint_y: None
+                            height: 40
+                            spacing: 10
+                            
+                            Widget:
+                                # Spacer
+                            
+                            Button:
+                                text: '+ Add Step'
+                                size_hint_x: None
+                                width: 120
+                                font_size: '13sp'
+                                on_press: app.ps_provision_add_step()
+                            
+                            Widget:
+                                # Spacer
+                        
+                        # Status label
+                        Label:
+                            id: ps_provision_status
+                            text: ''
+                            size_hint_y: None
+                            height: 20
+                            font_size: '11sp'
+                            color: 0.5, 0.5, 0.5, 1
+                            halign: 'center'
+                            valign: 'center'
+                            text_size: self.size
 
             EnableableTabbedPanelItem:
                 id: test_tab

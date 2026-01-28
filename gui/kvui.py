@@ -134,6 +134,7 @@ from numpad_keyboard import switch_keyboard_layout
 from panel_setup_dialog import PanelSetupController
 from config_settings_dialog import ConfigSettingsController
 from provision_step_editor import ProvisionStepEditorController, ProvisionStepEditorMixin
+from regex_helper import RegexHelperMixin
 from settings_handlers import SettingsHandlersMixin
 from panel_file_manager import PanelFileManagerMixin
 
@@ -465,7 +466,7 @@ class LogViewer(ScrollView):
         pass
 
 
-class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, ProvisionStepEditorMixin, App):
+class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, ProvisionStepEditorMixin, RegexHelperMixin, App):
     """Main application class with settings, panel file, and step editor handlers mixed in."""
     
     other_task = None
@@ -1343,6 +1344,42 @@ class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, ProvisionStepEditor
                 self.panel_setup_controller._set_buffer_value('provision', provision_config)
             except ValueError:
                 pass
+    
+    def ps_provision_default_retry_delay_changed(self, value):
+        """Handle provision default retry delay change from Panel Setup dialog."""
+        if self.panel_setup_controller:
+            try:
+                delay = float(value) if value else 0.5
+                provision_config = self.panel_setup_controller._get_buffer_value('provision', {})
+                if 'script' not in provision_config:
+                    provision_config['script'] = {}
+                provision_config['script']['default_retry_delay'] = delay
+                self.panel_setup_controller._set_buffer_value('provision', provision_config)
+            except ValueError:
+                pass
+    
+    def ps_provision_default_post_delay_changed(self, value):
+        """Handle provision default post-step delay change from Panel Setup dialog."""
+        if self.panel_setup_controller:
+            try:
+                delay = float(value) if value else 0.0
+                provision_config = self.panel_setup_controller._get_buffer_value('provision', {})
+                if 'script' not in provision_config:
+                    provision_config['script'] = {}
+                provision_config['script']['default_post_delay'] = delay
+                self.panel_setup_controller._set_buffer_value('provision', provision_config)
+            except ValueError:
+                pass
+    
+    def ps_provision_default_on_fail_changed(self, value):
+        """Handle provision default on_fail change from Panel Setup dialog."""
+        if self.panel_setup_controller:
+            if value in ['abort', 'skip', 'continue']:
+                provision_config = self.panel_setup_controller._get_buffer_value('provision', {})
+                if 'script' not in provision_config:
+                    provision_config['script'] = {}
+                provision_config['script']['default_on_fail'] = value
+                self.panel_setup_controller._set_buffer_value('provision', provision_config)
     
     def ps_provision_add_step(self):
         """Add a new provision step from Panel Setup dialog."""
