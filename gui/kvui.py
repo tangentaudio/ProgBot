@@ -532,6 +532,16 @@ class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, ProvisionStepEditor
         self._close_main_menu()
         self.open_config_settings_dialog()
     
+    def menu_log_viewer(self):
+        """Menu action: Log Viewer."""
+        self._close_main_menu()
+        self.toggle_log_popup()
+    
+    def menu_stats(self):
+        """Menu action: Stats."""
+        self._close_main_menu()
+        self.toggle_stats_popup()
+    
     def menu_exit(self):
         """Menu action: Clean up and exit the application."""
         self._close_main_menu()

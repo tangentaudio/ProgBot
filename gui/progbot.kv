@@ -741,44 +741,6 @@
             Widget:
                 size_hint_y: 1
 
-            BoxLayout:
-                orientation: 'horizontal'
-                size_hint_y: None
-                height: 44
-                spacing: 8
-                
-                Button:
-                    id: log_btn
-                    text: 'Log'
-                    font_size: '12sp'
-                    background_normal: ''
-                    background_down: ''
-                    background_color: 0, 0, 0, 0
-                    canvas.before:
-                        Color:
-                            rgba: (0.35, 0.35, 0.4, 1) if self.state == 'down' else (0.45, 0.45, 0.5, 1)
-                        RoundedRectangle:
-                            pos: self.pos
-                            size: self.size
-                            radius: [10]
-                    on_press: app.toggle_log_popup()
-                
-                Button:
-                    id: stats_btn
-                    text: 'Stats'
-                    font_size: '12sp'
-                    background_normal: ''
-                    background_down: ''
-                    background_color: 0, 0, 0, 0
-                    canvas.before:
-                        Color:
-                            rgba: (0.35, 0.35, 0.4, 1) if self.state == 'down' else (0.45, 0.45, 0.5, 1)
-                        RoundedRectangle:
-                            pos: self.pos
-                            size: self.size
-                            radius: [10]
-                    on_press: app.toggle_stats_popup()
-
             # Status bar at bottom
             BoxLayout:
                 orientation: 'horizontal'
@@ -877,6 +839,28 @@
             background_color: (0.35, 0.35, 0.4, 1) if self.state == 'down' else (0.25, 0.25, 0.3, 1)
             color: 0.9, 0.9, 0.9, 1
             on_release: app.menu_config_settings()
+        
+        Button:
+            text: 'Log Viewer'
+            size_hint_y: None
+            height: 44
+            font_size: '16sp'
+            background_normal: ''
+            background_down: ''
+            background_color: (0.35, 0.35, 0.4, 1) if self.state == 'down' else (0.25, 0.25, 0.3, 1)
+            color: 0.9, 0.9, 0.9, 1
+            on_release: app.menu_log_viewer()
+        
+        Button:
+            text: 'Stats'
+            size_hint_y: None
+            height: 44
+            font_size: '16sp'
+            background_normal: ''
+            background_down: ''
+            background_color: (0.35, 0.35, 0.4, 1) if self.state == 'down' else (0.25, 0.25, 0.3, 1)
+            color: 0.9, 0.9, 0.9, 1
+            on_release: app.menu_stats()
         
         Widget:
             size_hint_y: None
