@@ -22,14 +22,14 @@
     background_normal: ''
 
 <GridCell>:
-    orientation: 'horizontal'
+    orientation: 'vertical'
     padding: 5
-    spacing: 5
+    spacing: 1
     size_hint: 1, 1
     
     canvas.before:
         Color:
-            rgba: root.cell_bg_color
+            rgba: root.cell_bg_color[0], root.cell_bg_color[1], root.cell_bg_color[2], root.cell_bg_color[3] * root.pulse_alpha
         Rectangle:
             pos: self.pos
             size: self.size
@@ -38,8 +38,8 @@
         Color:
             rgba: 0, 0, 0, 0.75
         Rectangle:
-            pos: self.x + 5, self.y + 5
-            size: self.width - 10, self.height - 10
+            pos: self.x + 4, self.y + 4
+            size: self.width - 8, self.height - 8
     
     canvas.after:
         Color:
@@ -48,148 +48,184 @@
             rectangle: (self.x, self.y, self.width, self.height)
             width: 1
     
-    # Left column: Board number and ID
+    # Top row: Board number (left) + result icon (right)
     BoxLayout:
-        orientation: 'vertical'
-        size_hint_x: 0.2
-        spacing: 2
+        orientation: 'horizontal'
+        size_hint_y: 0.4
+        padding: 2, 0
         
         Label:
             text: root.cell_label
             bold: True
             color: root.cell_label_color
-            font_size: '24sp'
-            halign: 'center'
-            valign: 'middle'
+            font_size: '22sp'
+            size_hint_x: 0.65
+            halign: 'left'
+            valign: 'top'
             text_size: self.size
-            padding: 5, 0
+            padding: 3, 0
+        
+        Label:
+            text: root.result_icon
+            bold: True
+            color: root.result_icon_color
+            font_size: '26sp'
+            font_name: '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'
+            size_hint_x: 0.35
+            halign: 'right'
+            valign: 'top'
+            text_size: self.size
+            padding: 0, 0, 5, 0
+            opacity: 1.0 if root.result_icon else 0.0
+    
+    # Middle row: Serial number (left) + status dots with labels (right)
+    BoxLayout:
+        orientation: 'horizontal'
+        size_hint_y: 0.38
+        padding: 2, 0
+        opacity: 0.3 if not root.cell_checked else (0.0 if root.failure_reason else 1.0)
         
         Label:
             text: root.serial_number if root.serial_number else ''
             bold: True
-            color: [1, 1, 0, 1] if root.serial_number else [1, 1, 0, 0.5]
+            color: [1, 1, 0.7, 1]
             font_size: '11sp'
-            halign: 'center'
-            valign: 'top'
+            size_hint_x: 0.35
+            halign: 'left'
+            valign: 'middle'
             text_size: self.size
-            padding: 5, 0
+            padding: 3, 0
+        
+        # Status dots container - right aligned with labels
+        BoxLayout:
+            orientation: 'horizontal'
+            size_hint_x: 0.65
+            spacing: 0
+            padding: 0, 0, 2, 0
+            
+            Widget:
+                # Spacer to push dots right
+                size_hint_x: 0.02
+            
+            # Vision
+            BoxLayout:
+                orientation: 'vertical'
+                size_hint_x: None
+                width: 22
+                Label:
+                    text: root.vision_dot
+                    font_size: '18sp'
+                    font_name: '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'
+                    size_hint_y: 0.65
+                    halign: 'center'
+                    valign: 'bottom'
+                    color: 1, 1, 1, 1 if root.vision_enabled else 0.3
+                Label:
+                    text: 'V'
+                    font_size: '7sp'
+                    size_hint_y: 0.35
+                    halign: 'center'
+                    valign: 'top'
+                    color: 0.5, 0.5, 0.5, 1 if root.vision_enabled else 0.2
+            
+            # Contact (probe)
+            BoxLayout:
+                orientation: 'vertical'
+                size_hint_x: None
+                width: 22
+                Label:
+                    text: root.contact_dot
+                    font_size: '18sp'
+                    font_name: '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'
+                    size_hint_y: 0.65
+                    halign: 'center'
+                    valign: 'bottom'
+                    color: 1, 1, 1, 1 if root.contact_enabled else 0.3
+                Label:
+                    text: 'C'
+                    font_size: '7sp'
+                    size_hint_y: 0.35
+                    halign: 'center'
+                    valign: 'top'
+                    color: 0.5, 0.5, 0.5, 1 if root.contact_enabled else 0.2
+            
+            # Program
+            BoxLayout:
+                orientation: 'vertical'
+                size_hint_x: None
+                width: 22
+                Label:
+                    text: root.program_dot
+                    font_size: '18sp'
+                    font_name: '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'
+                    size_hint_y: 0.65
+                    halign: 'center'
+                    valign: 'bottom'
+                    color: 1, 1, 1, 1 if root.program_enabled else 0.3
+                Label:
+                    text: 'P'
+                    font_size: '7sp'
+                    size_hint_y: 0.35
+                    halign: 'center'
+                    valign: 'top'
+                    color: 0.5, 0.5, 0.5, 1 if root.program_enabled else 0.2
+            
+            # Provision
+            BoxLayout:
+                orientation: 'vertical'
+                size_hint_x: None
+                width: 22
+                Label:
+                    text: root.provision_dot
+                    font_size: '18sp'
+                    font_name: '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'
+                    size_hint_y: 0.65
+                    halign: 'center'
+                    valign: 'bottom'
+                    color: 1, 1, 1, 1 if root.provision_enabled else 0.3
+                Label:
+                    text: 'S'
+                    font_size: '7sp'
+                    size_hint_y: 0.35
+                    halign: 'center'
+                    valign: 'top'
+                    color: 0.5, 0.5, 0.5, 1 if root.provision_enabled else 0.2
+            
+            # Test
+            BoxLayout:
+                orientation: 'vertical'
+                size_hint_x: None
+                width: 22
+                Label:
+                    text: root.test_dot
+                    font_size: '18sp'
+                    font_name: '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'
+                    size_hint_y: 0.65
+                    halign: 'center'
+                    valign: 'bottom'
+                    color: 1, 1, 1, 1 if root.test_enabled else 0.3
+                Label:
+                    text: 'T'
+                    font_size: '7sp'
+                    size_hint_y: 0.35
+                    halign: 'center'
+                    valign: 'top'
+                    color: 0.5, 0.5, 0.5, 1 if root.test_enabled else 0.2
     
-    # Right column: Status information
-    BoxLayout:
-        orientation: 'vertical'
-        size_hint_x: 0.8
-        spacing: 2
-        padding: 5, 0
-        
-        Widget:
-            size_hint_y: 1
-        
-        BoxLayout:
-            orientation: 'horizontal'
-            size_hint_y: None
-            height: 15
-            spacing: 3
-            
-            Label:
-                text: 'Probe:'
-                bold: True
-                color: [0.7, 0.7, 0.7, 1] if root.probe_enabled and root.status_line1 else [0.3, 0.3, 0.3, 1] if not root.probe_enabled else [0.7, 0.7, 0.7, 0.5]
-                font_size: '12sp'
-                size_hint_x: None
-                width: 65
-                halign: 'right'
-                valign: 'middle'
-                text_size: self.size
-            
-            Label:
-                text: 'disabled' if not root.probe_enabled else (root.status_line1 if root.status_line1 else 'not probed')
-                bold: True
-                color: [0.3, 0.3, 0.3, 1] if not root.probe_enabled else ([1, 1, 1, 1] if root.status_line1 else [1, 1, 1, 0.5])
-                font_size: '12sp'
-                halign: 'left'
-                valign: 'middle'
-                text_size: self.size
-        
-        BoxLayout:
-            orientation: 'horizontal'
-            size_hint_y: None
-            height: 15
-            spacing: 3
-            
-            Label:
-                text: 'Program:'
-                bold: True
-                color: [0.7, 0.7, 0.7, 1] if root.program_enabled and root.status_line2 else [0.3, 0.3, 0.3, 1] if not root.program_enabled else [0.7, 0.7, 0.7, 0.5]
-                font_size: '12sp'
-                size_hint_x: None
-                width: 65
-                halign: 'right'
-                valign: 'middle'
-                text_size: self.size
-            
-            Label:
-                text: 'disabled' if not root.program_enabled else (root.status_line2 if root.status_line2 else 'not programmed')
-                bold: True
-                color: [0.3, 0.3, 0.3, 1] if not root.program_enabled else ([1, 1, 1, 1] if root.status_line2 else [1, 1, 1, 0.5])
-                font_size: '12sp'
-                halign: 'left'
-                valign: 'middle'
-                text_size: self.size
-        
-        BoxLayout:
-            orientation: 'horizontal'
-            size_hint_y: None
-            height: 15
-            spacing: 3
-            
-            Label:
-                text: 'Provision:'
-                bold: True
-                color: [0.7, 0.7, 0.7, 1] if root.provision_enabled and root.status_line3 else [0.3, 0.3, 0.3, 1] if not root.provision_enabled else [0.7, 0.7, 0.7, 0.5]
-                font_size: '12sp'
-                size_hint_x: None
-                width: 65
-                halign: 'right'
-                valign: 'middle'
-                text_size: self.size
-            
-            Label:
-                text: 'disabled' if not root.provision_enabled else (root.status_line3 if root.status_line3 else 'not provisioned')
-                bold: True
-                color: [0.3, 0.3, 0.3, 1] if not root.provision_enabled else ([1, 1, 1, 1] if root.status_line3 else [1, 1, 1, 0.5])
-                font_size: '12sp'
-                halign: 'left'
-                valign: 'middle'
-                text_size: self.size
-        
-        BoxLayout:
-            orientation: 'horizontal'
-            size_hint_y: None
-            height: 15
-            spacing: 3
-            
-            Label:
-                text: 'Test:'
-                bold: True
-                color: [0.7, 0.7, 0.7, 1] if root.test_enabled and root.status_line4 else [0.3, 0.3, 0.3, 1] if not root.test_enabled else [0.7, 0.7, 0.7, 0.5]
-                font_size: '12sp'
-                size_hint_x: None
-                width: 65
-                halign: 'right'
-                valign: 'middle'
-                text_size: self.size
-            
-            Label:
-                text: 'disabled' if not root.test_enabled else (root.status_line4 if root.status_line4 else 'not tested')
-                bold: True
-                color: [0.3, 0.3, 0.3, 1] if not root.test_enabled else ([1, 1, 1, 1] if root.status_line4 else [1, 1, 1, 0.5])
-                font_size: '12sp'
-                halign: 'left'
-                valign: 'middle'
-                text_size: self.size
-        
-        Widget:
-            size_hint_y: 1
+    # Bottom row: Failure reason (only shown when failed)
+    Label:
+        text: root.failure_reason
+        size_hint_y: 0.22
+        font_size: '11sp'
+        bold: True
+        color: [1, 0.7, 0.7, 1]
+        halign: 'left'
+        valign: 'top'
+        text_size: self.width - 6, self.height
+        padding: 3, 0
+        shorten: True
+        shorten_from: 'right'
+        opacity: 1.0 if root.failure_reason else 0.0
 
 <LogViewer>:
     effect_cls: 'ScrollEffect'

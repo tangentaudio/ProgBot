@@ -341,7 +341,7 @@ class VisionController:
             traceback.print_exc()
             return None
     
-    async def scan_qr_code(self, retries=3, delay=0.5, camera_preview=None, motion_controller=None, search_offset=0.0, base_x=None, base_y=None) -> Optional[str]:
+    async def scan_qr_code(self, retries=3, delay=0.5, camera_preview=None, motion_controller=None, search_offset=0.0, base_x=None, base_y=None) -> Optional[Tuple[str, Optional[bytes]]]:
         """Scan for QR code in camera view.
         
         Uses a fast-path approach: try immediate detection first without delays,
@@ -357,7 +357,7 @@ class VisionController:
             base_y: Base Y position for position search
             
         Returns:
-            Decoded QR code string or None if not found
+            Tuple of (decoded QR code string, cropped QR image as PNG bytes) or None if not found
         """
         scan_start = time.time()
         self.update_phase("Scanning QR")
@@ -378,22 +378,28 @@ class VisionController:
                     camera_preview.show_frame(frame_gray, "fast-path")
                 
                 # Try standard QR detection (very fast)
-                data = await loop.run_in_executor(None, self._detect_qr_single, frame_gray)
-                if data:
+                result = await loop.run_in_executor(None, self._detect_qr_single, frame_gray)
+                if result:
+                    qr_data, bbox = result
                     total_time = time.time() - scan_start
                     if camera_preview:
-                        camera_preview.show_frame(frame_gray, "QR detected (fast)", qr_found=data)
-                    log.debug(f"[VisionController] FAST PATH: Standard QR FOUND: {data} (total: {total_time:.3f}s)")
-                    return data
+                        camera_preview.show_frame(frame_gray, "QR detected (fast)", qr_found=qr_data)
+                    # Crop and encode QR image
+                    qr_image = self._crop_qr_image(frame_gray, bbox)
+                    log.debug(f"[VisionController] FAST PATH: Standard QR FOUND: {qr_data} (total: {total_time:.3f}s)")
+                    return (qr_data, qr_image)
                 
-                # Try Micro QR detection
+                # Try Micro QR detection (returns tuple (data, format) without bbox)
                 data = await loop.run_in_executor(None, self._detect_micro_qr_with_rotation, frame_gray, None)
                 if data:
                     total_time = time.time() - scan_start
                     if camera_preview:
                         camera_preview.show_frame(frame_gray, "QR detected (fast)", qr_found=data)
+                    # For Micro QR, just use full frame as thumbnail (no bbox available)
+                    qr_image = self._encode_frame_thumbnail(frame_gray)
                     log.debug(f"[VisionController] FAST PATH: Micro QR FOUND: {data} (total: {total_time:.3f}s)")
-                    return data
+                    qr_data = data[0] if isinstance(data, tuple) else data
+                    return (qr_data, qr_image)
                 
                 log.debug(f"[VisionController] Fast path failed, falling back to retry logic")
         except Exception as e:
@@ -425,14 +431,16 @@ class VisionController:
                 
                 # Try standard QR detection first (fast)
                 strategy_start = time.time()
-                data = await loop.run_in_executor(None, self._detect_qr_single, frame_gray)
+                result = await loop.run_in_executor(None, self._detect_qr_single, frame_gray)
                 strategy_time = time.time() - strategy_start
-                if data:
+                if result:
+                    qr_data, bbox = result
                     total_time = time.time() - scan_start
                     if camera_preview:
-                        camera_preview.show_frame(frame_gray, "QR detected", qr_found=data)
-                    log.debug(f"[VisionController] Standard QR FOUND: {data} (strategy: {strategy_time:.3f}s, total: {total_time:.3f}s)")
-                    return data
+                        camera_preview.show_frame(frame_gray, "QR detected", qr_found=qr_data)
+                    qr_image = self._crop_qr_image(frame_gray, bbox)
+                    log.debug(f"[VisionController] Standard QR FOUND: {qr_data} (strategy: {strategy_time:.3f}s, total: {total_time:.3f}s)")
+                    return (qr_data, qr_image)
                 
                 # Try Micro QR detection
                 strategy_start = time.time()
@@ -442,8 +450,10 @@ class VisionController:
                     total_time = time.time() - scan_start
                     if camera_preview:
                         camera_preview.show_frame(frame_gray, "QR detected", qr_found=data)
-                    log.debug(f"[VisionController] Micro QR FOUND: {data} (strategy: {strategy_time:.3f}s, total: {total_time:.3f}s)")
-                    return data
+                    qr_image = self._encode_frame_thumbnail(frame_gray)
+                    qr_data = data[0] if isinstance(data, tuple) else data
+                    log.debug(f"[VisionController] Micro QR FOUND: {qr_data} (strategy: {strategy_time:.3f}s, total: {total_time:.3f}s)")
+                    return (qr_data, qr_image)
                 
                 log.debug(f"[VisionController] Attempt {attempt + 1}/{retries} failed")
                 
@@ -497,15 +507,19 @@ class VisionController:
                         camera_preview.show_frame(frame_gray, f"pos{idx}")
                     
                     # Try both detection methods
-                    data = await loop.run_in_executor(None, self._detect_qr_single, frame_gray)
-                    if data:
-                        log.debug(f"[VisionController] QR FOUND at position {idx}/4: {data}")
-                        return data
+                    result = await loop.run_in_executor(None, self._detect_qr_single, frame_gray)
+                    if result:
+                        qr_data, bbox = result
+                        qr_image = self._crop_qr_image(frame_gray, bbox)
+                        log.debug(f"[VisionController] QR FOUND at position {idx}/4: {qr_data}")
+                        return (qr_data, qr_image)
                     
                     data = await loop.run_in_executor(None, self._detect_micro_qr_with_rotation, frame_gray, None)
                     if data:
-                        log.debug(f"[VisionController] Micro QR FOUND at position {idx}/4: {data}")
-                        return data
+                        qr_image = self._encode_frame_thumbnail(frame_gray)
+                        qr_data = data[0] if isinstance(data, tuple) else data
+                        log.debug(f"[VisionController] Micro QR FOUND at position {idx}/4: {qr_data}")
+                        return (qr_data, qr_image)
                     
                     log.debug(f"[VisionController] Position search {idx}/4: no QR detected")
                     
@@ -536,12 +550,88 @@ class VisionController:
             img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         
         return img, (width, height)
+    
+    def _crop_qr_image(self, frame: np.ndarray, bbox: np.ndarray, padding: int = 10) -> Optional[bytes]:
+        """Crop and encode QR code region from frame.
+        
+        Args:
+            frame: Grayscale frame containing QR code
+            bbox: Bounding box array from QR detector (4 corner points)
+            padding: Extra pixels around QR code
+            
+        Returns:
+            PNG-encoded image bytes, or None on error
+        """
+        try:
+            if bbox is None or len(bbox) == 0:
+                return None
+            
+            # Get bounding rectangle from corner points
+            points = bbox.reshape(-1, 2).astype(int)
+            x_min, y_min = points.min(axis=0)
+            x_max, y_max = points.max(axis=0)
+            
+            # Add padding and clamp to frame bounds
+            h, w = frame.shape[:2]
+            x_min = max(0, x_min - padding)
+            y_min = max(0, y_min - padding)
+            x_max = min(w, x_max + padding)
+            y_max = min(h, y_max + padding)
+            
+            # Crop the QR region
+            qr_crop = frame[y_min:y_max, x_min:x_max]
+            
+            # Resize to thumbnail (max 128px, keep aspect)
+            crop_h, crop_w = qr_crop.shape[:2]
+            max_dim = 128
+            if crop_w > max_dim or crop_h > max_dim:
+                scale = max_dim / max(crop_w, crop_h)
+                new_w = int(crop_w * scale)
+                new_h = int(crop_h * scale)
+                qr_crop = cv2.resize(qr_crop, (new_w, new_h), interpolation=cv2.INTER_AREA)
+            
+            # Encode as PNG
+            success, png_data = cv2.imencode('.png', qr_crop)
+            if success:
+                return png_data.tobytes()
+            return None
+        except Exception as e:
+            log.debug(f"[VisionController] Error cropping QR image: {e}")
+            return None
+    
+    def _encode_frame_thumbnail(self, frame: np.ndarray, max_dim: int = 128) -> Optional[bytes]:
+        """Encode entire frame as a thumbnail PNG.
+        
+        Used when bounding box is not available (e.g., Micro QR with zxing).
+        
+        Args:
+            frame: Grayscale frame
+            max_dim: Maximum dimension for thumbnail
+            
+        Returns:
+            PNG-encoded image bytes, or None on error
+        """
+        try:
+            h, w = frame.shape[:2]
+            if w > max_dim or h > max_dim:
+                scale = max_dim / max(w, h)
+                new_w = int(w * scale)
+                new_h = int(h * scale)
+                frame = cv2.resize(frame, (new_w, new_h), interpolation=cv2.INTER_AREA)
+            
+            success, png_data = cv2.imencode('.png', frame)
+            if success:
+                return png_data.tobytes()
+            return None
+        except Exception as e:
+            log.debug(f"[VisionController] Error encoding frame thumbnail: {e}")
+            return None
         
         total_time = time.time() - scan_start
         log.debug(f"[VisionController] QR code scan FAILED after all retries and position search (total time: {total_time:.3f}s)")
         return None
     
-    def _detect_qr_single(self, frame: np.ndarray) -> Optional[str]:
+    def _detect_qr_single(self, frame: np.ndarray) -> Optional[Tuple[str, np.ndarray]]:
         """Attempt standard QR detection on a single preprocessed frame.
         
         Uses OpenCV's QRCodeDetector for standard QR codes (fast).
@@ -551,14 +641,14 @@ class VisionController:
             frame: Preprocessed grayscale frame
             
         Returns:
-            Decoded QR string or None
+            Tuple of (decoded QR string, bounding box array) or None
         """
         try:
             # Try OpenCV (fast for standard QR codes)
             data, bbox, _ = self.qr_detector.detectAndDecode(frame)
             if data:
                 log.debug(f"[VisionController] Standard QR detected (OpenCV): '{data}'")
-                return data
+                return (data, bbox)
             
             return None
         except Exception as e:

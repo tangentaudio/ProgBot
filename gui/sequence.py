@@ -275,6 +275,7 @@ class BoardInfo:
     def __init__(self, serial_number: Optional[str] = None):
         """Initialize board information."""
         self.serial_number: Optional[str] = serial_number  # Scanned from QR code
+        self.qr_image: Optional[bytes] = None  # Cropped QR image as PNG bytes
         self.test_data: dict = {}  # Testing phase data (key-value pairs)
         self.position: Optional[tuple] = None  # (col, row) position in panel
         self.timestamp_qr_scan: Optional[str] = None  # When QR was scanned
@@ -873,6 +874,8 @@ class ProgBot:
             board_status: BoardStatus object for this board
             cell_id: Cell ID for status updates
         """
+        import time as time_module
+        provision_start = time_module.perf_counter()
         log.debug(f"[_provision_board] Provisioning board [{col},{row}]")
         self.update_phase(f"Provisioning Board [{col}, {row}]...")
         
@@ -917,8 +920,12 @@ class ProgBot:
         engine = ProvisioningEngine(verbose=True)
         result = await engine.execute(script, self.target.device, context)
         
+        # Record provision time
+        provision_time = time_module.perf_counter() - provision_start
+        self.stats.record_board_time(col, row, 'provision', provision_time)
+        
         if result.success:
-            log.info(f"[_provision_board] Board [{col},{row}] provisioning complete")
+            log.info(f"[_provision_board] Board [{col},{row}] provisioning complete in {provision_time:.2f}s")
             log.info(f"[_provision_board] Captures: {result.captures}")
             
             # Store captured data in board_info
@@ -998,7 +1005,7 @@ class ProgBot:
             dist_to_probe = await self.motion.do_probe()
             log.debug(f"[_run_board] Probe complete: dist_to_probe={dist_to_probe}")
             dist_to_board = dist_to_probe + self.config.probe_plane_to_board
-            self._mark_probe(cell_id, board_status, ProbeStatus.COMPLETED)
+            # Don't mark COMPLETED yet - wait until contact is verified
             
             # Record probe time (movement + probe operation)
             probe_time = time.time() - probe_start
@@ -1093,6 +1100,9 @@ class ProgBot:
             await self.motion.rapid_z_abs(0.0)
             return
 
+        # Contact verified - mark probe as completed
+        self._mark_probe(cell_id, board_status, ProbeStatus.COMPLETED)
+
         # Start timing for this board (covers all phases)
         program_start = time.time()
 
@@ -1136,8 +1146,21 @@ class ProgBot:
                             final_status = ProgramStatus.COMPLETED
                     else:
                         final_status = ProgramStatus.FAILED
+                        board_status.failure_reason = "Programming failed"
                     
                     self._mark_program(cell_id, board_status, final_status)
+                    
+                    # If programming failed, skip remaining phases and return
+                    if final_status == ProgramStatus.FAILED:
+                        self._mark_provision(cell_id, board_status, ProvisionStatus.SKIPPED)
+                        self._mark_test(cell_id, board_status, TestStatus.SKIPPED)
+                        self.stats.record_failure()
+                        self._safe_emit_stats()
+                        # SAFETY: Return to safe Z height before continuing
+                        await self.head.set_all(False)
+                        await self.motion.rapid_z_abs(0.0)
+                        self.current_board = None
+                        return
                     
                 except Exception as e:
                     log.error(f"Programming sequence failed: {e}")
@@ -1274,17 +1297,19 @@ class ProgBot:
                         log.debug(f"[_scan_all_boards_for_qr] Board [{col},{row}] QR scan time: {qr_scan_time:.2f}s")
                         
                         if qr_data:
-                            # qr_data is a tuple (data, type) - extract just the data
+                            # qr_data is now a tuple (data, image_bytes) from scan_qr_code
                             qr_serial = qr_data[0] if isinstance(qr_data, tuple) else qr_data
+                            qr_image = qr_data[1] if isinstance(qr_data, tuple) and len(qr_data) > 1 else None
                             board_status.qr_code = qr_serial
                             
                             # Create and populate BoardInfo
                             import datetime
                             board_info = BoardInfo(serial_number=qr_serial)
+                            board_info.qr_image = qr_image  # Store cropped QR image
                             board_info.timestamp_qr_scan = datetime.datetime.now().isoformat()
                             board_status.board_info = board_info
                             
-                            log.debug(f"[_scan_all_boards_for_qr] Board [{col},{row}] QR: {qr_serial}")
+                            log.debug(f"[_scan_all_boards_for_qr] Board [{col},{row}] QR: {qr_serial}, image: {len(qr_image) if qr_image else 0} bytes")
                             log.info(f"[Board {col},{row}] Serial Number: {qr_serial}")
                             
                             # Mark vision as passed (this emits status with qr_code and board_info)
@@ -1544,6 +1569,54 @@ class ProgBot:
             except Exception:
                 pass
             log.debug("[full_cycle] Exception - cleanup done")
+            raise
+
+    async def process_single_board(self, position):
+        """Process a single board at the given position.
+        
+        Args:
+            position: (col, row) tuple for the board to process
+        """
+        col, row = position
+        self.update_phase(f"Processing Board [{col}, {row}]")
+        log.info(f"[process_single_board] Starting for position {position}")
+        
+        await self.motion.connect()
+        await self.head.connect()
+        await self.target.connect()
+        await self.motion.init()
+        
+        try:
+            await self._run_board(col, row)
+            self.update_phase(f"Board [{col}, {row}] complete")
+            
+            # Return to safe position
+            await self.motion.rapid_z_abs(0.0)
+            await self.motion.rapid_xy_abs(0, 300)
+            await self.motion.motors_off()
+            
+        except asyncio.CancelledError:
+            log.info(f"[process_single_board] Cancelled for {position}")
+            try:
+                await asyncio.shield(self.motion.rapid_z_abs(0.0))
+                await asyncio.shield(self.motion.rapid_xy_abs(0, 300))
+            except:
+                pass
+            await self.motion.motors_off()
+            raise
+        except Exception as e:
+            tb = traceback.format_exc()
+            log.error(f"[process_single_board] Error: {e}")
+            self.error_occurred.emit({
+                "message": str(e),
+                "traceback": tb,
+                "col": col,
+                "row": row,
+            })
+            try:
+                await self.motion.motors_off()
+            except:
+                pass
             raise
 
     async def retry_board(self, col: int, row: int):

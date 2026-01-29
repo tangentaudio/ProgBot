@@ -104,8 +104,30 @@ class ProgrammerBase(ABC):
                     return False
         return True
     
+    def _run_cmd_sync(self, args: tuple) -> tuple:
+        """Run subprocess synchronously in a thread.
+        
+        Returns:
+            Tuple of (returncode, stdout, stderr)
+        """
+        import subprocess
+        try:
+            result = subprocess.run(
+                args,
+                capture_output=True,
+                timeout=120  # 2 minute timeout
+            )
+            return (result.returncode, result.stdout, result.stderr)
+        except subprocess.TimeoutExpired:
+            return (1, b'', b'Timeout expired')
+        except Exception as e:
+            return (1, b'', str(e).encode())
+    
     async def run_cmd_async(self, *args) -> int:
         """Run subprocess asynchronously and return returncode.
+        
+        Uses run_in_executor to run the subprocess in a thread pool,
+        completely freeing the main thread for UI updates.
         
         Args:
             *args: Command and arguments
@@ -113,14 +135,17 @@ class ProgrammerBase(ABC):
         Returns:
             Process return code (0 = success)
         """
+        import concurrent.futures
+        
         try:
             print(f"Running command: {' '.join(args)}")
-            proc = await asyncio.create_subprocess_exec(
-                *args,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
-            stdout, stderr = await proc.communicate()
+            
+            # Run in thread pool to completely free main thread
+            loop = asyncio.get_event_loop()
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                returncode, stdout, stderr = await loop.run_in_executor(
+                    pool, self._run_cmd_sync, args
+                )
             
             # Print output for debugging
             if stdout:
@@ -128,8 +153,8 @@ class ProgrammerBase(ABC):
             if stderr:
                 print(f"stderr: {stderr.decode('utf-8', errors='ignore')}")
             
-            print(f"Command finished with returncode: {proc.returncode}")
-            return proc.returncode
+            print(f"Command finished with returncode: {returncode}")
+            return returncode
         except Exception as e:
             print(f"Error running {args[0]}: {e}")
             import traceback
