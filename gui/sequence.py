@@ -9,6 +9,12 @@ from enum import Enum
 from dataclasses import dataclass, field
 from typing import List, Tuple, Optional, Dict
 from pynnex import with_emitters, emitter, listener
+
+# Import status classes from centralized module
+from board_status import (
+    VisionStatus, ProbeStatus, ProgramStatus, ProvisionStatus, TestStatus,
+    BoardStatus, BoardInfo
+)
 from head_controller import HeadController
 from target_controller import TargetController
 from motion_controller import MotionController
@@ -161,57 +167,6 @@ BOARD_NUM_COLS=2
 PROBE_PLANE_TO_BOARD=4.0
 
 
-class ProgramStatus(Enum):
-    """Status of the programming operation."""
-    IDLE = "Pending"
-    IDENTIFYING = "Identifying"
-    IDENTIFIED = "Identified"
-    PROGRAMMING = "Programming"
-    COMPLETED = "Programmed"
-    FAILED = "Failed"
-    SKIPPED = "Skipped"
-    INTERRUPTED = "Interrupted"
-
-
-class ProbeStatus(Enum):
-    """Status of the probing operation."""
-    IDLE = "Pending"
-    PROBING = "Probing"
-    COMPLETED = "Probed"
-    FAILED = "Probe Failed"
-    SKIPPED = "Skipped"
-    INTERRUPTED = "Interrupted"
-
-
-class VisionStatus(Enum):
-    """Status of the vision/QR scanning operation."""
-    IDLE = "Pending"
-    IN_PROGRESS = "Scanning"
-    PASSED = "QR Detected"
-    FAILED = "No QR"
-    INTERRUPTED = "Interrupted"
-
-
-class ProvisionStatus(Enum):
-    """Status of the provisioning operation."""
-    IDLE = "Pending"
-    PROVISIONING = "Provisioning"
-    COMPLETED = "Provisioned"
-    FAILED = "Provision Failed"
-    SKIPPED = "Skipped"
-    INTERRUPTED = "Interrupted"
-
-
-class TestStatus(Enum):
-    """Status of the testing operation."""
-    IDLE = "Pending"
-    TESTING = "Testing"
-    COMPLETED = "Tested"
-    FAILED = "Test Failed"
-    SKIPPED = "Skipped"
-    INTERRUPTED = "Interrupted"
-
-
 class OperationMode(Enum):
     """Operating modes for the programming cycle.
     
@@ -222,6 +177,7 @@ class OperationMode(Enum):
     PROGRAM = "Program"
     PROGRAM_AND_TEST = "Program & Test"
     TEST_ONLY = "Test Only"
+
 
 @dataclass
 class Config:
@@ -267,98 +223,6 @@ class Config:
     qr_offset_y: float = 0.0  # Y offset from board origin to QR code (panel-specific)
     qr_scan_timeout: float = 5.0  # Seconds to wait for QR code detection (1-10)
     qr_search_offset: float = 2.0  # XY offset in mm to search around QR position if scan fails (0=disabled)
-
-
-class BoardInfo:
-    """Information collected about an individual board."""
-    
-    def __init__(self, serial_number: Optional[str] = None):
-        """Initialize board information."""
-        self.serial_number: Optional[str] = serial_number  # Scanned from QR code
-        self.qr_image: Optional[bytes] = None  # Cropped QR image as PNG bytes
-        self.test_data: dict = {}  # Testing phase data (key-value pairs)
-        self.position: Optional[tuple] = None  # (col, row) position in panel
-        self.timestamp_qr_scan: Optional[str] = None  # When QR was scanned
-        self.timestamp_probe: Optional[str] = None  # When probing completed
-        self.timestamp_program: Optional[str] = None  # When programming completed
-        self.probe_result: Optional[bool] = None  # True if probing passed
-        self.program_result: Optional[bool] = None  # True if programming passed
-        self.notes: str = ""  # Any additional notes or error messages
-    
-    def to_dict(self):
-        """Convert to dictionary for export (CSV/database).
-        
-        Returns:
-            Dictionary with all board information
-        """
-        return {
-            'serial_number': self.serial_number,
-            'position_col': self.position[0] if self.position else None,
-            'position_row': self.position[1] if self.position else None,
-            'timestamp_qr_scan': self.timestamp_qr_scan,
-            'timestamp_probe': self.timestamp_probe,
-            'timestamp_program': self.timestamp_program,
-            'probe_result': self.probe_result,
-            'program_result': self.program_result,
-            'notes': self.notes,
-            **self.test_data  # Include all test data as separate columns
-        }
-    
-    def __repr__(self):
-        return f"BoardInfo(serial={self.serial_number}, pos={self.position})"
-
-
-class BoardStatus:
-    """Tracks the status of a single board position."""
-    
-    def __init__(self, position):
-        """Initialize board status.
-        
-        Args:
-            position: Tuple (col, row) for this board position
-        """
-        self.position = position
-        self.enabled = True
-        self.vision_status = VisionStatus.IDLE
-        self.probe_status = ProbeStatus.IDLE
-        self.program_status = ProgramStatus.IDLE
-        self.provision_status = ProvisionStatus.IDLE
-        self.test_status = TestStatus.IDLE
-        self.qr_code: Optional[str] = None  # Scanned QR code data (deprecated - use board_info)
-        self.board_info: Optional[BoardInfo] = None  # Detailed board information
-        self.failure_reason: Optional[str] = None  # Why the board failed (if applicable)
-    
-    @property
-    def status_text(self):
-        """Return text description of current state.
-        
-        Returns:
-            Tuple of (status_line1, status_line2, status_line3, status_line4) for display
-        """
-        if not self.enabled:
-            return ("DISABLED", "", "", "")
-        
-        # Show probe, program, provision, and test status
-        probe_text = self.probe_status.value if self.probe_status else "Pending"
-        program_text = self.program_status.value if self.program_status else "Pending"
-        provision_text = self.provision_status.value if self.provision_status else "Pending"
-        test_text = self.test_status.value if self.test_status else "Pending"
-        
-        # If there's a failure reason, include it
-        if self.probe_status == ProbeStatus.FAILED and self.failure_reason:
-            probe_text = f"{probe_text} ({self.failure_reason})"
-        if self.program_status == ProgramStatus.FAILED and self.failure_reason:
-            program_text = f"{program_text} ({self.failure_reason})"
-        if self.provision_status == ProvisionStatus.FAILED and self.failure_reason:
-            provision_text = f"{provision_text} ({self.failure_reason})"
-        if self.test_status == TestStatus.FAILED and self.failure_reason:
-            test_text = f"{test_text} ({self.failure_reason})"
-        
-        return (probe_text, program_text, provision_text, test_text)
-    
-    def __repr__(self):
-        return f"BoardStatus({self.position}, enabled={self.enabled}, probe={self.probe_status.name}, prog={self.program_status.name})"
-
 
 
 @with_emitters
@@ -1101,7 +965,7 @@ class ProgBot:
             return
 
         # Contact verified - mark probe as completed
-        self._mark_probe(cell_id, board_status, ProbeStatus.COMPLETED)
+        self._mark_probe(cell_id, board_status, ProbeStatus.PASSED)
 
         # Start timing for this board (covers all phases)
         program_start = time.time()

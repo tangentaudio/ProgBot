@@ -59,15 +59,18 @@
 - ✅ BoardInfo.qr_image stores cropped QR thumbnail (max 128px)
 - ✅ Image displayed in Vision detail view
 
+#### Code Cleanup / Refactoring
+- ✅ **Split BoardDetailPopup into separate file** - board_detail_popup.py (~750 lines)
+- ✅ **Extract GridCell to separate module** - gridcell.py + gridcell.kv
+- ✅ kvui.py reduced from ~3200 lines to ~2066 lines
+
 ---
 
 ### ⏳ Remaining / Future Enhancements
 
-#### Code Cleanup / Refactoring
-- [ ] **Split BoardDetailPopup into separate file** - Currently embedded in kvui.py (~300 lines)
-- [ ] **Create board_detail_popup.kv** - Move popup layout to KV file for cleaner separation
-- [ ] **Extract GridCell to separate module** - gridcell.py + gridcell.kv
-- [ ] **Consolidate status update logic** - Currently spread across kvui.py and sequence.py
+#### Code Cleanup / Refactoring (Optional)
+- [ ] **Create board_detail_popup.kv** - Move popup layout from Python to KV file for cleaner separation
+- [x] **Consolidate status update logic** - Created `board_status.py` as single source of truth for status enums, data classes, and utility functions (status_to_dot, get_phase_color, get_status_bg_color, has_failure, is_processing, etc.)
 
 #### Detail Popup Enhancements
 - [ ] **Raw Logs** - Collapsible section with detailed output from each phase
@@ -145,9 +148,12 @@ stats.program_stats
 ```
 
 ### Key Files
-- `kvui.py` - GridCell widget, BoardDetailPopup class
+- `kvui.py` - Main UI module (imports GridCell and BoardDetailPopup)
+- `gridcell.py` - GridCell widget class
+- `gridcell.kv` - GridCell KV layout
+- `board_detail_popup.py` - BoardDetailPopup class
 - `sequence.py` - BoardStatus, BoardInfo, CycleStats, status signals
-- `progbot.kv` - GridCell layout definition
+- `progbot.kv` - Main app KV layout
 - `vision_controller.py` - QR scanning with image capture
 
 ---
