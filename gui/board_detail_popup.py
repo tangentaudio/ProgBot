@@ -88,10 +88,16 @@ class BoardDetailPopup:
     
     def _get_board_status(self, cell_id):
         """Get the BoardStatus for a cell ID."""
-        if not self.app.bot or not hasattr(self.app.bot, 'board_statuses'):
+        if not self.app.bot:
+            log.debug(f"[BoardDetail] _get_board_status: app.bot is None/False")
+            return None
+        if not hasattr(self.app.bot, 'board_statuses'):
+            log.debug(f"[BoardDetail] _get_board_status: bot has no board_statuses attr")
             return None
         position = self._cell_id_to_position(cell_id)
-        return self.app.bot.board_statuses.get(position)
+        result = self.app.bot.board_statuses.get(position)
+        log.debug(f"[BoardDetail] _get_board_status: cell_id={cell_id}, position={position}, found={result is not None}")
+        return result
     
     def _cell_id_to_position(self, cell_id):
         """Convert cell_id to (col, row) position tuple."""
@@ -306,7 +312,7 @@ class BoardDetailPopup:
             
             # Bind click to select this phase (only if enabled)
             if enabled:
-                phase_card.bind(on_press=lambda inst, pn=phase_name: self._select_phase(pn))
+                phase_card.bind(on_release=lambda inst, pn=phase_name: self._select_phase(pn))
             
             # Status dot - use DejaVuSans for Unicode support
             dot_text = "·" if enabled else "—"
@@ -400,35 +406,36 @@ class BoardDetailPopup:
         self._detail_header.bind(size=self._detail_header.setter('text_size'))
         detail_panel.add_widget(self._detail_header)
         
-        # Detail content area with text and optional image
-        detail_content_area = BoxLayout(orientation='horizontal', spacing=8, size_hint_y=1)
+        # Detail content area - just a scrollview with text
+        # Image will be shown inline via a separate widget when needed
+        self._detail_scroll = ScrollView(size_hint=(1, 1))
         
-        # Text content (scrollable)
-        detail_scroll = ScrollView(size_hint_x=0.6)
+        # Use a BoxLayout inside scroll for text + optional image
+        self._detail_box = BoxLayout(orientation='vertical', size_hint_y=None, spacing=10)
+        self._detail_box.bind(minimum_height=self._detail_box.setter('height'))
+        
         self._detail_content = Label(
             text="Tap a phase on the left to see details",
             font_size='12sp',
+            font_name='DejaVuSans',  # Unicode support for checkmarks and arrows
             markup=True,
             halign='left',
             valign='top',
             size_hint_y=None,
             color=[0.7, 0.7, 0.7, 1]
         )
+        # For scrollable labels: bind width to scroll width, height to texture
+        def update_text_width(scroll, value):
+            self._detail_content.text_size = (value, None)
+        self._detail_scroll.bind(width=update_text_width)
         self._detail_content.bind(texture_size=lambda w, ts: setattr(w, 'height', ts[1]))
-        self._detail_content.bind(size=self._detail_content.setter('text_size'))
-        detail_scroll.add_widget(self._detail_content)
-        detail_content_area.add_widget(detail_scroll)
+        self._detail_box.add_widget(self._detail_content)
         
-        # Image area (for QR image, etc.)
-        self._detail_image = Image(
-            size_hint_x=0.4,
-            allow_stretch=True,
-            keep_ratio=True
-        )
-        self._detail_image.opacity = 0  # Hidden by default
-        detail_content_area.add_widget(self._detail_image)
+        # Image widget - added/removed dynamically, not always present
+        self._detail_image = None  # Will be created when needed
         
-        detail_panel.add_widget(detail_content_area)
+        self._detail_scroll.add_widget(self._detail_box)
+        detail_panel.add_widget(self._detail_scroll)
         right_col.add_widget(detail_panel)
         
         return right_col
@@ -468,6 +475,7 @@ class BoardDetailPopup:
     
     def _select_phase(self, phase_name):
         """Select a phase to show its details."""
+        log.info(f"[BoardDetail] Phase selected: {phase_name}")
         self._selected_phase = phase_name
         
         # Update card highlighting
@@ -632,6 +640,11 @@ class BoardDetailPopup:
             if status_enum:
                 status_name = status_enum.name
                 status_text = self._get_phase_status_text(status_enum)
+            # Debug: log board_info availability
+            if board_status.board_info:
+                log.debug(f"[BoardDetail] board_info exists, test_data={board_status.board_info.test_data}")
+            else:
+                log.debug(f"[BoardDetail] board_info is None")
         
         # Get timing
         timing_text = "Not recorded"
@@ -641,9 +654,25 @@ class BoardDetailPopup:
         # Build detail content
         self._detail_header.text = f"{phase_name} Details"
         
+        # Color codes for markup
+        C_HEADER = '#88CCFF'  # Light blue for section headers
+        C_KEY = '#FFCC66'     # Yellow/gold for keys
+        C_OK = '#66FF66'      # Green for success
+        C_FAIL = '#FF6666'    # Red for failure
+        C_LOG = '#AAAAAA'     # Gray for log entries
+        C_VAL = '#CCCCCC'     # Light gray for values
+        
+        # Color the status based on result
+        if 'PASS' in status_name or 'COMPLETE' in status_name or 'IDENTIFIED' in status_name:
+            status_color = C_OK
+        elif 'FAIL' in status_name:
+            status_color = C_FAIL
+        else:
+            status_color = C_VAL
+        
         lines = []
-        lines.append(f"[b]Status:[/b] {status_text}")
-        lines.append(f"[b]Duration:[/b] {timing_text}")
+        lines.append(f"[b]Status:[/b] [color={status_color}]{status_text}[/color]")
+        lines.append(f"[b]Duration:[/b] [color={C_VAL}]{timing_text}[/color]")
         
         # Phase-specific details
         if phase_name == "Vision":
@@ -657,21 +686,36 @@ class BoardDetailPopup:
         elif phase_name == "Test":
             self._build_test_details(lines, status_name, cell)
         
-        self._detail_content.text = "\n".join(lines)
+        final_text = "\n".join(lines)
+        log.info(f"[BoardDetail] Setting detail text ({len(lines)} lines): {final_text[:200]}...")
+        self._detail_content.text = final_text
     
     def _build_vision_details(self, lines, cell, board_status):
         """Build Vision phase detail content."""
+        C_HEADER = '#88CCFF'
+        C_KEY = '#FFCC66'
+        C_VAL = '#CCCCCC'
+        C_LOG = '#AAAAAA'
+        
         if cell.serial_number:
-            lines.append(f"\n[b]QR Data:[/b]")
-            lines.append(f"  Serial: {cell.serial_number}")
+            lines.append(f"\n[color={C_HEADER}][b]QR Data[/b][/color]")
+            lines.append(f"  [color={C_KEY}]Serial:[/color] [color={C_VAL}]{cell.serial_number}[/color]")
         if board_status and hasattr(board_status, 'board_info') and board_status.board_info:
             info = board_status.board_info
             if hasattr(info, 'serial') and info.serial:
-                lines.append(f"  Board Serial: {info.serial}")
+                lines.append(f"  [color={C_KEY}]Board Serial:[/color] [color={C_VAL}]{info.serial}[/color]")
             if hasattr(info, 'model') and info.model:
-                lines.append(f"  Model: {info.model}")
-            # Show QR image if available
-            if hasattr(info, 'qr_image') and info.qr_image and self._detail_image:
+                lines.append(f"  [color={C_KEY}]Model:[/color] [color={C_VAL}]{info.model}[/color]")
+            
+            # Show vision log if available
+            if hasattr(info, 'vision_log') and info.vision_log:
+                lines.append(f"\n[color={C_HEADER}][b]Scan Log[/b][/color]")
+                for entry in info.vision_log[-10:]:  # Last 10 entries
+                    lines.append(f"  [color={C_LOG}]{entry}[/color]")
+            
+            # Show QR image if available (image widget is created dynamically)
+            if hasattr(info, 'qr_image') and info.qr_image:
+                log.debug(f"[BoardDetail] Showing QR image: {len(info.qr_image)} bytes")
                 self._show_qr_image(info.qr_image)
             else:
                 self._hide_detail_image()
@@ -681,67 +725,197 @@ class BoardDetailPopup:
     def _build_contact_details(self, lines, status_name, cell):
         """Build Contact phase detail content."""
         self._hide_detail_image()
-        lines.append(f"\n[b]Probe Test:[/b]")
+        C_HEADER = '#88CCFF'
+        C_OK = '#66FF66'
+        C_FAIL = '#FF6666'
+        C_LOG = '#AAAAAA'
+        
+        lines.append(f"\n[color={C_HEADER}][b]Probe Test[/b][/color]")
         if status_name == "PASSED":
-            lines.append("  Contact verified OK")
+            lines.append(f"  [color={C_OK}]✓ Contact verified OK[/color]")
         elif status_name == "FAILED":
-            lines.append("  Contact test failed")
+            lines.append(f"  [color={C_FAIL}]✗ Contact test failed[/color]")
             if cell.failure_reason:
-                lines.append(f"  Reason: {cell.failure_reason}")
+                lines.append(f"  [color={C_FAIL}]Reason: {cell.failure_reason}[/color]")
+        
+        # Show probe log if available
+        board_status = self._get_board_status(self.current_cell_id)
+        if board_status and board_status.board_info:
+            info = board_status.board_info
+            if hasattr(info, 'probe_log') and info.probe_log:
+                lines.append(f"\n[color={C_HEADER}][b]Probe Log[/b][/color]")
+                for entry in info.probe_log[-10:]:
+                    lines.append(f"  [color={C_LOG}]{entry}[/color]")
     
     def _build_program_details(self, lines, status_name, cell):
         """Build Program phase detail content."""
         self._hide_detail_image()
-        lines.append(f"\n[b]Programming:[/b]")
-        if status_name == "PASSED":
-            lines.append("  Firmware flashed successfully")
+        board_status = self._get_board_status(self.current_cell_id)
+        C_HEADER = '#88CCFF'
+        C_KEY = '#FFCC66'
+        C_VAL = '#CCCCCC'
+        C_OK = '#66FF66'
+        C_FAIL = '#FF6666'
+        C_LOG = '#AAAAAA'
+        
+        lines.append(f"\n[color={C_HEADER}][b]Programming[/b][/color]")
+        if status_name == "COMPLETED":
+            lines.append(f"  [color={C_OK}]✓ Firmware flashed successfully[/color]")
+        elif status_name == "IDENTIFIED":
+            lines.append(f"  [color={C_OK}]✓ Device identified (no programming)[/color]")
         elif status_name == "FAILED":
-            lines.append("  Programming failed")
+            lines.append(f"  [color={C_FAIL}]✗ Programming failed[/color]")
             if cell.failure_reason:
-                lines.append(f"  Reason: {cell.failure_reason}")
+                lines.append(f"  [color={C_FAIL}]Reason: {cell.failure_reason}[/color]")
+        
+        # Show device info if available
+        if board_status and board_status.board_info:
+            info = board_status.board_info
+            if hasattr(info, 'device_id') and info.device_id:
+                lines.append(f"\n[color={C_HEADER}][b]Device Info[/b][/color]")
+                lines.append(f"  [color={C_KEY}]Device ID:[/color] [font=/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf][color={C_VAL}]{info.device_id}[/color][/font]")
+            if hasattr(info, 'firmware_version') and info.firmware_version:
+                lines.append(f"  [color={C_KEY}]Firmware:[/color] [font=/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf][color={C_VAL}]{info.firmware_version}[/color][/font]")
+            
+            # Show programming log if available
+            if hasattr(info, 'program_log') and info.program_log:
+                lines.append(f"\n[color={C_HEADER}][b]Programmer Output[/b][/color]")
+                for entry in info.program_log[-15:]:  # Last 15 entries
+                    # Truncate long lines
+                    if len(entry) > 60:
+                        entry = entry[:57] + "..."
+                    # Use monospace font for log entries
+                    lines.append(f"  [font=/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf][color={C_LOG}]{entry}[/color][/font]")
     
     def _build_provisioning_details(self, lines, status_name, cell):
         """Build Provisioning phase detail content."""
         self._hide_detail_image()
-        lines.append(f"\n[b]Provisioning:[/b]")
+        board_status = self._get_board_status(self.current_cell_id)
+        C_HEADER = '#88CCFF'
+        C_KEY = '#FFCC66'
+        C_VAL = '#CCCCCC'
+        C_OK = '#66FF66'
+        C_FAIL = '#FF6666'
+        C_LOG = '#AAAAAA'
+        
+        lines.append(f"\n[color={C_HEADER}][b]Provisioning[/b][/color]")
         if status_name in ("PASSED", "COMPLETED"):
-            lines.append("  Device configured successfully")
+            lines.append(f"  [color={C_OK}]✓ Device configured successfully[/color]")
         elif status_name == "FAILED":
-            lines.append("  Provisioning failed")
+            lines.append(f"  [color={C_FAIL}]✗ Provisioning failed[/color]")
             if cell.failure_reason:
-                lines.append(f"  Reason: {cell.failure_reason}")
+                lines.append(f"  [color={C_FAIL}]Reason: {cell.failure_reason}[/color]")
+        
+        # Show captured variables
+        log.debug(f"[BoardDetail] _build_provisioning_details: board_status={board_status}")
+        if board_status and board_status.board_info:
+            info = board_status.board_info
+            log.debug(f"[BoardDetail] board_info.test_data={info.test_data}")
+            log.debug(f"[BoardDetail] board_info.provision_log={getattr(info, 'provision_log', None)}")
+            if hasattr(info, 'test_data') and info.test_data:
+                lines.append(f"\n[color={C_HEADER}][b]Captured Variables[/b][/color]")
+                for key, value in info.test_data.items():
+                    val_str = str(value)
+                    if len(val_str) > 50:
+                        val_str = val_str[:47] + "..."
+                    # Use monospace font for values
+                    lines.append(f"  [color={C_KEY}]{key}:[/color] [font=/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf][color={C_VAL}]{val_str}[/color][/font]")
+            
+            # Show provisioning log if available
+            if hasattr(info, 'provision_log') and info.provision_log:
+                lines.append(f"\n[color={C_HEADER}][b]Provisioning Log[/b][/color]")
+                for entry in info.provision_log[-15:]:
+                    if len(entry) > 60:
+                        entry = entry[:57] + "..."
+                    # Use monospace font for log entries, color based on content
+                    if '✓' in entry or 'OK' in entry or 'PASS' in entry.upper():
+                        lines.append(f"  [font=/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf][color={C_OK}]{entry}[/color][/font]")
+                    elif '✗' in entry or 'FAIL' in entry.upper() or 'ERROR' in entry.upper():
+                        lines.append(f"  [font=/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf][color={C_FAIL}]{entry}[/color][/font]")
+                    else:
+                        lines.append(f"  [font=/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf][color={C_LOG}]{entry}[/color][/font]")
     
     def _build_test_details(self, lines, status_name, cell):
         """Build Test phase detail content."""
         self._hide_detail_image()
-        lines.append(f"\n[b]Final Test:[/b]")
-        if status_name == "PASSED":
-            lines.append("  All tests passed")
+        board_status = self._get_board_status(self.current_cell_id)
+        C_HEADER = '#88CCFF'
+        C_KEY = '#FFCC66'
+        C_VAL = '#CCCCCC'
+        C_OK = '#66FF66'
+        C_FAIL = '#FF6666'
+        C_LOG = '#AAAAAA'
+        
+        lines.append(f"\n[color={C_HEADER}][b]Final Test[/b][/color]")
+        if status_name == "PASSED" or status_name == "COMPLETED":
+            lines.append(f"  [color={C_OK}]✓ All tests passed[/color]")
         elif status_name == "FAILED":
-            lines.append("  Test failed")
+            lines.append(f"  [color={C_FAIL}]✗ Test failed[/color]")
             if cell.failure_reason:
-                lines.append(f"  Reason: {cell.failure_reason}")
+                lines.append(f"  [color={C_FAIL}]Reason: {cell.failure_reason}[/color]")
+        
+        # Show test results if available
+        if board_status and board_status.board_info:
+            info = board_status.board_info
+            
+            # Show test data as results
+            if hasattr(info, 'test_data') and info.test_data:
+                lines.append(f"\n[color={C_HEADER}][b]Test Results[/b][/color]")
+                for key, value in info.test_data.items():
+                    val_str = str(value)
+                    if len(val_str) > 50:
+                        val_str = val_str[:47] + "..."
+                    # Use monospace font for values
+                    lines.append(f"  [color={C_KEY}]{key}:[/color] [font=/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf][color={C_VAL}]{val_str}[/color][/font]")
+            
+            # Show test log if available  
+            if hasattr(info, 'test_log') and info.test_log:
+                lines.append(f"\n[color={C_HEADER}][b]Test Log[/b][/color]")
+                for entry in info.test_log[-15:]:
+                    if len(entry) > 60:
+                        entry = entry[:57] + "..."
+                    # Use monospace font for log entries, color based on content
+                    if '✓' in entry or 'OK' in entry or 'PASS' in entry.upper():
+                        lines.append(f"  [font=/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf][color={C_OK}]{entry}[/color][/font]")
+                    elif '✗' in entry or 'FAIL' in entry.upper() or 'ERROR' in entry.upper():
+                        lines.append(f"  [font=/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf][color={C_FAIL}]{entry}[/color][/font]")
+                    else:
+                        lines.append(f"  [font=/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf][color={C_LOG}]{entry}[/color][/font]")
     
     def _show_qr_image(self, image_bytes):
         """Display QR image in detail panel from PNG bytes."""
-        if not self._detail_image or not image_bytes:
+        if not image_bytes or not self._detail_box:
             return
         try:
             from kivy.core.image import Image as CoreImage
             from io import BytesIO
             
+            # Remove existing image if present
+            self._hide_detail_image()
+            
             data = BytesIO(image_bytes)
             img = CoreImage(data, ext='png')
-            self._detail_image.texture = img.texture
-            self._detail_image.opacity = 1
+            
+            # Create image widget
+            self._detail_image = Image(
+                texture=img.texture,
+                size_hint_y=None,
+                height=200,
+                allow_stretch=True,
+                keep_ratio=True
+            )
+            self._detail_box.add_widget(self._detail_image)
         except Exception as e:
             log.debug(f"[BoardDetail] Error loading QR image: {e}")
-            self._detail_image.opacity = 0
     
     def _hide_detail_image(self):
-        """Hide the detail image."""
-        if self._detail_image:
-            self._detail_image.opacity = 0
+        """Remove the detail image widget if present."""
+        if self._detail_image and self._detail_box:
+            try:
+                self._detail_box.remove_widget(self._detail_image)
+            except:
+                pass
+            self._detail_image = None
     
     def _on_popup_dismiss(self, instance):
         """Called when popup is dismissed."""
@@ -756,15 +930,12 @@ class BoardDetailPopup:
             return
         
         if self.current_cell and self.current_cell_id is not None:
-            # Import GridCell for constants
-            from gridcell import GridCell
-            
-            # Reset cell visual state
-            self.current_cell.vision_dot = GridCell.DOT_PENDING if self.current_cell.vision_enabled else GridCell.DOT_DISABLED
-            self.current_cell.contact_dot = GridCell.DOT_PENDING if self.current_cell.contact_enabled else GridCell.DOT_DISABLED
-            self.current_cell.program_dot = GridCell.DOT_PENDING if self.current_cell.program_enabled else GridCell.DOT_DISABLED
-            self.current_cell.provision_dot = GridCell.DOT_PENDING if self.current_cell.provision_enabled else GridCell.DOT_DISABLED
-            self.current_cell.test_dot = GridCell.DOT_PENDING if self.current_cell.test_enabled else GridCell.DOT_DISABLED
+            # Reset cell visual state using centralized constants
+            self.current_cell.vision_dot = DOT_PENDING if self.current_cell.vision_enabled else DOT_DISABLED
+            self.current_cell.contact_dot = DOT_PENDING if self.current_cell.contact_enabled else DOT_DISABLED
+            self.current_cell.program_dot = DOT_PENDING if self.current_cell.program_enabled else DOT_DISABLED
+            self.current_cell.provision_dot = DOT_PENDING if self.current_cell.provision_enabled else DOT_DISABLED
+            self.current_cell.test_dot = DOT_PENDING if self.current_cell.test_enabled else DOT_DISABLED
             self.current_cell.result_icon = ""
             self.current_cell.failure_reason = ""
             self.current_cell.serial_number = ""

@@ -788,19 +788,58 @@ class ProgBot:
         provision_time = time_module.perf_counter() - provision_start
         self.stats.record_board_time(col, row, 'provision', provision_time)
         
+        # Build provision log from step results
+        # Match step results to their definitions using step_index
+        provision_log = []
+        for sr in result.step_results:
+            status = "✓" if sr.success else "✗"
+            
+            # Get step description from script definition
+            step_idx = sr.step_index
+            if step_idx < len(script.steps):
+                step_def = script.steps[step_idx]
+                # Use description if available, otherwise use send command or step number
+                if step_def.description:
+                    step_name = step_def.description
+                elif step_def.send:
+                    # Use the send command (truncated) as name
+                    step_name = step_def.send[:40]
+                    if len(step_def.send) > 40:
+                        step_name += "..."
+                else:
+                    step_name = f"Step {step_idx + 1}"
+            else:
+                step_name = f"Step {step_idx + 1}"
+            
+            provision_log.append(f"[{status}] {step_name} ({sr.elapsed:.2f}s)")
+            
+            # Show captured variables on success
+            if sr.captures:
+                for k, v in sr.captures.items():
+                    provision_log.append(f"  → {k}={v}")
+            
+            # Show error on failure
+            if sr.error:
+                provision_log.append(f"  ERROR: {sr.error}")
+        
+        # Ensure board_info exists (may not if vision was disabled)
+        if not board_status.board_info:
+            board_status.board_info = BoardInfo()
+        
         if result.success:
             log.info(f"[_provision_board] Board [{col},{row}] provisioning complete in {provision_time:.2f}s")
             log.info(f"[_provision_board] Captures: {result.captures}")
             
             # Store captured data in board_info
-            if board_status.board_info:
-                # Add all captures to test_data dict for export
-                board_status.board_info.test_data.update(result.captures)
+            board_status.board_info.test_data.update(result.captures)
+            board_status.board_info.provision_log = provision_log
             
             # Mark as completed
             self._mark_provision(cell_id, board_status, ProvisionStatus.COMPLETED)
         else:
             log.warning(f"[_provision_board] Board [{col},{row}] provisioning failed: {result.error}")
+            # Store provisioning log even on failure
+            board_status.board_info.provision_log = provision_log
             # Mark board as failed
             board_status.failure_reason = result.error
             self._mark_provision(cell_id, board_status, ProvisionStatus.FAILED)

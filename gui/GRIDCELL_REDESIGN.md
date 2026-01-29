@@ -73,10 +73,10 @@
 - [x] **Consolidate status update logic** - Created `board_status.py` as single source of truth for status enums, data classes, and utility functions (status_to_dot, get_phase_color, get_status_bg_color, has_failure, is_processing, etc.)
 
 #### Detail Popup Enhancements
-- [ ] **Raw Logs** - Collapsible section with detailed output from each phase
-- [ ] **Captured Variables in Provisioning Detail** - Show captures when Provisioning phase selected
-- [ ] **Program Phase Detail** - Show device info, firmware version, programmer output
-- [ ] **Test Phase Detail** - Show test results, pass/fail counts
+- [x] **Raw Logs** - Collapsible section with detailed output from each phase (BoardInfo now stores phase logs)
+- [x] **Captured Variables in Provisioning Detail** - Show captures when Provisioning phase selected
+- [x] **Program Phase Detail** - Show device info, firmware version, programmer output
+- [x] **Test Phase Detail** - Show test results, pass/fail counts
 
 #### Visual Polish
 - [ ] Consider color-coding dots (currently shape-only, monochrome)

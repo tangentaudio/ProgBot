@@ -324,6 +324,17 @@ class BoardInfo:
         self.probe_result: Optional[bool] = None  # True if probing passed
         self.program_result: Optional[bool] = None  # True if programming passed
         self.notes: str = ""  # Any additional notes or error messages
+        
+        # Phase logs for detail display
+        self.vision_log: list = []  # Log entries from vision phase
+        self.probe_log: list = []   # Log entries from probe phase
+        self.program_log: list = [] # Log entries from programming phase
+        self.provision_log: list = []  # Log entries from provisioning phase
+        self.test_log: list = []    # Log entries from test phase
+        
+        # Device info captured during programming
+        self.device_id: Optional[str] = None  # Chip ID or device identifier
+        self.firmware_version: Optional[str] = None  # Flashed firmware version
     
     def to_dict(self) -> dict:
         """Convert to dictionary for export (CSV/database).
