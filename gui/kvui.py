@@ -140,6 +140,7 @@ from panel_file_manager import PanelFileManagerMixin
 from board_detail_popup import BoardDetailPopup
 from gridcell import GridCell
 from board_status import DOT_DISABLED
+from cycle_summary import CycleSummaryPopup, build_cycle_summary, FileExportHandler
 
 class OutputCapture:
     """Captures print/stderr output and routes to the logging system.
@@ -1713,13 +1714,16 @@ class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, ProvisionStepEditor
 
     def _on_task_complete(self, task):
         """Called when the bot task completes or is cancelled."""
+        from datetime import datetime
+        
         # Dump diagnostics to see system state
         dump_diagnostics("TASK_COMPLETE")
         
+        was_cancelled = False
         try:
             task.exception()
         except asyncio.CancelledError:
-            pass
+            was_cancelled = True
         except Exception as e:
             log.error(f"[BotTask] Completed with error: {e}")
 
@@ -1748,7 +1752,92 @@ class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, ProvisionStepEditor
         Clock.schedule_once(lambda dt: self._set_widget('calibrate_btn', disabled=False))
         Clock.schedule_once(lambda dt: self._set_config_widgets_enabled(True))
         Clock.schedule_once(lambda dt: self._set_grid_cells_enabled(True))
+        
+        # Show cycle summary popup (only if cycle completed, not cancelled)
+        if not was_cancelled and hasattr(self, 'bot') and self.bot and self.bot.board_statuses:
+            Clock.schedule_once(lambda dt: self._show_cycle_summary())
+        
         self.bot_task = None
+    
+    def _show_cycle_summary(self):
+        """Show the cycle summary popup after a cycle completes."""
+        from datetime import datetime
+        
+        try:
+            # Build the summary from bot data
+            panel_name = self.panel_settings.get('name', 'unknown') if self.panel_settings else 'unknown'
+            
+            # Get start/end times from stats
+            stats = self.bot.stats
+            if stats.cycle_start_time:
+                start_time = datetime.fromtimestamp(stats.cycle_start_time)
+            else:
+                start_time = datetime.now()
+            
+            if stats.cycle_end_time:
+                end_time = datetime.fromtimestamp(stats.cycle_end_time)
+            else:
+                end_time = datetime.now()
+            
+            # Get skipped positions (disabled cells)
+            skip_positions = self.get_skip_board_pos()
+            
+            summary = build_cycle_summary(
+                board_statuses=self.bot.board_statuses,
+                panel_name=panel_name,
+                start_time=start_time,
+                end_time=end_time,
+                board_times=stats.board_times,
+                grid_rows=self.grid_rows if hasattr(self, 'grid_rows') else 1,
+                skipped_positions=skip_positions,
+            )
+            
+            # Create and show popup - store reference to prevent garbage collection
+            self._cycle_summary_popup = CycleSummaryPopup(
+                on_rerun_failed=self._on_rerun_failed,
+                on_export=self._on_export_summary,
+            )
+            self._cycle_summary_popup.show(summary)
+            log.info(f"[CycleSummary] Showing summary: {summary.passed_count} passed, {summary.failed_count} failed, {summary.skipped_count} skipped")
+            
+        except Exception as e:
+            log.error(f"[CycleSummary] Error showing summary popup: {e}", exc_info=True)
+    
+    def _on_rerun_failed(self, failed_cell_ids):
+        """Handle re-run failed boards from summary popup."""
+        log.info(f"[CycleSummary] Re-run requested for cells: {failed_cell_ids}")
+        
+        # Enable only the failed cells, disable all others
+        for cell_id, cell in self.grid_cells.items():
+            if cell_id in failed_cell_ids:
+                cell.enabled = True
+            else:
+                cell.enabled = False
+        
+        # Start a new cycle (using the start button callback)
+        Clock.schedule_once(lambda dt: self.start(None))
+    
+    def _on_export_summary(self, summary, format_type):
+        """Handle export request from summary popup."""
+        import os
+        from datetime import datetime
+        
+        try:
+            # Export to exports directory
+            export_dir = os.path.join(os.path.dirname(__file__), 'exports')
+            os.makedirs(export_dir, exist_ok=True)
+            
+            handler = FileExportHandler(export_dir, format=format_type)
+            
+            # Run async handler synchronously
+            import asyncio
+            loop = asyncio.get_event_loop()
+            loop.create_task(handler.on_cycle_complete(summary))
+            
+            log.info(f"[CycleSummary] Exported {format_type} to {export_dir}")
+            
+        except Exception as e:
+            log.error(f"[CycleSummary] Error exporting: {e}", exc_info=True)
         
     @listener
     async def on_board_status_change(self, cell_id, board_status):
