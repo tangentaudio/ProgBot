@@ -178,8 +178,13 @@ class BoardDetailPopup:
         
         # Board number and serial (left side)
         board_info = BoxLayout(orientation='vertical', size_hint_x=0.35)
+        
+        # Get col,row from cell_id
+        position = self._cell_id_to_position(self.current_cell_id)
+        col, row = position if position else (0, 0)
+        
         board_label = Label(
-            text=f"[b]{cell.cell_label}[/b]",
+            text=f"[b]Board {cell.cell_label}[/b]  [size=14sp][color=#888888][{col},{row}][/color][/size]",
             markup=True,
             font_size='24sp',
             halign='left',
