@@ -29,14 +29,19 @@ class SerialPortInfo:
         """Generate a unique identifier for this port.
         
         Priority:
-        1. Serial number (most stable)
-        2. VID:PID:Location (USB port location)
-        3. VID:PID (least stable, but better than nothing)
+        1. Serial number + location (handles devices with duplicate serial numbers)
+        2. Serial number alone (if no location)
+        3. VID:PID:Location (USB port location)
+        4. VID:PID (least stable, but better than nothing)
         
         Returns:
             Unique identifier string
         """
-        if self.serial_number:
+        if self.serial_number and self.location:
+            # Include location to handle devices that share serial numbers
+            # (e.g., multi-function USB devices presenting multiple ports)
+            return f"SN:{self.serial_number}:{self.location}"
+        elif self.serial_number:
             return f"SN:{self.serial_number}"
         elif self.vid and self.pid and self.location:
             return f"USB:{self.vid:04X}:{self.pid:04X}:{self.location}"
