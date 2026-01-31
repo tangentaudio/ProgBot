@@ -8,17 +8,18 @@
 <PanelFileRow@Button>:
     filename: ''
     fullpath: ''
+    is_dir: False
     selected: False
     size_hint_y: None
     height: 60
-    text: self.filename
+    text: (self.filename + '/') if self.is_dir else self.filename
     font_size: '18sp'
     halign: 'left'
     valign: 'center'
     text_size: self.size
     padding: 10, 0
-    on_release: app.on_file_row_pressed(self.fullpath)
-    background_color: (0.3, 0.5, 0.8, 1) if self.selected else (0.2, 0.2, 0.2, 1)
+    on_release: app.on_file_row_pressed(self.fullpath, self.is_dir)
+    background_color: (0.3, 0.5, 0.8, 1) if self.selected else ((0.25, 0.25, 0.3, 1) if self.is_dir else (0.2, 0.2, 0.2, 1))
     background_normal: ''
 
 
@@ -256,22 +257,57 @@
 
 <PanelFileChooser@Popup>:
     id: panel_chooser
-    title: 'Select Panel Settings File'
+    title: 'Select File'
     size_hint: 0.95, 0.9
     
     BoxLayout:
         orientation: 'vertical'
-        spacing: 12
-        padding: 15
+        spacing: 8
+        padding: 10
 
+        # Path display
         Label:
-            text: 'Choose a .panel file:'
+            id: path_label
+            text: ''
             size_hint_y: None
-            height: 50
-            font_size: '16sp'
+            height: 30
+            font_size: '14sp'
             halign: 'left'
             valign: 'center'
             text_size: self.size
+
+        # Navigation buttons
+        BoxLayout:
+            size_hint_y: None
+            height: 50
+            spacing: 8
+
+            Button:
+                text: '\u2191 Up'
+                font_name: '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'
+                size_hint_x: 0.25
+                font_size: '16sp'
+                background_normal: ''
+                background_color: (0.35, 0.35, 0.4, 1) if self.state == 'down' else (0.3, 0.3, 0.35, 1)
+                on_release: app.on_file_chooser_up()
+
+            Button:
+                text: '\u2302 Home'
+                font_name: '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'
+                size_hint_x: 0.25
+                font_size: '16sp'
+                background_normal: ''
+                background_color: (0.35, 0.35, 0.4, 1) if self.state == 'down' else (0.3, 0.3, 0.35, 1)
+                on_release: app.on_file_chooser_home()
+
+            Label:
+                id: filter_label
+                text: ''
+                size_hint_x: 0.5
+                font_size: '12sp'
+                halign: 'right'
+                valign: 'center'
+                text_size: self.size
 
         RecycleView:
             id: file_list
@@ -290,20 +326,20 @@
                 spacing: 4
                 key_selection: 'selectable'
 
+        # Selection display
+        Label:
+            id: selection_label
+            text: '(no file selected)'
+            size_hint_y: None
+            height: 30
+            font_size: '14sp'
+            color: 0.7, 0.9, 0.7, 1
+
         BoxLayout:
             size_hint_y: None
-            height: 70
+            height: 60
             spacing: 12
             padding: 8
-
-            Button:
-                text: 'Load'
-                font_size: '16sp'
-                background_normal: ''
-                background_down: ''
-                background_color: (0.1, 0.9, 0.3, 1) if self.state == 'down' else (0, 0.8, 0.2, 1)
-                on_press: app.on_custom_panel_file_selected()
-                on_press: root.dismiss()
 
             Button:
                 text: 'Cancel'
@@ -311,6 +347,15 @@
                 background_normal: ''
                 background_down: ''
                 background_color: (0.35, 0.35, 0.4, 1) if self.state == 'down' else (0.25, 0.25, 0.3, 1)
+                on_press: root.dismiss()
+
+            Button:
+                text: 'Select'
+                font_size: '16sp'
+                background_normal: ''
+                background_down: ''
+                background_color: (0.1, 0.9, 0.3, 1) if self.state == 'down' else (0, 0.8, 0.2, 1)
+                on_press: app.on_custom_panel_file_selected()
                 on_press: root.dismiss()
 
 <SavePanelDialog@Popup>:
@@ -651,6 +696,17 @@
             background_color: (0.35, 0.35, 0.4, 1) if self.state == 'down' else (0.25, 0.25, 0.3, 1)
             color: 0.9, 0.9, 0.9, 1
             on_release: app.menu_load_panel()
+        
+        Button:
+            text: 'New Panel from KiKit'
+            size_hint_y: None
+            height: 44
+            font_size: '16sp'
+            background_normal: ''
+            background_down: ''
+            background_color: (0.35, 0.35, 0.4, 1) if self.state == 'down' else (0.25, 0.25, 0.3, 1)
+            color: 0.9, 0.9, 0.9, 1
+            on_release: app.menu_new_panel_from_kikit()
         
         Button:
             text: 'Panel Setup'

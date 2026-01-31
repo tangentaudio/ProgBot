@@ -374,6 +374,88 @@ class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, ProvisionStepEditor
         self._close_main_menu()
         self.open_panel_file_chooser()
     
+    def menu_new_panel_from_kikit(self):
+        """Menu action: New Panel from KiKit - opens import wizard."""
+        self._close_main_menu()
+        self._open_panel_import_wizard()
+    
+    def _open_panel_import_wizard(self):
+        """Open the KiKit panel import wizard as a popup."""
+        try:
+            from panel_import.panel_import_wizard import PanelImportWizard
+            from kivy.uix.popup import Popup
+            from kivy.metrics import dp
+            
+            # Create wizard
+            wizard = PanelImportWizard(
+                on_complete=self._on_panel_import_complete,
+                on_cancel=self._on_panel_import_cancel
+            )
+            
+            # Create popup
+            self._panel_import_popup = Popup(
+                title='Import Panel from KiKit',
+                content=wizard,
+                size_hint=(0.9, 0.9),
+                auto_dismiss=False
+            )
+            self._panel_import_popup.open()
+            
+        except ImportError as e:
+            log.error(f"Panel import module not available: {e}")
+        except Exception as e:
+            log.error(f"Error opening panel import wizard: {e}")
+    
+    def _on_panel_import_complete(self, values):
+        """Handle panel import wizard completion - save .panel file."""
+        import json
+        from pathlib import Path
+        
+        # Close the popup
+        if hasattr(self, '_panel_import_popup') and self._panel_import_popup:
+            self._panel_import_popup.dismiss()
+            self._panel_import_popup = None
+        
+        # Build the panel file data
+        panel_data = {
+            "board_cols": str(values['board_cols']),
+            "board_rows": str(values['board_rows']),
+            "col_width": str(values['col_width']),
+            "row_height": str(values['row_height']),
+            "board_x": "0.0",  # Will need to be set in Panel Setup
+            "board_y": "0.0",  # Will need to be set in Panel Setup
+            "probe_plane": "4.0",
+            "operation_mode": "Program",
+            "skip_board_pos": []
+        }
+        
+        # Save to file
+        panel_name = values.get('panel_name', 'imported_panel')
+        # Sanitize filename
+        safe_name = "".join(c for c in panel_name if c.isalnum() or c in '._- ').strip()
+        if not safe_name:
+            safe_name = 'imported_panel'
+        
+        panel_path = Path.cwd() / f"{safe_name}.panel"
+        
+        try:
+            with open(panel_path, 'w') as f:
+                json.dump(panel_data, f, indent=2)
+            
+            log.info(f"Panel saved to: {panel_path}")
+            
+            # Load the newly created panel
+            self.on_panel_file_selected(str(panel_path))
+            
+        except Exception as e:
+            log.error(f"Error saving panel file: {e}")
+    
+    def _on_panel_import_cancel(self):
+        """Handle panel import wizard cancellation."""
+        if hasattr(self, '_panel_import_popup') and self._panel_import_popup:
+            self._panel_import_popup.dismiss()
+            self._panel_import_popup = None
+    
     def menu_panel_setup(self):
         """Menu action: Panel Setup."""
         self._close_main_menu()
@@ -738,8 +820,8 @@ class AsyncApp(SettingsHandlersMixin, PanelFileManagerMixin, ProvisionStepEditor
         except Exception as e:
             log.error(f"[AsyncApp.build] Error loading settings: {e}")
         
-        # Create file chooser popup for panel files
-        self.file_chooser_popup = Factory.PanelFileChooser()
+        # File chooser popup created on-demand in open_panel_file_chooser()
+        self.file_chooser_popup = None
         self.save_panel_dialog = Factory.SavePanelDialog()
         
         # Instantiate the AppRoot template via Factory
